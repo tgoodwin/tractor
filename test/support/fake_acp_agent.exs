@@ -120,13 +120,77 @@ defmodule Tractor.FakeACPAgent do
       send_full_events(state.session_id)
     end
 
+    maybe_send_usage_update(state)
     send_delta(state.session_id, "fake ")
     send_delta(state.session_id, "response: ")
     send_session_delta(state.session_id, prompt_text)
-    reply(message["id"], %{"stopReason" => "end_turn"})
+    reply(message["id"], prompt_result(state))
 
     state
   end
+
+  defp maybe_send_usage_update(%{mode: mode, session_id: session_id})
+       when mode in ["usage_update", "usage_merge"] do
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "type" => "model_usage",
+        "usage" => %{
+          "inputTokens" => 123,
+          "outputTokens" => 45,
+          "totalTokens" => 168
+        }
+      }
+    })
+  end
+
+  defp maybe_send_usage_update(%{mode: "usage_content", session_id: session_id}) do
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "type" => "agent_progress",
+        "content" => %{
+          "usage" => %{
+            "prompt_tokens" => 321,
+            "completion_tokens" => 54,
+            "total_tokens" => 375
+          }
+        }
+      }
+    })
+  end
+
+  defp maybe_send_usage_update(%{mode: "usage_malformed", session_id: session_id}) do
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{"type" => "model_usage", "usage" => ["not", "a", "map"]}
+    })
+  end
+
+  defp maybe_send_usage_update(_state), do: :ok
+
+  defp prompt_result(%{mode: "usage_result"}) do
+    %{
+      "stopReason" => "end_turn",
+      "usage" => %{
+        "prompt_tokens" => 200,
+        "completion_tokens" => 50,
+        "total_tokens" => 250
+      }
+    }
+  end
+
+  defp prompt_result(%{mode: "usage_merge"}) do
+    %{
+      "stopReason" => "end_turn",
+      "usage" => %{
+        "output_tokens" => 88,
+        "total_tokens" => 211
+      }
+    }
+  end
+
+  defp prompt_result(_state), do: %{"stopReason" => "end_turn"}
 
   defp send_delta(session_id, text) do
     notify("session/update", %{
