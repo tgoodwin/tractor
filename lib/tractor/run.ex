@@ -18,4 +18,9 @@ defmodule Tractor.Run do
   def await(run_id, timeout \\ 300_000) do
     Runner.await(run_id, timeout)
   end
+
+  @spec info(String.t()) :: {:ok, map()} | {:error, term()}
+  def info(run_id) do
+    Runner.info(run_id)
+  end
 end

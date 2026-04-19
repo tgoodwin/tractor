@@ -313,26 +313,26 @@ Extend `reap`:
   - [x] All branches fail: fan-in has nothing to consolidate; run fails with `:all_branches_failed`.
   - [x] Deterministic fan-in selection: crafted `parallel.results` fixtures with varying status/score/id; assert selection matches heuristic.
   - [x] JSON-safety enforcement: `Context.snapshot/1` rejects maps containing pids/refs/functions.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase E — LiveView UI (day 6–8, ~7h, can start once Phase B lands)
 
-- [ ] `TractorWeb.Endpoint` config (runtime, host `{127,0,0,1}`, server `true`, pubsub `Tractor.PubSub`).
-- [ ] `TractorWeb.Router`: `live "/runs/:run_id", RunLive.Show`. Catch-all 404.
-- [ ] `TractorWeb.GraphRenderer`: shells out to `dot -Tsvg`, streams the pipeline's DOT source, post-processes SVG to add `data-node-id` and `tractor-node` class on each `<g class="node">`. Cache result per pipeline.
-- [ ] `TractorWeb.RunLive.Show`:
-  - [ ] `mount/3`: lookup run via `Tractor.RunRegistry`, subscribe to `RunBus` **first**, then load per-node `status.json` + `events.jsonl` for initial state.
-  - [ ] `render/1`: SVG graph + side panel for selected node (prompt, response, stream-rendered chunk lists, tool calls grouped by `toolCallId`, stderr tail).
-  - [ ] `handle_info({:run_event, node_id, event}, ...)`: update node-state map, `stream_insert/3` into selected-node streams.
-  - [ ] `handle_event("select_node", %{"node-id" => id}, ...)`: switch selection; load target node's events into streams from disk.
-- [ ] `priv/static/assets/app.css`: state classes (`pending`, `running` with pulse animation, `succeeded`, `failed`); side panel layout; monospace `<pre>` for chunks.
-- [ ] `priv/static/assets/app.js`: LiveView import + socket connect (~10 lines).
-- [ ] LiveView tests with `Phoenix.LiveViewTest`:
-  - [ ] Stub run broadcasts `node_started` → DOM class flips to `running`.
-  - [ ] Multiple concurrent `node_started` → multiple nodes show `running` simultaneously.
-  - [ ] `select_node` loads prompt/response/chunks from disk.
-  - [ ] Late mount (run already complete) rebuilds full UI state from disk.
-- [ ] `dot` probe: on endpoint startup, fail with actionable error if `dot` not on PATH.
+- [x] `TractorWeb.Endpoint` config (runtime, host `{127,0,0,1}`, server `true`, pubsub `Tractor.PubSub`).
+- [x] `TractorWeb.Router`: `live "/runs/:run_id", RunLive.Show`. Catch-all 404.
+- [x] `TractorWeb.GraphRenderer`: shells out to `dot -Tsvg`, streams the pipeline's DOT source, post-processes SVG to add `data-node-id` and `tractor-node` class on each `<g class="node">`. Cache result per pipeline.
+- [x] `TractorWeb.RunLive.Show`:
+  - [x] `mount/3`: lookup run via `Tractor.RunRegistry`, subscribe to `RunBus` **first**, then load per-node `status.json` + `events.jsonl` for initial state.
+  - [x] `render/1`: SVG graph + side panel for selected node (prompt, response, stream-rendered chunk lists, tool calls grouped by `toolCallId`, stderr tail).
+  - [x] `handle_info({:run_event, node_id, event}, ...)`: update node-state map, `stream_insert/3` into selected-node streams.
+  - [x] `handle_event("select_node", %{"node-id" => id}, ...)`: switch selection; load target node's events into streams from disk.
+- [x] `priv/static/assets/app.css`: state classes (`pending`, `running` with pulse animation, `succeeded`, `failed`); side panel layout; monospace `<pre>` for chunks.
+- [x] `priv/static/assets/app.js`: LiveView import + socket connect (~10 lines).
+- [x] LiveView tests with `Phoenix.LiveViewTest`:
+  - [x] Stub run broadcasts `node_started` → DOM class flips to `running`.
+  - [x] Multiple concurrent `node_started` → multiple nodes show `running` simultaneously.
+  - [x] `select_node` loads prompt/response/chunks from disk.
+  - [x] Late mount (run already complete) rebuilds full UI state from disk.
+- [x] `dot` probe: on endpoint startup, fail with actionable error if `dot` not on PATH.
 - [ ] Commit.
 
 ### Phase F — CLI `--serve` + acceptance + merge gate (day 8–10, ~5h)

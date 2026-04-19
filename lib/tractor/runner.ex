@@ -41,6 +41,14 @@ defmodule Tractor.Runner do
     end
   end
 
+  @spec info(String.t()) :: {:ok, map()} | {:error, term()}
+  def info(run_id) do
+    case Registry.lookup(Tractor.RunRegistry, run_id) do
+      [{pid, _value}] -> GenServer.call(pid, :info)
+      [] -> {:error, :run_not_found}
+    end
+  end
+
   @impl true
   def init({%Pipeline{} = pipeline, _opts, %RunStore{} = store}) do
     Enum.each(Map.keys(pipeline.nodes), &RunStore.mark_node_pending(store, &1))
@@ -62,6 +70,10 @@ defmodule Tractor.Runner do
 
   def handle_call(:await, _from, %{result: result} = state) do
     {:reply, result, state}
+  end
+
+  def handle_call(:info, _from, state) do
+    {:reply, {:ok, %{pipeline: state.pipeline, run_dir: state.store.run_dir, run_id: state.store.run_id}}, state}
   end
 
   @impl true

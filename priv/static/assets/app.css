@@ -20,3 +20,66 @@ body {
   border-left: 1px solid #d5d9e0;
   background: #fff;
 }
+
+.graph-svg svg {
+  width: 100%;
+  height: auto;
+}
+
+.tractor-node {
+  cursor: pointer;
+}
+
+.tractor-node.pending ellipse,
+.tractor-node.pending polygon,
+.tractor-node.pending path {
+  fill: #eceff3;
+  stroke: #737b86;
+}
+
+.tractor-node.running ellipse,
+.tractor-node.running polygon,
+.tractor-node.running path {
+  fill: #d8ecff;
+  stroke: #1976c9;
+  animation: pulse-node 1.2s ease-in-out infinite;
+}
+
+.tractor-node.succeeded ellipse,
+.tractor-node.succeeded polygon,
+.tractor-node.succeeded path {
+  fill: #def5e7;
+  stroke: #23834f;
+}
+
+.tractor-node.failed ellipse,
+.tractor-node.failed polygon,
+.tractor-node.failed path {
+  fill: #ffe0e0;
+  stroke: #bf3030;
+}
+
+pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.tool-call {
+  border: 1px solid #d5d9e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+@keyframes pulse-node {
+  0%,
+  100% {
+    stroke-width: 1;
+  }
+
+  50% {
+    stroke-width: 3;
+  }
+}
