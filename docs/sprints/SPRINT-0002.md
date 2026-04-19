@@ -280,16 +280,16 @@ Extend `reap`:
 - [x] Continue rejecting `conditional`, `wait.human`, `tool`, `stack.manager_loop` with existing codes.
 - [x] New DOT fixtures: `valid_parallel_audit.dot`, `missing_fan_in.dot`, `multiple_fan_ins.dot`, `nested_branch.dot`, `invalid_join_policy.dot`, `invalid_max_parallel.dot`, `fan_in_without_parallel.dot`.
 - [x] One test per fixture failure mode.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase D — Multi-active Runner + parallel region + fan-in (day 4–6, ~10h, riskiest piece)
 
-- [ ] `Tractor.Context` module: `initial/1`, `snapshot/1` (JSON-safe; reject pids/refs/functions), `clone_for_branch/2` (stamps `parallel.branch_id`), `apply_updates/2`.
-- [ ] Refactor `Tractor.Runner` state to frontier + agenda model (§4.4). **Commit 1:** refactor with no parallel support; all sprint-1 engine tests pass unchanged. **Commit 2:** add parallel. Bisectable.
-- [ ] Replace `task_ref`/`task_node_id` with `frontier :: %{ref => %{node_id, branch_id, started_at_ms}}` and `agenda :: :queue.t()`.
-- [ ] `ready_set/1` / enqueue-after-completion logic.
-- [ ] `{ref, result}` and `:DOWN` handlers updated for frontier.
-- [ ] Run lifecycle broadcasts via `RunEvents`: `run_started`, `node_started`, `node_succeeded`, `node_failed`, `run_completed`, `run_failed`.
+- [x] `Tractor.Context` module: `initial/1`, `snapshot/1` (JSON-safe; reject pids/refs/functions), `clone_for_branch/2` (stamps `parallel.branch_id`), `apply_updates/2`.
+- [x] Refactor `Tractor.Runner` state to frontier + agenda model (§4.4). **Commit 1:** refactor with no parallel support; all sprint-1 engine tests pass unchanged. **Commit 2:** add parallel. Bisectable.
+- [x] Replace `task_ref`/`task_node_id` with `frontier :: %{ref => %{node_id, branch_id, started_at_ms}}` and `agenda :: :queue.t()`.
+- [x] `ready_set/1` / enqueue-after-completion logic.
+- [x] `{ref, result}` and `:DOWN` handlers updated for frontier.
+- [x] Run lifecycle broadcasts via `RunEvents`: `run_started`, `node_started`, `node_succeeded`, `node_failed`, `run_completed`, `run_failed`.
 - [ ] `Tractor.Pipeline` gains `parallel_blocks :: %{parallel_node_id => %ParallelBlock{branches, fan_in_id, max_parallel, join_policy}}`, populated by parser (Phase C).
 - [ ] Runner: on dequeuing a `parallel` node, enter `enter_parallel/2` — snapshot context, initialize `parallel_state[id]`, enqueue branch entries (up to `max_parallel`; queue the rest).
 - [ ] `Tractor.Engine.BranchExecutor.run_until/5` — walks branch from entry node to fan-in boundary. For sprint 2 with single-node branches this is effectively "run exactly the entry node and stop."

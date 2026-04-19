@@ -5,17 +5,18 @@ defmodule Tractor.Runner do
 
   use GenServer
 
-  alias Tractor.{Edge, Node, Pipeline, RunStore}
+  alias Tractor.{Edge, Node, Pipeline, RunEvents, RunStore}
 
   defstruct pipeline: nil,
             store: nil,
-            current_node_id: nil,
+            frontier: %{},
+            agenda: :queue.new(),
             context: %{},
+            branch_contexts: %{},
+            parallel_state: %{},
+            completed: MapSet.new(),
             waiters: [],
             result: nil,
-            task_ref: nil,
-            task_node_id: nil,
-            task_started_at_ms: nil,
             provider_commands: []
 
   @spec child_spec({Pipeline.t(), keyword(), RunStore.t()}) :: Supervisor.child_spec()
@@ -42,10 +43,13 @@ defmodule Tractor.Runner do
 
   @impl true
   def init({%Pipeline{} = pipeline, _opts, %RunStore{} = store}) do
+    Enum.each(Map.keys(pipeline.nodes), &RunStore.mark_node_pending(store, &1))
+    RunEvents.emit(store.run_id, "_run", :run_started, %{"run_id" => store.run_id})
+
     state = %__MODULE__{
       pipeline: pipeline,
       store: store,
-      current_node_id: start_node_id(pipeline)
+      agenda: :queue.in(start_node_id(pipeline), :queue.new())
     }
 
     {:ok, state, {:continue, :advance}}
@@ -66,16 +70,19 @@ defmodule Tractor.Runner do
   end
 
   @impl true
-  def handle_info({ref, result}, %{task_ref: ref} = state) do
+  def handle_info({ref, result}, state) when is_map_key(state.frontier, ref) do
     Process.demonitor(ref, [:flush])
-    {:noreply, handle_handler_result(result, %{state | task_ref: nil})}
+    {entry, frontier} = Map.pop(state.frontier, ref)
+    {:noreply, handle_handler_result(result, entry, %{state | frontier: frontier})}
   end
 
-  def handle_info(
-        {:DOWN, ref, :process, _pid, reason},
-        %{task_ref: ref, task_node_id: node_id} = state
-      ) do
-    {:noreply, fail_node(%{state | task_ref: nil}, node_id, {:handler_crash, reason})}
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    if Map.has_key?(state.frontier, ref) do
+      {entry, frontier} = Map.pop(state.frontier, ref)
+      {:noreply, fail_node(%{state | frontier: frontier}, entry, {:handler_crash, reason})}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_info(:shutdown_after_completion, state) do
@@ -85,51 +92,81 @@ defmodule Tractor.Runner do
   defp via(run_id), do: {:via, Registry, {Tractor.RunRegistry, run_id}}
 
   # credo:disable-for-next-line Credo.Check.Design.TagTODO
-  # TODO(sprint-2): checkpoint
-  defp advance(%{current_node_id: node_id, pipeline: pipeline} = state) do
+  # TODO(sprint-3): checkpoint
+  defp advance(%{result: result} = state) when not is_nil(result), do: state
+
+  defp advance(%{frontier: frontier, agenda: agenda} = state) do
+    cond do
+      map_size(frontier) > 0 ->
+        state
+
+      :queue.is_empty(agenda) ->
+        complete_success(state)
+
+      true ->
+        dequeue_and_start(state)
+    end
+  end
+
+  defp dequeue_and_start(%{agenda: agenda} = state) do
+    {{:value, node_id}, agenda} = :queue.out(agenda)
+    start_node(%{state | agenda: agenda}, node_id)
+  end
+
+  defp start_node(%{pipeline: pipeline} = state, node_id) do
     node = Map.fetch!(pipeline.nodes, node_id)
     handler = handler_for(node)
+    started_at = DateTime.utc_now()
+
     log_starting(node)
+    RunStore.mark_node_running(state.store, node_id, started_at)
+    RunEvents.emit(state.store.run_id, node_id, :node_started, %{"started_at" => DateTime.to_iso8601(started_at)})
 
     task =
       Task.Supervisor.async_nolink(Tractor.HandlerTasks, fn ->
         handler.run(node, state.context, state.store.run_dir)
       end)
 
-    %{
-      state
-      | task_ref: task.ref,
-        task_node_id: node_id,
-        task_started_at_ms: System.monotonic_time(:millisecond)
-    }
+    put_in(state.frontier[task.ref], %{
+      node_id: node_id,
+      branch_id: nil,
+      started_at_ms: System.monotonic_time(:millisecond)
+    })
   end
 
-  defp handle_handler_result({:ok, outcome, updates}, %{task_node_id: node_id} = state) do
+  defp handle_handler_result({:ok, outcome, updates}, entry, state) do
+    node_id = entry.node_id
     node = Map.fetch!(state.pipeline.nodes, node_id)
-    log_done(node_id, :ok, state.task_started_at_ms)
+    log_done(node_id, :ok, entry.started_at_ms)
     write_success(state.store, node_id, updates)
+    RunStore.mark_node_succeeded(state.store, node_id, Map.get(updates, :status, %{}))
+    RunEvents.emit(state.store.run_id, node_id, :node_succeeded, %{"status" => "ok"})
 
     state = %{
       state
       | context: Map.put(state.context, node_id, outcome),
         provider_commands: collect_provider_command(state.provider_commands, updates),
-        task_started_at_ms: nil
+        completed: MapSet.put(state.completed, node_id)
     }
 
     if node.type == "exit" do
       complete_success(state)
     else
-      %{state | current_node_id: next_node_id(state.pipeline, node_id), task_node_id: nil}
+      state
+      |> enqueue_next(node_id)
       |> advance()
     end
   end
 
-  defp handle_handler_result({:error, reason}, %{task_node_id: node_id} = state) do
-    fail_node(state, node_id, reason)
+  defp handle_handler_result({:error, reason}, entry, state) do
+    fail_node(state, entry, reason)
   end
 
-  defp fail_node(state, node_id, reason) do
-    log_done(node_id, {:error, reason}, state.task_started_at_ms)
+  defp fail_node(state, entry, reason) do
+    node_id = entry.node_id
+    log_done(node_id, {:error, reason}, entry.started_at_ms)
+    RunStore.mark_node_failed(state.store, node_id, reason)
+    RunEvents.emit(state.store.run_id, node_id, :node_failed, %{"reason" => inspect(reason)})
 
     RunStore.write_node(state.store, node_id, %{
       status: %{"status" => "error", "reason" => inspect(reason)}
@@ -140,14 +177,17 @@ defmodule Tractor.Runner do
       provider_commands: state.provider_commands
     })
 
+    RunEvents.emit(state.store.run_id, "_run", :run_failed, %{"reason" => inspect(reason)})
     complete(state, {:error, reason})
   end
 
-  defp complete_success(state) do
+  defp complete_success(%{result: nil} = state) do
     RunStore.finalize(state.store, %{
       status: "ok",
       provider_commands: state.provider_commands
     })
+
+    RunEvents.emit(state.store.run_id, "_run", :run_completed, %{"status" => "ok"})
 
     complete(
       state,
@@ -155,10 +195,16 @@ defmodule Tractor.Runner do
     )
   end
 
+  defp complete_success(state), do: state
+
   defp complete(state, result) do
     Enum.each(state.waiters, &GenServer.reply(&1, result))
     Process.send_after(self(), :shutdown_after_completion, 5_000)
     %{state | result: result, waiters: []}
+  end
+
+  defp enqueue_next(state, node_id) do
+    %{state | agenda: :queue.in(next_node_id(state.pipeline, node_id), state.agenda)}
   end
 
   defp write_success(store, node_id, updates) do
@@ -179,9 +225,6 @@ defmodule Tractor.Runner do
     suffix = if provider, do: "/#{provider}", else: ""
     IO.puts(:stderr, "#{id} [#{type}#{suffix}]: starting")
   end
-
-  defp log_done(node_id, outcome, nil),
-    do: log_done(node_id, outcome, System.monotonic_time(:millisecond))
 
   defp log_done(node_id, :ok, start_ms) do
     elapsed = System.monotonic_time(:millisecond) - start_ms
