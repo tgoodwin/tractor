@@ -162,12 +162,12 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 - [x] **Port-leak assertion:** `length(:erlang.ports())` before/after each session test; 50 concurrent echo sessions all resolve with zero port delta.
 - [x] `@tag :integration` manual test: one real `gemini --acp` round-trip. Skipped in CI.
 - [x] **Checkpoint:** do not start Phase D until a fake-agent prompt cycle runs green through the real `Tractor.ACP.Session`. (This is the best single idea that came out of the critiques.)
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase D — RunStore (day 4, ~3h — after Phase C so manifest shape follows real data)
-- [ ] `Tractor.Paths` — resolve `$TRACTOR_DATA_DIR` / `$XDG_DATA_HOME` defaults; expose `run_dir/1`, `atomic_write!/2`.
-- [ ] `Tractor.RunStore` — `open/2`, `write_node/3`, `finalize/2`. Writes `manifest.json` + per-node `prompt.md` / `response.md` / `status.json`. Env values redacted in manifest.
-- [ ] Tests with `tmp_dir`: directory structure, atomic replacement under crash simulation, JSON shape, env redaction.
+- [x] `Tractor.Paths` — resolve `$TRACTOR_DATA_DIR` / `$XDG_DATA_HOME` defaults; expose `run_dir/1`, `atomic_write!/2`.
+- [x] `Tractor.RunStore` — `open/2`, `write_node/3`, `finalize/2`. Writes `manifest.json` + per-node `prompt.md` / `response.md` / `status.json`. Env values redacted in manifest.
+- [x] Tests with `tmp_dir`: directory structure, atomic replacement under crash simulation, JSON shape, env redaction.
 - [ ] Commit.
 
 ### Phase E — Handlers + Runner + public API (day 4–5, ~4h)

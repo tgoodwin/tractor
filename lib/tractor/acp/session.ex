@@ -112,7 +112,7 @@ defmodule Tractor.ACP.Session do
   @impl true
   def terminate(_reason, state) do
     close_port(state.port)
-    Process.sleep(200)
+    Process.sleep(500)
     terminate_os_process(state.os_pid)
     :ok
   end
