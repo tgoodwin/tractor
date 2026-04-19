@@ -7,8 +7,24 @@ defmodule Tractor.Paths do
   def data_dir(opts \\ []) do
     opts[:data_dir] ||
       System.get_env("TRACTOR_DATA_DIR") ||
+      project_data_dir() ||
       xdg_data_dir() ||
       Path.expand("~/.tractor")
+  end
+
+  # If the CWD looks like a Tractor context (has a .tractor/ dir already, or
+  # has a DOT file next to a Mix project), default to ./.tractor. Lets a user
+  # keep run artifacts inside the project for sharing / inspection without
+  # polluting their home directory.
+  defp project_data_dir do
+    cwd = File.cwd!()
+    local = Path.join(cwd, ".tractor")
+
+    cond do
+      File.dir?(local) -> local
+      File.exists?(Path.join(cwd, "mix.exs")) -> local
+      true -> nil
+    end
   end
 
   @spec run_dir(keyword()) :: Path.t()
