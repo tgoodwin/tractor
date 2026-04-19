@@ -10,8 +10,6 @@ defmodule Tractor.Validator do
   @unsupported_handlers ~w(
     wait.human
     conditional
-    parallel
-    parallel.fan_in
     tool
     stack.manager_loop
   )
@@ -29,6 +27,7 @@ defmodule Tractor.Validator do
       |> add_connectivity_diagnostics(pipeline)
       |> add_cycle_diagnostics(pipeline)
       |> add_node_diagnostics(pipeline)
+      |> add_parallel_diagnostics(pipeline)
       |> add_attr_diagnostics(pipeline)
       |> Enum.reverse()
 
@@ -185,6 +184,152 @@ defmodule Tractor.Validator do
   end
 
   defp add_provider_diagnostic(diagnostics, _node), do: diagnostics
+
+  defp add_parallel_diagnostics(diagnostics, %Pipeline{nodes: nodes} = pipeline) do
+    parallel_ids = node_ids_by_type(nodes, "parallel")
+    fan_in_ids = MapSet.new(node_ids_by_type(nodes, "parallel.fan_in"))
+
+    {diagnostics, fan_in_matches} =
+      Enum.reduce(parallel_ids, {diagnostics, %{}}, fn parallel_id, {diagnostics, matches} ->
+        node = Map.fetch!(nodes, parallel_id)
+
+        diagnostics =
+          diagnostics
+          |> validate_join_policy(node)
+          |> validate_max_parallel(node)
+
+        case discover_parallel_block(pipeline, parallel_id) do
+          {:ok, fan_in_id, branch_ids} ->
+            diagnostics = validate_single_node_branches(diagnostics, pipeline, branch_ids, fan_in_id)
+            {diagnostics, Map.update(matches, fan_in_id, [parallel_id], &[parallel_id | &1])}
+
+          {:error, code} ->
+            {diagnostic(diagnostics, code, parallel_message(code), node_id: parallel_id), matches}
+        end
+      end)
+
+    Enum.reduce(fan_in_ids, diagnostics, fn fan_in_id, diagnostics ->
+      case Map.get(fan_in_matches, fan_in_id, []) do
+        [_parallel_id] ->
+          diagnostics
+
+        [] ->
+          diagnostic(diagnostics, :fan_in_without_parallel, "parallel.fan_in has no matching upstream parallel",
+            node_id: fan_in_id
+          )
+
+        _many ->
+          diagnostic(diagnostics, :multiple_upstream_parallel, "parallel.fan_in has multiple upstream parallel nodes",
+            node_id: fan_in_id
+          )
+      end
+    end)
+  end
+
+  defp validate_join_policy(diagnostics, %Node{id: node_id} = node) do
+    # TODO(sprint-3): join_policy=first_success
+    maybe_add(
+      diagnostics,
+      Node.join_policy(node) != "wait_all",
+      :unsupported_join_policy,
+      "unsupported join_policy #{Node.join_policy(node)}",
+      node_id: node_id
+    )
+  end
+
+  defp validate_max_parallel(diagnostics, %Node{id: node_id} = node) do
+    max_parallel = Node.max_parallel(node)
+
+    maybe_add(
+      diagnostics,
+      max_parallel <= 0 or max_parallel > 16 or invalid_integer_attr?(node, "max_parallel"),
+      :invalid_max_parallel,
+      "max_parallel must be an integer between 1 and 16",
+      node_id: node_id
+    )
+  end
+
+  defp invalid_integer_attr?(%Node{attrs: attrs}, attr) do
+    case Map.fetch(attrs, attr) do
+      {:ok, value} -> match?(:error, parse_integer(value))
+      :error -> false
+    end
+  end
+
+  defp parse_integer(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> {:ok, integer}
+      _other -> :error
+    end
+  end
+
+  defp discover_parallel_block(%Pipeline{nodes: nodes, edges: edges}, parallel_id) do
+    branch_ids = outgoing_to_existing(edges, nodes, parallel_id)
+
+    common_fan_ins =
+      branch_ids
+      |> Enum.map(&reachable_fan_ins(nodes, edges, &1))
+      |> intersect_all()
+
+    case common_fan_ins do
+      [] -> {:error, :no_common_fan_in}
+      [fan_in_id] -> {:ok, fan_in_id, branch_ids}
+      _many -> {:error, :multiple_common_fan_ins}
+    end
+  end
+
+  defp validate_single_node_branches(diagnostics, %Pipeline{edges: edges}, branch_ids, fan_in_id) do
+    Enum.reduce(branch_ids, diagnostics, fn branch_id, diagnostics ->
+      outgoing = Enum.filter(edges, &(&1.from == branch_id))
+
+      # TODO(sprint-3): sub-DAG branches
+      maybe_add(
+        diagnostics,
+        Enum.map(outgoing, & &1.to) != [fan_in_id],
+        :nested_branches_unsupported,
+        "parallel branches must be exactly one node in sprint 2",
+        node_id: branch_id
+      )
+    end)
+  end
+
+  defp outgoing_to_existing(edges, nodes, node_id) do
+    edges
+    |> Enum.filter(&(&1.from == node_id and Map.has_key?(nodes, &1.to)))
+    |> Enum.map(& &1.to)
+  end
+
+  defp reachable_fan_ins(nodes, edges, start_id) do
+    do_reachable_fan_ins(nodes, edges, [start_id], MapSet.new(), MapSet.new())
+  end
+
+  defp do_reachable_fan_ins(_nodes, _edges, [], _seen, acc), do: acc
+
+  defp do_reachable_fan_ins(nodes, edges, [node_id | rest], seen, acc) do
+    cond do
+      MapSet.member?(seen, node_id) ->
+        do_reachable_fan_ins(nodes, edges, rest, seen, acc)
+
+      get_in(nodes, [node_id, Access.key(:type)]) == "parallel.fan_in" ->
+        do_reachable_fan_ins(nodes, edges, rest, MapSet.put(seen, node_id), MapSet.put(acc, node_id))
+
+      true ->
+        next = outgoing_to_existing(edges, nodes, node_id)
+        do_reachable_fan_ins(nodes, edges, next ++ rest, MapSet.put(seen, node_id), acc)
+    end
+  end
+
+  defp intersect_all([]), do: []
+
+  defp intersect_all([first | rest]) do
+    rest
+    |> Enum.reduce(first, &MapSet.intersection/2)
+    |> MapSet.to_list()
+    |> Enum.sort()
+  end
+
+  defp parallel_message(:no_common_fan_in), do: "parallel node has no common downstream fan-in"
+  defp parallel_message(:multiple_common_fan_ins), do: "parallel node has multiple common downstream fan-ins"
 
   defp add_attr_diagnostics(diagnostics, %Pipeline{graph_attrs: graph_attrs, edges: edges}) do
     diagnostics =

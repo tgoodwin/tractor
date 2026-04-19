@@ -24,4 +24,17 @@ defmodule Tractor.Node do
             llm_model: nil,
             timeout: nil,
             attrs: %{}
+
+  @spec join_policy(t()) :: String.t()
+  def join_policy(%__MODULE__{attrs: attrs}) do
+    Map.get(attrs, "join_policy", "wait_all")
+  end
+
+  @spec max_parallel(t()) :: pos_integer()
+  def max_parallel(%__MODULE__{attrs: attrs}) do
+    case Integer.parse(Map.get(attrs, "max_parallel", "4")) do
+      {value, ""} -> value
+      _other -> 4
+    end
+  end
 end

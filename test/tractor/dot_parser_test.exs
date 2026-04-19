@@ -79,6 +79,28 @@ defmodule Tractor.DotParserTest do
   end
 
   @tag :tmp_dir
+  test "maps component and tripleoctagon shapes", %{tmp_dir: tmp_dir} do
+    path =
+      dot_file(tmp_dir, "parallel.dot", """
+      digraph {
+        start [shape=Mdiamond]
+        audit [shape=component, join_policy=wait_all, max_parallel=2]
+        one [shape=box, llm_provider=codex]
+        join [shape=tripleoctagon]
+        exit [shape=Msquare]
+        start -> audit -> one -> join -> exit
+      }
+      """)
+
+    assert {:ok, pipeline} = DotParser.parse_file(path)
+    assert pipeline.nodes["audit"].type == "parallel"
+    assert Tractor.Node.join_policy(pipeline.nodes["audit"]) == "wait_all"
+    assert Tractor.Node.max_parallel(pipeline.nodes["audit"]) == 2
+    assert pipeline.nodes["join"].type == "parallel.fan_in"
+  end
+
+
+  @tag :tmp_dir
   test "parse errors return diagnostics", %{tmp_dir: tmp_dir} do
     path = dot_file(tmp_dir, "bad.dot", "digraph { start -> }")
 

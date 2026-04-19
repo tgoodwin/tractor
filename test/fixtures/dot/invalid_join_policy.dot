@@ -1,0 +1,12 @@
+digraph {
+  start [shape=Mdiamond]
+  audit [shape=component, join_policy=first_success]
+  a [shape=box, llm_provider=codex]
+  join [shape=tripleoctagon]
+  exit [shape=Msquare]
+
+  start -> audit
+  audit -> a
+  a -> join
+  join -> exit
+}

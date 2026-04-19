@@ -1,0 +1,8 @@
+digraph {
+  start [shape=Mdiamond]
+  join [shape=tripleoctagon]
+  exit [shape=Msquare]
+
+  start -> join
+  join -> exit
+}

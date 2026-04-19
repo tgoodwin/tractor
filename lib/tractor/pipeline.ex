@@ -12,7 +12,8 @@ defmodule Tractor.Pipeline do
           graph_type: :digraph | :graph | nil,
           graph_attrs: %{String.t() => String.t()},
           nodes: %{String.t() => Node.t()},
-          edges: [Edge.t()]
+          edges: [Edge.t()],
+          parallel_blocks: %{String.t() => Tractor.Pipeline.ParallelBlock.t()}
         }
 
   defstruct path: nil,
@@ -21,5 +22,6 @@ defmodule Tractor.Pipeline do
             graph_type: nil,
             graph_attrs: %{},
             nodes: %{},
-            edges: []
+            edges: [],
+            parallel_blocks: %{}
 end

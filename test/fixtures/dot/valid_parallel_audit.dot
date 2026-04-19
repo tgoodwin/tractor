@@ -1,0 +1,20 @@
+digraph {
+  start [shape=Mdiamond]
+  audit [shape=component, max_parallel=3]
+  claude_audit [shape=box, llm_provider=claude, prompt="Claude audit"]
+  codex_audit [shape=box, llm_provider=codex, prompt="Codex audit"]
+  gemini_audit [shape=box, llm_provider=gemini, prompt="Gemini audit"]
+  consolidate [shape=tripleoctagon]
+  finalize [shape=box, llm_provider=claude, prompt="Finalize {{consolidate}}"]
+  exit [shape=Msquare]
+
+  start -> audit
+  audit -> claude_audit
+  audit -> codex_audit
+  audit -> gemini_audit
+  claude_audit -> consolidate
+  codex_audit -> consolidate
+  gemini_audit -> consolidate
+  consolidate -> finalize
+  finalize -> exit
+}

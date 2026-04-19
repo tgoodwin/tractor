@@ -14,11 +14,17 @@ defmodule Tractor.DotFixtureTest do
     "unknown_provider.dot" => :unknown_provider,
     "rejected_handler.dot" => :unsupported_handler,
     "edge_to_missing.dot" => :unknown_edge_endpoint,
-    "undirected.dot" => :undirected_graph
+    "undirected.dot" => :undirected_graph,
+    "missing_fan_in.dot" => :no_common_fan_in,
+    "multiple_fan_ins.dot" => :multiple_common_fan_ins,
+    "nested_branch.dot" => :nested_branches_unsupported,
+    "invalid_join_policy.dot" => :unsupported_join_policy,
+    "invalid_max_parallel.dot" => :invalid_max_parallel,
+    "fan_in_without_parallel.dot" => :fan_in_without_parallel
   }
 
   test "valid fixtures parse and validate" do
-    for fixture <- ["valid_linear.dot", "valid_three_agents.dot"] do
+    for fixture <- ["valid_linear.dot", "valid_three_agents.dot", "valid_parallel_audit.dot"] do
       assert {:ok, pipeline} = DotParser.parse_file(fixture_path(fixture))
       assert :ok = Validator.validate(pipeline)
     end

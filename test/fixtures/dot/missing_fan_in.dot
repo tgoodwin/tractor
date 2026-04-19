@@ -1,0 +1,13 @@
+digraph {
+  start [shape=Mdiamond]
+  audit [shape=component]
+  a [shape=box, llm_provider=codex]
+  b [shape=box, llm_provider=gemini]
+  exit [shape=Msquare]
+
+  start -> audit
+  audit -> a
+  audit -> b
+  a -> exit
+  b -> exit
+}

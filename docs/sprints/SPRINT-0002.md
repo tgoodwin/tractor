@@ -265,21 +265,21 @@ Extend `reap`:
 - [x] Add `RunStore` lifecycle markers: `mark_node_pending/2`, `mark_node_running/3`, `mark_node_succeeded/3`, `mark_node_failed/3`. Each atomic-write to `status.json`. Tests.
 - [x] Integration test: a handler that opens Session with sink wired to EventLog + RunBus drives fake agent in `FAKE_ACP_EVENTS=full` mode; assert `events.jsonl` contains expected kinds in order AND PubSub subscriber received same events.
 - [x] **Late-reader rebuild test:** snapshot a completed run's node state purely from `status.json` + `events.jsonl`, assert it matches the live state the Runner broadcast.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase C — Parser & validator for parallel shapes (day 3, ~3h)
 
-- [ ] Extend `Tractor.DotParser` shape mapping: `component → parallel`, `tripleoctagon → parallel.fan_in`.
-- [ ] Parse node attrs `join_policy` (string) and `max_parallel` (integer) into `attrs`; add helper accessors `Node.join_policy/1` (default `"wait_all"`) and `Node.max_parallel/1` (default `4`).
-- [ ] Remove `parallel` and `parallel.fan_in` from the validator's rejected-types list.
-- [ ] Validate `join_policy == "wait_all"` (reject `first_success` and anything else with `:unsupported_join_policy`).
-- [ ] Validate `max_parallel > 0 and <= 16` with `:invalid_max_parallel`.
-- [ ] **Structured region discovery:** for each `parallel` node, compute the set of branch entry nodes (outgoing edges) and the nearest common downstream `parallel.fan_in` node. Reject with `:no_common_fan_in` if absent, `:multiple_common_fan_ins` if ambiguous.
-- [ ] **Single-node branch constraint (sprint-2):** each branch entry node must have exactly one outgoing edge that points to the fan-in node. Reject otherwise with `:nested_branches_unsupported`.
-- [ ] Validate each `parallel.fan_in` has at least one incoming branch edge and exactly one matching upstream `parallel` node.
-- [ ] Continue rejecting `conditional`, `wait.human`, `tool`, `stack.manager_loop` with existing codes.
-- [ ] New DOT fixtures: `valid_parallel_audit.dot`, `missing_fan_in.dot`, `multiple_fan_ins.dot`, `nested_branch.dot`, `invalid_join_policy.dot`, `invalid_max_parallel.dot`, `fan_in_without_parallel.dot`.
-- [ ] One test per fixture failure mode.
+- [x] Extend `Tractor.DotParser` shape mapping: `component → parallel`, `tripleoctagon → parallel.fan_in`.
+- [x] Parse node attrs `join_policy` (string) and `max_parallel` (integer) into `attrs`; add helper accessors `Node.join_policy/1` (default `"wait_all"`) and `Node.max_parallel/1` (default `4`).
+- [x] Remove `parallel` and `parallel.fan_in` from the validator's rejected-types list.
+- [x] Validate `join_policy == "wait_all"` (reject `first_success` and anything else with `:unsupported_join_policy`).
+- [x] Validate `max_parallel > 0 and <= 16` with `:invalid_max_parallel`.
+- [x] **Structured region discovery:** for each `parallel` node, compute the set of branch entry nodes (outgoing edges) and the nearest common downstream `parallel.fan_in` node. Reject with `:no_common_fan_in` if absent, `:multiple_common_fan_ins` if ambiguous.
+- [x] **Single-node branch constraint (sprint-2):** each branch entry node must have exactly one outgoing edge that points to the fan-in node. Reject otherwise with `:nested_branches_unsupported`.
+- [x] Validate each `parallel.fan_in` has at least one incoming branch edge and exactly one matching upstream `parallel` node.
+- [x] Continue rejecting `conditional`, `wait.human`, `tool`, `stack.manager_loop` with existing codes.
+- [x] New DOT fixtures: `valid_parallel_audit.dot`, `missing_fan_in.dot`, `multiple_fan_ins.dot`, `nested_branch.dot`, `invalid_join_policy.dot`, `invalid_max_parallel.dot`, `fan_in_without_parallel.dot`.
+- [x] One test per fixture failure mode.
 - [ ] Commit.
 
 ### Phase D — Multi-active Runner + parallel region + fan-in (day 4–6, ~10h, riskiest piece)

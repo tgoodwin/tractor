@@ -8,7 +8,9 @@ defmodule Tractor.DotParser do
   @shape_types %{
     "Mdiamond" => "start",
     "Msquare" => "exit",
-    "box" => "codergen"
+    "box" => "codergen",
+    "component" => "parallel",
+    "tripleoctagon" => "parallel.fan_in"
   }
 
   @doc """
