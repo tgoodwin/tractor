@@ -404,7 +404,9 @@ defmodule TractorWeb.RunLive.Timeline do
   defp normalize_terminal_status(status) when status in ["ok", "success", "partial_success"],
     do: {"succeeded", :success}
 
-  defp normalize_terminal_status(status) when status in ["error", "failed"], do: {"failed", :failure}
+  defp normalize_terminal_status(status) when status in ["error", "failed"],
+    do: {"failed", :failure}
+
   defp normalize_terminal_status(_status), do: nil
 
   defp lifecycle_tone("node_succeeded"), do: :success
@@ -428,5 +430,4 @@ defmodule TractorWeb.RunLive.Timeline do
     |> Enum.take(-80)
     |> Enum.join("\n")
   end
-
 end

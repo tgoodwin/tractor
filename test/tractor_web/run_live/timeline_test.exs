@@ -23,7 +23,12 @@ defmodule TractorWeb.RunLive.TimelineTest do
         },
         "2026-04-19T10:00:02Z"
       ),
-      event(4, "tool_call_update", %{"toolCallId" => "tc_1", "status" => "done"}, "2026-04-19T10:00:03Z"),
+      event(
+        4,
+        "tool_call_update",
+        %{"toolCallId" => "tc_1", "status" => "done"},
+        "2026-04-19T10:00:03Z"
+      ),
       event(5, "agent_message_chunk", %{"text" => "chunk"}, "2026-04-19T10:00:04Z"),
       event(6, "usage", %{"total_tokens" => 168}, "2026-04-19T10:00:05Z")
     ])
@@ -103,7 +108,13 @@ defmodule TractorWeb.RunLive.TimelineTest do
         "2026-04-19T10:00:00Z"
       )
 
-    update = event(2, "tool_call_update", %{"toolCallId" => "tc_1", "status" => "done"}, "2026-04-19T10:00:01Z")
+    update =
+      event(
+        2,
+        "tool_call_update",
+        %{"toolCallId" => "tc_1", "status" => "done"},
+        "2026-04-19T10:00:01Z"
+      )
 
     {0, entry} = Timeline.insert([], call)
     {0, updated} = Timeline.insert([entry], update)
@@ -114,7 +125,10 @@ defmodule TractorWeb.RunLive.TimelineTest do
   end
 
   defp node_dir(tmp_dir \\ nil) do
-    tmp_dir = tmp_dir || Path.join(System.tmp_dir!(), "tractor-timeline-#{System.unique_integer([:positive])}")
+    tmp_dir =
+      tmp_dir ||
+        Path.join(System.tmp_dir!(), "tractor-timeline-#{System.unique_integer([:positive])}")
+
     node_dir = Path.join(tmp_dir, "node")
     File.mkdir_p!(node_dir)
     node_dir

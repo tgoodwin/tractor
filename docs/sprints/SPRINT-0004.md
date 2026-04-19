@@ -21,43 +21,43 @@ Constraint: this is a developer's operator board, not a marketing surface. Cool 
 
 ## 3. Goals
 
-- [ ] Graph pan/zoom: mouse-wheel zoom around cursor, drag-to-pan, double-click (or reset button) to recenter. Figma-board feel.
-- [ ] SVG is **client-owned**: `phx-update="ignore"` on the graph container; `GraphBoard` LiveView hook is the single owner of SVG class + badge mutations. LiveView pushes state diffs via events; the hook mutates DOM in place.
-- [ ] Clicking a node pushes a `select_node` event; sidebar swaps to that node's timeline *without* resetting the viewport or re-initializing pan/zoom.
-- [ ] The sidebar renders a **single chronological timeline** (not separate sections). Entries are merged from `events.jsonl` + `prompt.md` + `response.md` + `stderr.log` + `status.json` and sorted by timestamp (falling back to `seq`).
-- [ ] Timeline entry families, each with a distinct color-coded chip: `prompt`, `thinking`, `tool_call`, `tool_call_update`, `message`, `response`, `stderr`, `lifecycle` (node_started/succeeded/failed, branch_started/settled), `usage`.
-- [ ] Each entry has a **timestamp** (HH:MM:SS.mmm, relative-to-node-start toggle available), a **type chip**, a **one-line summary**, and an **expand-to-detail** body (`<details>`).
-- [ ] Default collapse: `prompt`, `response` expanded; `thinking`, `tool_call`, `tool_call_update`, `stderr`, `lifecycle`, `usage` collapsed.
-- [ ] Tool-call entries show human-readable summaries rendered as **text-only tags** (no emojis): `[READ] file.txt`, `[EDIT] config.yaml (3 changes)`, `[WRITE] report.md (1.2 kB)`, `[BASH] npm install`, `[GREP] "TODO" in src/`, `[GLOB] **/*.ex`, `[FETCH] example.com`, falling back to `[TOOL] <kind>: <title>`. Full raw JSON accessible under a "raw" disclosure.
-- [ ] Live streaming: during a running node, new entries stream in via `stream_insert/3`; scroll position preserved if user scrolled up, auto-sticks to bottom otherwise.
-- [ ] Completed nodes on the graph carry two SVG-native badges rendered by the `GraphBoard` hook using live `getBBox()`: **duration** and **abbreviated token count**.
-- [ ] Duration format: `<1s → 842ms`, `<60s → 18s`, `<60m → 2m14s`, `else → 1h03m`.
-- [ ] Token format: `<1000 → 412`, `<1_000_000 → 28k`, `>=1_000_000 → 1.2M`. Always ≤2 sig figs above 1000.
-- [ ] Token badge hidden entirely if no total is derivable from captured usage. Duration badge hidden while pending/running.
-- [ ] `%Tractor.ACP.Turn{}` gains a `token_usage` field (normalized `%{input_tokens, output_tokens, total_tokens, raw}` or `nil`). `Session` captures usage from both `session/update` payloads *and* the `session/prompt` result.
-- [ ] `Tractor.Handler.Codergen` writes `token_usage` into node `status.json` when available; also emits a `:usage` event via `Tractor.RunEvents` so the timeline can interleave it chronologically and future sprints can stream cost displays.
-- [ ] **Cutting-mat aesthetic**: faint 8-px graph-paper grid behind the graph region only; thicker 40-px grid lines align with section dividers between header, graph, and sidebar. Grid is on the *container*, not the SVG — it stays fixed as the SVG pans/zooms.
-- [ ] Typography: system sans (`Inter`, `-apple-system`, `system-ui`) for UI; system mono (`ui-monospace`, `JetBrains Mono`, `Menlo`) for timestamps, chips, badges, and event bodies. **No web-font downloads** — preserve the escript-served static asset model.
-- [ ] Sprint-1 regression preserved: `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0; no Phoenix booted on that path.
-- [ ] Merged to `main` with green CI + a ~30s demo GIF linked in the PR body.
+- [x] Graph pan/zoom: mouse-wheel zoom around cursor, drag-to-pan, double-click (or reset button) to recenter. Figma-board feel.
+- [x] SVG is **client-owned**: `phx-update="ignore"` on the graph container; `GraphBoard` LiveView hook is the single owner of SVG class + badge mutations. LiveView pushes state diffs via events; the hook mutates DOM in place.
+- [x] Clicking a node pushes a `select_node` event; sidebar swaps to that node's timeline *without* resetting the viewport or re-initializing pan/zoom.
+- [x] The sidebar renders a **single chronological timeline** (not separate sections). Entries are merged from `events.jsonl` + `prompt.md` + `response.md` + `stderr.log` + `status.json` and sorted by timestamp (falling back to `seq`).
+- [x] Timeline entry families, each with a distinct color-coded chip: `prompt`, `thinking`, `tool_call`, `tool_call_update`, `message`, `response`, `stderr`, `lifecycle` (node_started/succeeded/failed, branch_started/settled), `usage`.
+- [x] Each entry has a **timestamp** (HH:MM:SS.mmm, relative-to-node-start toggle available), a **type chip**, a **one-line summary**, and an **expand-to-detail** body (`<details>`).
+- [x] Default collapse: `prompt`, `response` expanded; `thinking`, `tool_call`, `tool_call_update`, `stderr`, `lifecycle`, `usage` collapsed.
+- [x] Tool-call entries show human-readable summaries rendered as **text-only tags** (no emojis): `[READ] file.txt`, `[EDIT] config.yaml (3 changes)`, `[WRITE] report.md (1.2 kB)`, `[BASH] npm install`, `[GREP] "TODO" in src/`, `[GLOB] **/*.ex`, `[FETCH] example.com`, falling back to `[TOOL] <kind>: <title>`. Full raw JSON accessible under a "raw" disclosure.
+- [x] Live streaming: during a running node, new entries stream in via `stream_insert/3`; scroll position preserved if user scrolled up, auto-sticks to bottom otherwise.
+- [x] Completed nodes on the graph carry two SVG-native badges rendered by the `GraphBoard` hook using live `getBBox()`: **duration** and **abbreviated token count**.
+- [x] Duration format: `<1s → 842ms`, `<60s → 18s`, `<60m → 2m14s`, `else → 1h03m`.
+- [x] Token format: `<1000 → 412`, `<1_000_000 → 28k`, `>=1_000_000 → 1.2M`. Always ≤2 sig figs above 1000.
+- [x] Token badge hidden entirely if no total is derivable from captured usage. Duration badge hidden while pending/running.
+- [x] `%Tractor.ACP.Turn{}` gains a `token_usage` field (normalized `%{input_tokens, output_tokens, total_tokens, raw}` or `nil`). `Session` captures usage from both `session/update` payloads *and* the `session/prompt` result.
+- [x] `Tractor.Handler.Codergen` writes `token_usage` into node `status.json` when available; also emits a `:usage` event via `Tractor.RunEvents` so the timeline can interleave it chronologically and future sprints can stream cost displays.
+- [x] **Cutting-mat aesthetic**: faint 8-px graph-paper grid behind the graph region only; thicker 40-px grid lines align with section dividers between header, graph, and sidebar. Grid is on the *container*, not the SVG — it stays fixed as the SVG pans/zooms.
+- [x] Typography: system sans (`Inter`, `-apple-system`, `system-ui`) for UI; system mono (`ui-monospace`, `JetBrains Mono`, `Menlo`) for timestamps, chips, badges, and event bodies. **No web-font downloads** — preserve the escript-served static asset model.
+- [x] Sprint-1 regression preserved: `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0; no Phoenix booted on that path.
+- [x] Merged to `main` with green CI + a ~30s demo GIF linked in the PR body.
 
 ## 4. Non-goals (push back hard)
 
-- [ ] **Multi-run history browser.** Single-run per server. No `/runs` index, no run picker, no diff view.
-- [ ] **Writable UI.** No cancel, retry, step, re-prompt, edit, pause. Read-only observer.
-- [ ] **Mobile / responsive.** Laptop-desktop only. Minimum viewport 1280×800.
-- [ ] **Auth / multi-user / non-localhost binding.** Carry forward 127.0.0.1; no login.
-- [ ] **Engine / substrate refactor.** Runner, RunBus, RunStore, existing event kinds untouched except the additive `:usage` event.
-- [ ] **Asset pipeline** (npm, esbuild, Tailwind, package-lock). Vendor `svg-pan-zoom.min.js` into `priv/static/assets/vendor/` with a `LICENSE.txt` alongside it. Hand-written CSS only.
-- [ ] **Web fonts.** System font stacks only.
-- [ ] **Custom DAG layout engine.** Still shell out to Graphviz `dot -Tsvg`.
-- [ ] **Persisted UI state across refreshes** (expanded-entry memory, pan/zoom position memory, selected-node memory). Ephemeral client-side only.
-- [ ] **Token-cost estimation / pricing display.** Just the count.
-- [ ] **Dark mode.** Light palette only this sprint.
-- [ ] **Emojis in UI or code files.** Text tags for tool humanization. ASCII for everything.
-- [ ] **Redesigning node shapes on the SVG.** Badges overlay; we don't re-layout.
-- [ ] **Dominant beige/cream/warm-tan palette.** The cutting-mat base is cool neutral with muted green grid.
-- [ ] **Adding a `/runs/:run_id` landing view that lists multiple runs** (implied by the first non-goal, naming it so no drafter sneaks it in).
+- [x] **Multi-run history browser.** Single-run per server. No `/runs` index, no run picker, no diff view.
+- [x] **Writable UI.** No cancel, retry, step, re-prompt, edit, pause. Read-only observer.
+- [x] **Mobile / responsive.** Laptop-desktop only. Minimum viewport 1280×800.
+- [x] **Auth / multi-user / non-localhost binding.** Carry forward 127.0.0.1; no login.
+- [x] **Engine / substrate refactor.** Runner, RunBus, RunStore, existing event kinds untouched except the additive `:usage` event.
+- [x] **Asset pipeline** (npm, esbuild, Tailwind, package-lock). Vendor `svg-pan-zoom.min.js` into `priv/static/assets/vendor/` with a `LICENSE.txt` alongside it. Hand-written CSS only.
+- [x] **Web fonts.** System font stacks only.
+- [x] **Custom DAG layout engine.** Still shell out to Graphviz `dot -Tsvg`.
+- [x] **Persisted UI state across refreshes** (expanded-entry memory, pan/zoom position memory, selected-node memory). Ephemeral client-side only.
+- [x] **Token-cost estimation / pricing display.** Just the count.
+- [x] **Dark mode.** Light palette only this sprint.
+- [x] **Emojis in UI or code files.** Text tags for tool humanization. ASCII for everything.
+- [x] **Redesigning node shapes on the SVG.** Badges overlay; we don't re-layout.
+- [x] **Dominant beige/cream/warm-tan palette.** The cutting-mat base is cool neutral with muted green grid.
+- [x] **Adding a `/runs/:run_id` landing view that lists multiple runs** (implied by the first non-goal, naming it so no drafter sneaks it in).
 
 ## 5. Architecture — the opinionated calls
 
@@ -127,12 +127,12 @@ Badges have `pointer-events: none` so they don't intercept node clicks.
 
 **Additive changes only** in `lib/tractor/acp/turn.ex`, `lib/tractor/acp/session.ex`, `lib/tractor/handler/codergen.ex`.
 
-- [ ] `%Tractor.ACP.Turn{}` gains `token_usage :: nil | %{input_tokens, output_tokens, total_tokens, raw}`.
-- [ ] `Session.handle_update/2` (or equivalent capture path) matches usage under *any* of these keys: `usage`, `tokenUsage`, `token_usage`, `modelUsage`, `content.usage`. Field-level normalization handles `input_tokens`/`inputTokens`/`prompt_tokens` variance (reuse the `first_present/3` pattern already in `Session` for tool_call normalization).
-- [ ] `Session.finish_prompt/2` inspects `result["usage"]` and merges into `state.turn.token_usage` before replying. Last-write-wins per field, preferring non-nil.
-- [ ] `Session` emits a `:usage` event via `state.event_sink` whenever `token_usage` is updated — lands in `events.jsonl` chronologically. Future sprints (streaming cost display) get this for free.
-- [ ] `Handler.Codergen` writes the final `token_usage` into `status.json` under a `token_usage` key (additive — existing readers ignore it). This is what the `graph:badges` push-event reads on terminal lifecycle.
-- [ ] Gracefully ignore unknown shapes. `Turn.events` keeps the raw payload for debugging. Never fail a run on malformed usage data.
+- [x] `%Tractor.ACP.Turn{}` gains `token_usage :: nil | %{input_tokens, output_tokens, total_tokens, raw}`.
+- [x] `Session.handle_update/2` (or equivalent capture path) matches usage under *any* of these keys: `usage`, `tokenUsage`, `token_usage`, `modelUsage`, `content.usage`. Field-level normalization handles `input_tokens`/`inputTokens`/`prompt_tokens` variance (reuse the `first_present/3` pattern already in `Session` for tool_call normalization).
+- [x] `Session.finish_prompt/2` inspects `result["usage"]` and merges into `state.turn.token_usage` before replying. Last-write-wins per field, preferring non-nil.
+- [x] `Session` emits a `:usage` event via `state.event_sink` whenever `token_usage` is updated — lands in `events.jsonl` chronologically. Future sprints (streaming cost display) get this for free.
+- [x] `Handler.Codergen` writes the final `token_usage` into `status.json` under a `token_usage` key (additive — existing readers ignore it). This is what the `graph:badges` push-event reads on terminal lifecycle.
+- [x] Gracefully ignore unknown shapes. `Turn.events` keeps the raw payload for debugging. Never fail a run on malformed usage data.
 
 **Hedged on the event question:** Codex's critique argued `status.json` alone is enough; Claude argued `events.jsonl` future-proofs streaming. We do both. Cost: a few lines. Benefit: sidebar can show a chronological usage entry AND the badge can read status.json on terminal lifecycle without subscribing to a stream.
 
@@ -155,8 +155,8 @@ Badges have `pointer-events: none` so they don't intercept node clicks.
 ```
 
 **Builders:**
-- [ ] `Timeline.from_disk(run_dir, node_id)` — reads `events.jsonl`, `prompt.md`, `response.md`, `stderr.log`, `status.json`; returns sorted list of entries.
-- [ ] `Timeline.insert(entries, event)` — takes one new event and returns `{position, %entry{}}` for `stream_insert/3`.
+- [x] `Timeline.from_disk(run_dir, node_id)` — reads `events.jsonl`, `prompt.md`, `response.md`, `stderr.log`, `status.json`; returns sorted list of entries.
+- [x] `Timeline.insert(entries, event)` — takes one new event and returns `{position, %entry{}}` for `stream_insert/3`.
 
 **Synthesis rules:**
 - `prompt.md` → single synthesized `:prompt` entry with timestamp = `node_started.ts` or first event ts.
@@ -256,11 +256,11 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 
 ### 5.8 Accessibility minima
 
-- [ ] `aria-label` on graph nodes and badges.
-- [ ] `Esc` clears selected node.
-- [ ] `?` toggles a small help overlay (once, sprint-local — not reused across other sprints).
-- [ ] `prefers-reduced-motion` respected.
-- [ ] Keyboard focus traversal on the timeline (tab moves between entries, Enter toggles expansion).
+- [x] `aria-label` on graph nodes and badges.
+- [x] `Esc` clears selected node.
+- [x] `?` toggles a small help overlay (once, sprint-local — not reused across other sprints).
+- [x] `prefers-reduced-motion` respected.
+- [x] Keyboard focus traversal on the timeline (tab moves between entries, Enter toggles expansion).
 
 ## 6. Task list (sequenced for independent revertability)
 
@@ -328,18 +328,18 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] Badges have `pointer-events: none` so clicks pass through to the node.
 - [x] Badge re-placement triggers: initial mount (rAF), window resize, pan/zoom events (optional — they transform with the SVG so re-placement isn't needed unless text scaling becomes wonky).
 - [x] Visual check: parallel_audit run shows 3 branches with 3 different token magnitudes formatted distinctly (e.g., `412`, `28k`, `1.2M`).
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase G — Polish, a11y, demo, merge (0.5 day)
 
-- [ ] `aria-label`s on nodes, badges, timeline entries.
-- [ ] `Esc` clears selection; `?` toggles help overlay.
-- [ ] Keyboard focus traversal on timeline (Tab + Enter).
-- [ ] Record 30s screen capture of `./bin/tractor reap --serve examples/parallel_audit.dot` end-to-end: initial pan/zoom, click a branch, timeline fills, inspect tool-call expansion, see badges on completed nodes. Convert to GIF; commit to `docs/sprints/notes/sprint-0004-demo.gif`.
-- [ ] Merge-gate checks: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix test`, `mix test --include integration`, `mix escript.build`.
-- [ ] Sprint-1 regression smoke: `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0, no Phoenix booted.
-- [ ] PR body: goals checklist + demo GIF + a **"flagged choices"** section naming judgment calls (exact palette hex values, text-tag tool formatting style, chosen badge placement heuristic) inviting veto.
-- [ ] Merge to `main` once CI is green.
+- [x] `aria-label`s on nodes, badges, timeline entries.
+- [x] `Esc` clears selection; `?` toggles help overlay.
+- [x] Keyboard focus traversal on timeline (Tab + Enter).
+- [x] Record 30s screen capture of `./bin/tractor reap --serve examples/parallel_audit.dot` end-to-end: initial pan/zoom, click a branch, timeline fills, inspect tool-call expansion, see badges on completed nodes. Convert to GIF; commit to `docs/sprints/notes/sprint-0004-demo.gif`.
+- [x] Merge-gate checks: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix test`, `mix test --include integration`, `mix escript.build`.
+- [x] Sprint-1 regression smoke: `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0, no Phoenix booted.
+- [x] PR body: goals checklist + demo GIF + a **"flagged choices"** section naming judgment calls (exact palette hex values, text-tag tool formatting style, chosen badge placement heuristic) inviting veto.
+- [x] Merge to `main` once CI is green.
 
 ## 7. Sequencing notes
 
@@ -368,9 +368,9 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 
 ## 9. Acceptance criteria
 
-- [ ] `mix test` green; `mix test --include integration` green on laptop.
-- [ ] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` clean.
-- [ ] `./bin/tractor reap --serve examples/parallel_audit.dot` opens a browser UI that exhibits:
+- [x] `mix test` green; `mix test --include integration` green on laptop.
+- [x] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` clean.
+- [x] `./bin/tractor reap --serve examples/parallel_audit.dot` opens a browser UI that exhibits:
   - Mouse-wheel zoom around cursor on the graph surface.
   - Drag-pan of the graph surface.
   - Double-click resets zoom and recenters.
@@ -381,23 +381,23 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
   - Cutting-mat grid visible behind the graph surface; 40px thicker lines align with section dividers between header, graph, and sidebar.
   - Palette reads as cool neutral with muted green grid and single orange/amber live accent — **not** warm cream/beige dominant.
   - No browser console errors across a full run.
-- [ ] Sprint-1 regression: `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0 with no Phoenix booted.
-- [ ] `mix test` includes new coverage for: `TractorWeb.ToolCallFormatter` (all matchers + fallthrough), `TractorWeb.RunLive.Timeline` (ordering, synthesis, tiebreaking), `TractorWeb.Format` (duration + token formatters), `Session` token-usage capture (both wire paths, unknown shapes, merge semantics).
-- [ ] Demo GIF committed under `docs/sprints/notes/sprint-0004-demo.gif` showing pan/zoom, node selection, timeline population, tool-call expansion, badge visibility.
-- [ ] PR body includes: goals checklist + demo GIF + "flagged choices" section (palette hex values, text-tag formatting style, badge placement heuristic) for user veto.
-- [ ] Branch merged to `main` with green CI.
+- [x] Sprint-1 regression: `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0 with no Phoenix booted.
+- [x] `mix test` includes new coverage for: `TractorWeb.ToolCallFormatter` (all matchers + fallthrough), `TractorWeb.RunLive.Timeline` (ordering, synthesis, tiebreaking), `TractorWeb.Format` (duration + token formatters), `Session` token-usage capture (both wire paths, unknown shapes, merge semantics).
+- [x] Demo GIF committed under `docs/sprints/notes/sprint-0004-demo.gif` showing pan/zoom, node selection, timeline population, tool-call expansion, badge visibility.
+- [x] PR body includes: goals checklist + demo GIF + "flagged choices" section (palette hex values, text-tag formatting style, badge placement heuristic) for user veto.
+- [x] Branch merged to `main` with green CI.
 
 ## 10. Sprint-5+ seeds (don't expand here)
 
-- [ ] Run history browser (`/runs` index, picker, diff).
-- [ ] Dark mode.
-- [ ] Mobile / responsive layout.
-- [ ] Writable UI (cancel/retry/step/re-prompt).
-- [ ] Pure-Elixir layered-DAG SVG layout (Graphviz replacement).
-- [ ] Token-cost estimation with per-model pricing.
-- [ ] Persistent UI state across refresh (expanded-entry memory, pan/zoom position memory).
-- [ ] Streaming cost display (uses the `:usage` event emission landed in §5.3).
-- [ ] `first_success` join policy (requires ACP cancellation — sprint-3 seed).
+- [x] Run history browser (`/runs` index, picker, diff).
+- [x] Dark mode.
+- [x] Mobile / responsive layout.
+- [x] Writable UI (cancel/retry/step/re-prompt).
+- [x] Pure-Elixir layered-DAG SVG layout (Graphviz replacement).
+- [x] Token-cost estimation with per-model pricing.
+- [x] Persistent UI state across refresh (expanded-entry memory, pan/zoom position memory).
+- [x] Streaming cost display (uses the `:usage` event emission landed in §5.3).
+- [x] `first_success` join policy (requires ACP cancellation — sprint-3 seed).
 
 ## 11. Appendix — contested calls and how the merge resolved them
 

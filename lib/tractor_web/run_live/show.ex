@@ -18,6 +18,7 @@ defmodule TractorWeb.RunLive.Show do
         graph_svg: "",
         node_states: %{},
         selected_node_id: nil,
+        show_help?: false,
         timeline_entries: []
       )
       |> stream(:timeline, [])
@@ -62,6 +63,18 @@ defmodule TractorWeb.RunLive.Show do
   @impl true
   def handle_event("select_node", %{"node-id" => node_id}, socket) do
     {:noreply, select_node(socket, node_id)}
+  end
+
+  def handle_event("clear_selection", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(selected_node_id: nil, timeline_entries: [])
+     |> stream(:timeline, [], reset: true)
+     |> push_event("graph:selected", %{node_id: nil})}
+  end
+
+  def handle_event("toggle_help", _params, socket) do
+    {:noreply, update(socket, :show_help?, &(!&1))}
   end
 
   defp select_node(socket, nil), do: socket
@@ -144,7 +157,8 @@ defmodule TractorWeb.RunLive.Show do
     end)
   end
 
-  defp push_graph_node_state(socket, node_id, nil), do: push_graph_node_state(socket, node_id, "pending")
+  defp push_graph_node_state(socket, node_id, nil),
+    do: push_graph_node_state(socket, node_id, "pending")
 
   defp push_graph_node_state(socket, node_id, state) do
     push_event(socket, "graph:node_state", %{node_id: node_id, state: state})
@@ -276,6 +290,14 @@ defmodule TractorWeb.RunLive.Show do
   defp timeline_open?(entry), do: not entry.collapsed_by_default?
 
   defp timeline_aria_label(entry), do: "#{entry.title}: #{entry.summary}"
+
+  defp timeline_time(%DateTime{} = datetime) do
+    time = DateTime.to_time(datetime)
+    {microsecond, _precision} = time.microsecond
+    millisecond = div(microsecond, 1_000) |> Integer.to_string() |> String.pad_leading(3, "0")
+
+    "#{Time.to_iso8601(%{time | microsecond: {0, 0}})}.#{millisecond}"
+  end
 
   defp entry_body(body) when is_binary(body), do: body
   defp entry_body(body), do: Jason.encode!(body, pretty: true)

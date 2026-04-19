@@ -42,8 +42,9 @@
           aria-label={timeline_aria_label(entry)}
         >
           <details open={timeline_open?(entry)}>
-            <summary>
+            <summary tabindex="0">
               <span class="tl-chip">{entry.title}</span>
+              <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
               <span class="tl-summary">{entry.summary}</span>
             </summary>
             <pre>{entry_body(entry.body)}</pre>
@@ -52,4 +53,12 @@
       </ol>
     </div>
   </aside>
+
+  <section :if={@show_help?} class="help-overlay" aria-label="Keyboard help">
+    <h2>Keys</h2>
+    <p><span>Esc</span> Clear selection</p>
+    <p><span>?</span> Toggle help</p>
+    <p><span>Tab</span> Move through timeline</p>
+    <p><span>Enter</span> Expand entry</p>
+  </section>
 </main>

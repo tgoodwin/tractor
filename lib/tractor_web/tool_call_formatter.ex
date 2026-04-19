@@ -63,5 +63,4 @@ defmodule TractorWeb.ToolCallFormatter do
       _other -> "[TOOL]"
     end
   end
-
 end

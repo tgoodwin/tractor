@@ -206,7 +206,7 @@ body {
 
 .tl-entry summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 10px;
   align-items: baseline;
   padding: 10px 12px;
@@ -236,6 +236,12 @@ body {
   line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  color: var(--ink-muted);
+}
+
+.tl-time {
+  font-family: var(--mono-font);
+  font-size: 11px;
   color: var(--ink-muted);
 }
 
@@ -363,6 +369,37 @@ summary {
     linear-gradient(to right, var(--grid-strong) 1px, transparent 1px),
     linear-gradient(to bottom, var(--grid-strong) 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+.help-overlay {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 20;
+  width: 240px;
+  border: 2px solid var(--divider);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-panel);
+  box-shadow: 0 12px 30px rgba(24, 26, 24, 0.18);
+}
+
+.help-overlay h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.help-overlay p {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.help-overlay span {
+  font-family: var(--mono-font);
+  font-size: 12px;
+  color: var(--ink-muted);
 }
 
 .tractor-node {

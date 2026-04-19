@@ -9,6 +9,7 @@ const GraphBoard = {
     if (!this.svg) return;
     this.badgePayloads = new Map();
     this.placeBadges = this.placeBadges.bind(this);
+    this.handleKeydown = this.handleKeydown.bind(this);
 
     if (window.svgPanZoom) {
       this.panZoom = window.svgPanZoom(this.svg, {
@@ -26,12 +27,23 @@ const GraphBoard = {
     }
 
     this.el.addEventListener("dblclick", () => this.reset());
+    document.addEventListener("keydown", this.handleKeydown);
     window.addEventListener("resize", this.placeBadges);
 
     this.svg.querySelectorAll("g.tractor-node[data-node-id]").forEach((node) => {
+      const nodeId = node.getAttribute("data-node-id");
+      node.setAttribute("role", "button");
+      node.setAttribute("tabindex", "0");
+      node.setAttribute("aria-label", `Node ${nodeId}`);
+
       node.addEventListener("click", (event) => {
         event.stopPropagation();
-        const nodeId = node.getAttribute("data-node-id");
+        this.pushEvent("select_node", { "node-id": nodeId });
+      });
+
+      node.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
         this.pushEvent("select_node", { "node-id": nodeId });
       });
     });
@@ -52,8 +64,21 @@ const GraphBoard = {
   },
 
   destroyed() {
+    document.removeEventListener("keydown", this.handleKeydown);
     window.removeEventListener("resize", this.placeBadges);
     if (this.panZoom) this.panZoom.destroy();
+  },
+
+  handleKeydown(event) {
+    if (event.key === "Escape") {
+      this.pushEvent("clear_selection", {});
+      return;
+    }
+
+    if (event.key === "?" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      this.pushEvent("toggle_help", {});
+    }
   },
 
   reset() {
@@ -109,6 +134,7 @@ const GraphBoard = {
     const svgNs = "http://www.w3.org/2000/svg";
     badge = document.createElementNS(svgNs, "g");
     badge.classList.add("tractor-badges");
+    badge.setAttribute("aria-label", "");
 
     const duration = document.createElementNS(svgNs, "text");
     duration.classList.add("tractor-badge-duration");
@@ -141,6 +167,10 @@ const GraphBoard = {
 
     badge.querySelector(".tractor-badge-duration").textContent = duration || "";
     badge.querySelector(".tractor-badge-tokens").textContent = tokens || "";
+    badge.setAttribute(
+      "aria-label",
+      [duration && `duration ${duration}`, tokens && `tokens ${tokens}`].filter(Boolean).join(", ")
+    );
 
     const terminal = state === "succeeded" || state === "failed";
     badge.classList.toggle("is-visible", terminal && Boolean(duration || tokens));

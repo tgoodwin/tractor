@@ -115,7 +115,12 @@ defmodule TractorWeb.RunLiveTest do
         "rawInput" => %{"pattern" => "*.ex"}
       })
 
-    :ok = RunEvents.emit(run_id, "start", :tool_call_update, %{"toolCallId" => "tc_1", "status" => "done"})
+    :ok =
+      RunEvents.emit(run_id, "start", :tool_call_update, %{
+        "toolCallId" => "tc_1",
+        "status" => "done"
+      })
+
     html = render(view)
 
     assert html =~ "[GLOB]"
@@ -143,7 +148,8 @@ defmodule TractorWeb.RunLiveTest do
     node_dir = Path.join(run_dir, "start")
     File.mkdir_p!(node_dir)
 
-    :ok = RunEvents.emit(run_id, "start", :node_started, %{"started_at" => "2026-04-19T10:00:00Z"})
+    :ok =
+      RunEvents.emit(run_id, "start", :node_started, %{"started_at" => "2026-04-19T10:00:00Z"})
 
     File.write!(
       Path.join(node_dir, "status.json"),

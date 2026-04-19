@@ -424,7 +424,8 @@ defmodule Tractor.ACP.Session do
     usage =
       %{
         input_tokens: usage_integer(payload, ["input_tokens", "inputTokens", "prompt_tokens"]),
-        output_tokens: usage_integer(payload, ["output_tokens", "outputTokens", "completion_tokens"]),
+        output_tokens:
+          usage_integer(payload, ["output_tokens", "outputTokens", "completion_tokens"]),
         total_tokens: usage_integer(payload, ["total_tokens", "totalTokens"]),
         raw: payload
       }
