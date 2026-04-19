@@ -15,6 +15,7 @@ defmodule Tractor.Runner do
             result: nil,
             task_ref: nil,
             task_node_id: nil,
+            task_started_at_ms: nil,
             provider_commands: []
 
   @spec child_spec({Pipeline.t(), keyword(), RunStore.t()}) :: Supervisor.child_spec()
@@ -88,23 +89,31 @@ defmodule Tractor.Runner do
   defp advance(%{current_node_id: node_id, pipeline: pipeline} = state) do
     node = Map.fetch!(pipeline.nodes, node_id)
     handler = handler_for(node)
+    log_starting(node)
 
     task =
       Task.Supervisor.async_nolink(Tractor.HandlerTasks, fn ->
         handler.run(node, state.context, state.store.run_dir)
       end)
 
-    %{state | task_ref: task.ref, task_node_id: node_id}
+    %{
+      state
+      | task_ref: task.ref,
+        task_node_id: node_id,
+        task_started_at_ms: System.monotonic_time(:millisecond)
+    }
   end
 
   defp handle_handler_result({:ok, outcome, updates}, %{task_node_id: node_id} = state) do
     node = Map.fetch!(state.pipeline.nodes, node_id)
+    log_done(node_id, :ok, state.task_started_at_ms)
     write_success(state.store, node_id, updates)
 
     state = %{
       state
       | context: Map.put(state.context, node_id, outcome),
-        provider_commands: collect_provider_command(state.provider_commands, updates)
+        provider_commands: collect_provider_command(state.provider_commands, updates),
+        task_started_at_ms: nil
     }
 
     if node.type == "exit" do
@@ -120,6 +129,8 @@ defmodule Tractor.Runner do
   end
 
   defp fail_node(state, node_id, reason) do
+    log_done(node_id, {:error, reason}, state.task_started_at_ms)
+
     RunStore.write_node(state.store, node_id, %{
       status: %{"status" => "error", "reason" => inspect(reason)}
     })
@@ -163,6 +174,27 @@ defmodule Tractor.Runner do
   end
 
   defp collect_provider_command(commands, _updates), do: commands
+
+  defp log_starting(%Node{id: id, type: type, llm_provider: provider}) do
+    suffix = if provider, do: "/#{provider}", else: ""
+    IO.puts(:stderr, "#{id} [#{type}#{suffix}]: starting")
+  end
+
+  defp log_done(node_id, outcome, nil),
+    do: log_done(node_id, outcome, System.monotonic_time(:millisecond))
+
+  defp log_done(node_id, :ok, start_ms) do
+    elapsed = System.monotonic_time(:millisecond) - start_ms
+    IO.puts(:stderr, "#{node_id}: ok (#{format_ms(elapsed)})")
+  end
+
+  defp log_done(node_id, {:error, reason}, start_ms) do
+    elapsed = System.monotonic_time(:millisecond) - start_ms
+    IO.puts(:stderr, "#{node_id}: error (#{format_ms(elapsed)}): #{inspect(reason)}")
+  end
+
+  defp format_ms(ms) when ms < 1_000, do: "#{ms}ms"
+  defp format_ms(ms), do: :io_lib.format("~.1fs", [ms / 1_000]) |> IO.iodata_to_binary()
 
   defp handler_for(%Node{type: "start"}), do: Tractor.Handler.Start
   defp handler_for(%Node{type: "exit"}), do: Tractor.Handler.Exit

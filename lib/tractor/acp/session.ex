@@ -60,8 +60,10 @@ defmodule Tractor.ACP.Session do
   def init({agent_module, opts}) do
     Process.flag(:trap_exit, true)
 
+    stderr_log = Keyword.get(opts, :stderr_log)
+
     with {:ok, {executable, args, env}} <- command(agent_module, opts),
-         {:ok, port} <- open_port(executable, args, env) do
+         {:ok, port} <- open_port(executable, args, env, stderr_log) do
       state = %__MODULE__{
         agent_module: agent_module,
         opts: opts,
@@ -154,7 +156,7 @@ defmodule Tractor.ACP.Session do
     end
   end
 
-  defp open_port(executable, args, env) do
+  defp open_port(executable, args, env, nil) do
     port =
       Port.open({:spawn_executable, executable}, [
         :binary,
@@ -169,6 +171,34 @@ defmodule Tractor.ACP.Session do
     {:ok, port}
   rescue
     error -> {:error, {:port_open_failed, error}}
+  end
+
+  defp open_port(executable, args, env, stderr_log) when is_binary(stderr_log) do
+    script = redirect_script(executable, args, stderr_log)
+
+    port =
+      Port.open({:spawn_executable, "/bin/sh"}, [
+        :binary,
+        :exit_status,
+        {:line, @line_length},
+        :use_stdio,
+        :hide,
+        {:args, ["-c", script]},
+        {:env, port_env(env)}
+      ])
+
+    {:ok, port}
+  rescue
+    error -> {:error, {:port_open_failed, error}}
+  end
+
+  defp redirect_script(executable, args, stderr_log) do
+    escaped = Enum.map_join([executable | args], " ", &shell_escape/1)
+    "exec #{escaped} 2>>#{shell_escape(stderr_log)}"
+  end
+
+  defp shell_escape(s) when is_binary(s) do
+    "'" <> String.replace(s, "'", ~S('\'')) <> "'"
   end
 
   defp port_env(env) do

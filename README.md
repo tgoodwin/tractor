@@ -4,7 +4,7 @@ Tractor runs a Graphviz DOT pipeline through coding agents. Sprint 1 supports
 one command:
 
 ```sh
-./tractor reap examples/three_agents.dot
+./bin/tractor reap examples/three_agents.dot
 ```
 
 The sprint-one path parses a strict DOT subset, walks a linear pipeline, and

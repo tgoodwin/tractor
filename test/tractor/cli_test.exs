@@ -37,7 +37,7 @@ defmodule Tractor.CLITest do
       {"TRACTOR_ACP_GEMINI_COMMAND", Path.basename(fake_bin)}
     ]
 
-    tractor = Path.expand("tractor")
+    tractor = Path.expand("bin/tractor")
 
     {stdout, exit_code} =
       System.cmd(tractor, ["reap", dot, "--runs-dir", tmp_dir, "--timeout", "15s"],
@@ -59,7 +59,7 @@ defmodule Tractor.CLITest do
     assert {_output, 0} = System.cmd("mix", ["escript.build"])
 
     validation_dot = Path.expand("../fixtures/dot/missing_provider.dot", __DIR__)
-    tractor = Path.expand("tractor")
+    tractor = Path.expand("bin/tractor")
 
     {_stdout, validation_code} =
       System.cmd(tractor, ["reap", validation_dot], stderr_to_stdout: true)

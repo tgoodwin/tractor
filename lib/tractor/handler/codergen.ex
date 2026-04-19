@@ -23,7 +23,12 @@ defmodule Tractor.Handler.Codergen do
     prompt = interpolate(node.prompt || "", context)
     timeout = node.timeout || @default_timeout
 
-    with {:ok, session} <- agent_client.start_session(adapter, cwd: run_dir) do
+    node_dir = Path.join(run_dir, node.id)
+    File.mkdir_p!(node_dir)
+    stderr_log = Path.join(node_dir, "stderr.log")
+
+    with {:ok, session} <-
+           agent_client.start_session(adapter, cwd: run_dir, stderr_log: stderr_log) do
       case agent_client.prompt(session, prompt, timeout) do
         {:ok, response} ->
           :ok = agent_client.stop(session)

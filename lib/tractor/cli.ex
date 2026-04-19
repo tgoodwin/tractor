@@ -33,9 +33,16 @@ defmodule Tractor.CLI do
     with :ok <- validate_options(invalid, positional),
          [path] <- positional,
          :ok <- ensure_file(path),
+         :ok <- progress("parse: #{path}"),
          {:ok, pipeline} <- DotParser.parse_file(path),
+         :ok <-
+           progress(
+             "parse: ok (#{map_size(pipeline.nodes)} nodes, #{length(pipeline.edges)} edges)"
+           ),
          :ok <- Validator.validate(pipeline),
+         :ok <- progress("validate: ok"),
          {:ok, run_id} <- Run.start(pipeline, run_opts(opts)),
+         :ok <- progress("run: #{run_id}"),
          {:ok, timeout} <- timeout_ms(opts[:timeout]),
          {:ok, result} <- Run.await(run_id, timeout) do
       {0, result.run_dir <> "\n", ""}
@@ -56,6 +63,10 @@ defmodule Tractor.CLI do
 
   defp ensure_file(path) do
     if File.regular?(path), do: :ok, else: {:missing_file, path}
+  end
+
+  defp progress(message) do
+    IO.puts(:stderr, message)
   end
 
   defp run_opts(opts) do

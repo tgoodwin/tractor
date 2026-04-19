@@ -10,19 +10,19 @@ mix escript.build
 Run a DOT pipeline:
 
 ```sh
-./tractor reap examples/three_agents.dot
+./bin/tractor reap examples/three_agents.dot
 ```
 
 Write runs to a specific directory:
 
 ```sh
-./tractor reap examples/three_agents.dot --runs-dir /tmp/tractor-runs
+./bin/tractor reap examples/three_agents.dot --runs-dir /tmp/tractor-runs
 ```
 
 Set a prompt timeout:
 
 ```sh
-./tractor reap examples/three_agents.dot --timeout 5m
+./bin/tractor reap examples/three_agents.dot --timeout 5m
 ```
 
 Supported duration suffixes are `ms`, `s`, `m`, and `h`.
