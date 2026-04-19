@@ -5,8 +5,9 @@ defmodule Tractor.FakeACPAgent do
 
   def run do
     mode = System.get_env("TRACTOR_FAKE_ACP_MODE", "ok")
+    event_mode = System.get_env("FAKE_ACP_EVENTS", "basic")
     maybe_spawn_child(mode)
-    loop(%{mode: mode, session_id: "fake-session"})
+    loop(%{mode: mode, event_mode: event_mode, session_id: "fake-session"})
   end
 
   defp maybe_spawn_child("spawn_child") do
@@ -99,6 +100,15 @@ defmodule Tractor.FakeACPAgent do
     handle_prompt(message, %{state | mode: "ok"})
   end
 
+  defp handle_prompt(message, %{mode: "unknown_update"} = state) do
+    notify("session/update", %{
+      "sessionId" => state.session_id,
+      "update" => %{"type" => "unknown_shape", "content" => %{"text" => "ignored"}}
+    })
+
+    handle_prompt(message, %{state | mode: "ok"})
+  end
+
   defp handle_prompt(message, state) do
     prompt_text =
       message
@@ -106,9 +116,13 @@ defmodule Tractor.FakeACPAgent do
       |> List.wrap()
       |> Enum.map_join("", &Map.get(&1, "text", ""))
 
+    if state.event_mode == "full" do
+      send_full_events(state.session_id)
+    end
+
     send_delta(state.session_id, "fake ")
     send_delta(state.session_id, "response: ")
-    send_delta(state.session_id, prompt_text)
+    send_session_delta(state.session_id, prompt_text)
     reply(message["id"], %{"stopReason" => "end_turn"})
 
     state
@@ -120,6 +134,51 @@ defmodule Tractor.FakeACPAgent do
       "update" => %{
         "type" => "agent_message_chunk",
         "content" => %{"type" => "text", "text" => text}
+      }
+    })
+  end
+
+  defp send_session_delta(session_id, text) do
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "sessionUpdate" => "agent_message_chunk",
+        "content" => %{"type" => "text", "text" => text}
+      }
+    })
+  end
+
+  defp send_full_events(session_id) do
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "type" => "agent_thought_chunk",
+        "content" => %{"type" => "text", "text" => "thinking "}
+      }
+    })
+
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "sessionUpdate" => "tool_call",
+        "toolCallId" => "tool-1",
+        "title" => "Read file",
+        "kind" => "read",
+        "status" => "pending",
+        "content" => %{"type" => "text", "text" => "input"},
+        "locations" => [],
+        "rawInput" => %{"path" => "README.md"}
+      }
+    })
+
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "type" => "tool_call_update",
+        "toolCallId" => "tool-1",
+        "status" => "completed",
+        "content" => [%{"type" => "content", "content" => %{"type" => "text", "text" => "ok"}}],
+        "rawOutput" => "ok"
       }
     })
   end

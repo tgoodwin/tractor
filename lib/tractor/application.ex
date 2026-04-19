@@ -14,6 +14,7 @@ defmodule Tractor.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: Tractor.ACP.SessionSup},
       {DynamicSupervisor, strategy: :one_for_one, name: Tractor.RunSup},
       {Phoenix.PubSub, name: Tractor.PubSub},
+      Tractor.RunEvents,
       {DynamicSupervisor, strategy: :one_for_one, name: Tractor.WebSup}
     ]
 

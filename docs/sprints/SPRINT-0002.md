@@ -243,28 +243,28 @@ Extend `reap`:
 - [x] `Tractor.RunBus` module: `subscribe/1`, `subscribe/2`, `broadcast/3`. Topic convention: `"run:<run_id>"` and `"run:<run_id>:node:<node_id>"`.
 - [x] Unit test: normal `tractor reap` (no `--serve`) does NOT open a listener (assert `:gen_tcp.connect({127,0,0,1}, 4000, [])` fails).
 - [x] Unit test: `TractorWeb.Server.start_link/1` binds only to `127.0.0.1` (config assertion).
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase B — Event substrate + ACP capture widening (day 2–3, ~7h)
 
-- [ ] `Tractor.EventLog` module: `open(node_dir) :: {:ok, log}`, `append(log, kind, data) :: :ok`, `close(log) :: :ok`. Single `:raw, :append` file handle; monotonic per-node `seq`; UTC ISO8601 `ts`. **Writes binaries only** — never `IO.puts` through `:standard_io`.
-- [ ] `Tractor.RunEvents.emit(run_id, node_id, kind, data)`: find node's open `EventLog` in a `Registry` or pass explicitly; append via EventLog; then `Tractor.RunBus.broadcast`.
-- [ ] `Tractor.ACP.Turn` struct (see §4.7).
-- [ ] Update `Tractor.AgentClient` behaviour: `prompt/3 :: {:ok, %Turn{}} | {:error, reason}`.
-- [ ] Refactor `Tractor.ACP.Session`:
-  - [ ] Accept `event_sink: (acp_event -> :ok)` opt. Default = no-op.
-  - [ ] Capture `agent_message_chunk` (both `type` and `sessionUpdate` discriminator spellings).
-  - [ ] Capture `agent_thought_chunk` (both spellings).
-  - [ ] Capture `tool_call` with `toolCallId`, `title`, `kind`, `status`, `content`, `locations`, `rawInput`, `rawOutput` when present.
-  - [ ] Capture `tool_call_update` in order, associate by `toolCallId`; preserve late/partial updates.
-  - [ ] Build `%Turn{}` at end of turn; return from `prompt/3`.
-  - [ ] Emit each captured update via `event_sink` in arrival order.
-- [ ] Update `test/support/fake_acp_agent.exs`: add optional `FAKE_ACP_EVENTS=full` mode that emits thought chunks, tool calls, tool_call_updates, and mixed discriminator spellings.
-- [ ] Update sprint-1 ACP session tests: assert `Turn` shape, port-leak assertion preserved, 50-concurrent-session stress test preserved.
-- [ ] New ACP session tests: thought chunk capture, tool call lifecycle with updates, unknown discriminator handling (graceful ignore), sink called in arrival order.
-- [ ] Add `RunStore` lifecycle markers: `mark_node_pending/2`, `mark_node_running/3`, `mark_node_succeeded/3`, `mark_node_failed/3`. Each atomic-write to `status.json`. Tests.
-- [ ] Integration test: a handler that opens Session with sink wired to EventLog + RunBus drives fake agent in `FAKE_ACP_EVENTS=full` mode; assert `events.jsonl` contains expected kinds in order AND PubSub subscriber received same events.
-- [ ] **Late-reader rebuild test:** snapshot a completed run's node state purely from `status.json` + `events.jsonl`, assert it matches the live state the Runner broadcast.
+- [x] `Tractor.EventLog` module: `open(node_dir) :: {:ok, log}`, `append(log, kind, data) :: :ok`, `close(log) :: :ok`. Single `:raw, :append` file handle; monotonic per-node `seq`; UTC ISO8601 `ts`. **Writes binaries only** — never `IO.puts` through `:standard_io`.
+- [x] `Tractor.RunEvents.emit(run_id, node_id, kind, data)`: find node's open `EventLog` in a `Registry` or pass explicitly; append via EventLog; then `Tractor.RunBus.broadcast`.
+- [x] `Tractor.ACP.Turn` struct (see §4.7).
+- [x] Update `Tractor.AgentClient` behaviour: `prompt/3 :: {:ok, %Turn{}} | {:error, reason}`.
+- [x] Refactor `Tractor.ACP.Session`:
+  - [x] Accept `event_sink: (acp_event -> :ok)` opt. Default = no-op.
+  - [x] Capture `agent_message_chunk` (both `type` and `sessionUpdate` discriminator spellings).
+  - [x] Capture `agent_thought_chunk` (both spellings).
+  - [x] Capture `tool_call` with `toolCallId`, `title`, `kind`, `status`, `content`, `locations`, `rawInput`, `rawOutput` when present.
+  - [x] Capture `tool_call_update` in order, associate by `toolCallId`; preserve late/partial updates.
+  - [x] Build `%Turn{}` at end of turn; return from `prompt/3`.
+  - [x] Emit each captured update via `event_sink` in arrival order.
+- [x] Update `test/support/fake_acp_agent.exs`: add optional `FAKE_ACP_EVENTS=full` mode that emits thought chunks, tool calls, tool_call_updates, and mixed discriminator spellings.
+- [x] Update sprint-1 ACP session tests: assert `Turn` shape, port-leak assertion preserved, 50-concurrent-session stress test preserved.
+- [x] New ACP session tests: thought chunk capture, tool call lifecycle with updates, unknown discriminator handling (graceful ignore), sink called in arrival order.
+- [x] Add `RunStore` lifecycle markers: `mark_node_pending/2`, `mark_node_running/3`, `mark_node_succeeded/3`, `mark_node_failed/3`. Each atomic-write to `status.json`. Tests.
+- [x] Integration test: a handler that opens Session with sink wired to EventLog + RunBus drives fake agent in `FAKE_ACP_EVENTS=full` mode; assert `events.jsonl` contains expected kinds in order AND PubSub subscriber received same events.
+- [x] **Late-reader rebuild test:** snapshot a completed run's node state purely from `status.json` + `events.jsonl`, assert it matches the live state the Runner broadcast.
 - [ ] Commit.
 
 ### Phase C — Parser & validator for parallel shapes (day 3, ~3h)

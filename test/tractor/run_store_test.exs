@@ -65,6 +65,30 @@ defmodule Tractor.RunStoreTest do
     assert [] = Path.wildcard(Path.join(store.run_dir, "ask/.status.json.*.tmp"))
   end
 
+  @tag :tmp_dir
+  test "node lifecycle markers write explicit status files", %{tmp_dir: tmp_dir} do
+    {:ok, store} = RunStore.open(%Pipeline{}, runs_dir: tmp_dir, run_id: "run-lifecycle")
+
+    assert :ok = RunStore.mark_node_pending(store, "ask")
+    assert %{"status" => "pending"} = read_json(Path.join(store.run_dir, "ask/status.json"))
+
+    started_at = "2026-04-19T12:00:00Z"
+    assert :ok = RunStore.mark_node_running(store, "ask", started_at)
+    running = read_json(Path.join(store.run_dir, "ask/status.json"))
+    assert running["status"] == "running"
+    assert running["started_at"] == started_at
+
+    assert :ok = RunStore.mark_node_succeeded(store, "ask", %{"provider" => "codex"})
+    succeeded = read_json(Path.join(store.run_dir, "ask/status.json"))
+    assert succeeded["status"] == "ok"
+    assert succeeded["provider"] == "codex"
+
+    assert :ok = RunStore.mark_node_failed(store, "ask", :boom)
+    failed = read_json(Path.join(store.run_dir, "ask/status.json"))
+    assert failed["status"] == "error"
+    assert failed["reason"] == ":boom"
+  end
+
   defp read_json(path) do
     path
     |> File.read!()

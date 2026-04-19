@@ -7,7 +7,7 @@ defmodule Tractor.AgentClient do
               {:ok, pid()} | {:error, term()}
 
   @callback prompt(pid(), text :: String.t(), timeout()) ::
-              {:ok, String.t()} | {:error, term()}
+              {:ok, Tractor.ACP.Turn.t()} | {:error, term()}
 
   @callback stop(pid()) :: :ok
 end

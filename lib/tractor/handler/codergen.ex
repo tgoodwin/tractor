@@ -27,11 +27,21 @@ defmodule Tractor.Handler.Codergen do
     File.mkdir_p!(node_dir)
     stderr_log = Path.join(node_dir, "stderr.log")
 
+    event_sink = fn %{kind: kind, data: data} ->
+      Tractor.RunEvents.emit(Path.basename(run_dir), node.id, kind, data)
+    end
+
     with {:ok, session} <-
-           agent_client.start_session(adapter, cwd: run_dir, stderr_log: stderr_log) do
+           agent_client.start_session(adapter,
+             cwd: run_dir,
+             stderr_log: stderr_log,
+             event_sink: event_sink
+           ) do
+
       case agent_client.prompt(session, prompt, timeout) do
-        {:ok, response} ->
+        {:ok, turn} ->
           :ok = agent_client.stop(session)
+          response = response_text(turn)
 
           {:ok, response,
            %{
@@ -58,4 +68,7 @@ defmodule Tractor.Handler.Codergen do
       String.replace(prompt, "{{#{node_id}}}", output)
     end)
   end
+
+  defp response_text(%Tractor.ACP.Turn{response_text: response}), do: response
+  defp response_text(response) when is_binary(response), do: response
 end

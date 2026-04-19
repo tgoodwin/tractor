@@ -32,6 +32,7 @@ defmodule Tractor.RunStore do
 
     store = %__MODULE__{run_id: manifest["run_id"], run_dir: run_dir, manifest: manifest}
     write_manifest(store, manifest)
+    Tractor.RunEvents.register_run(store.run_id, store.run_dir)
 
     {:ok, store}
   end
@@ -56,6 +57,37 @@ defmodule Tractor.RunStore do
     :ok
   end
 
+  @spec mark_node_pending(t(), String.t()) :: :ok
+  def mark_node_pending(%__MODULE__{} = store, node_id) do
+    write_status(store, node_id, %{"status" => "pending"})
+  end
+
+  @spec mark_node_running(t(), String.t(), DateTime.t() | String.t()) :: :ok
+  def mark_node_running(%__MODULE__{} = store, node_id, started_at) do
+    write_status(store, node_id, %{
+      "status" => "running",
+      "started_at" => timestamp(started_at)
+    })
+  end
+
+  @spec mark_node_succeeded(t(), String.t(), map()) :: :ok
+  def mark_node_succeeded(%__MODULE__{} = store, node_id, outcome_meta) do
+    write_status(
+      store,
+      node_id,
+      Map.merge(%{"status" => "ok", "finished_at" => timestamp(DateTime.utc_now())}, outcome_meta)
+    )
+  end
+
+  @spec mark_node_failed(t(), String.t(), term()) :: :ok
+  def mark_node_failed(%__MODULE__{} = store, node_id, reason) do
+    write_status(store, node_id, %{
+      "status" => "error",
+      "reason" => inspect(reason),
+      "finished_at" => timestamp(DateTime.utc_now())
+    })
+  end
+
   @spec finalize(t(), map()) :: :ok
   def finalize(%__MODULE__{} = store, attrs) do
     manifest =
@@ -72,6 +104,15 @@ defmodule Tractor.RunStore do
   defp write_manifest(store, manifest) do
     Paths.atomic_write!(Path.join(store.run_dir, "manifest.json"), encode_json!(manifest))
   end
+
+  defp write_status(store, node_id, status) do
+    node_dir = Path.join(store.run_dir, node_id)
+    File.mkdir_p!(node_dir)
+    Paths.atomic_write!(Path.join(node_dir, "status.json"), encode_json!(status))
+  end
+
+  defp timestamp(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
+  defp timestamp(timestamp) when is_binary(timestamp), do: timestamp
 
   defp encode_json!(data) do
     Jason.encode_to_iodata!(data, pretty: true)

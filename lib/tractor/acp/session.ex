@@ -7,6 +7,8 @@ defmodule Tractor.ACP.Session do
 
   @behaviour Tractor.AgentClient
 
+  alias Tractor.ACP.Turn
+
   @default_timeout 300_000
   @line_length 1024 * 1024
 
@@ -22,7 +24,8 @@ defmodule Tractor.ACP.Session do
             prompt_from: nil,
             prompt_timer: nil,
             prompt_timeout_ref: nil,
-            buffer: []
+            event_sink: nil,
+            turn: %Turn{}
 
   @type reason ::
           :timeout
@@ -45,7 +48,7 @@ defmodule Tractor.ACP.Session do
   end
 
   @impl Tractor.AgentClient
-  @spec prompt(pid(), String.t(), timeout()) :: {:ok, String.t()} | {:error, reason()}
+  @spec prompt(pid(), String.t(), timeout()) :: {:ok, Turn.t()} | {:error, reason()}
   def prompt(pid, text, timeout \\ @default_timeout) do
     GenServer.call(pid, {:prompt, text, normalize_timeout(timeout)}, call_timeout(timeout))
   end
@@ -68,7 +71,8 @@ defmodule Tractor.ACP.Session do
         agent_module: agent_module,
         opts: opts,
         port: port,
-        os_pid: os_pid(port)
+        os_pid: os_pid(port),
+        event_sink: Keyword.get(opts, :event_sink, fn _event -> :ok end)
       }
 
       {:ok, send_initialize(state)}
@@ -226,7 +230,7 @@ defmodule Tractor.ACP.Session do
     |> Map.put(:prompt_from, from)
     |> Map.put(:prompt_timer, prompt_timer(timeout_ref, timeout))
     |> Map.put(:prompt_timeout_ref, timeout_ref)
-    |> Map.put(:buffer, [])
+    |> Map.put(:turn, %Turn{})
     |> Map.put(:status, :prompting)
     |> send_request(:prompt, "session/prompt", %{
       "sessionId" => state.session_id,
@@ -280,31 +284,99 @@ defmodule Tractor.ACP.Session do
   defp handle_message(%{"method" => "session/update", "params" => params}, state) do
     update = params["update"] || %{}
 
-    case {state.status, agent_message_chunk_text(update)} do
-      {:prompting, text} when is_binary(text) ->
-        %{state | buffer: [text | state.buffer]}
-
-      _other ->
-        state
+    if state.status == :prompting do
+      capture_update(state, update)
+    else
+      state
     end
   end
 
   defp handle_message(_message, state), do: state
 
-  defp agent_message_chunk_text(%{"type" => "agent_message_chunk", "content" => %{"text" => text}})
-       when is_binary(text) do
-    text
+  defp capture_update(state, update) do
+    kind = update["type"] || update["sessionUpdate"]
+    turn = %{state.turn | events: state.turn.events ++ [update]}
+
+    case kind do
+      "agent_message_chunk" ->
+        chunk = %{"text" => chunk_text(update), "raw" => update}
+        emit_event(state, :agent_message_chunk, chunk)
+
+        %{
+          state
+          | turn: %{
+              turn
+              | response_text: turn.response_text <> (chunk["text"] || ""),
+                agent_message_chunks: turn.agent_message_chunks ++ [chunk]
+            }
+        }
+
+      "agent_thought_chunk" ->
+        chunk = %{"text" => chunk_text(update), "raw" => update}
+        emit_event(state, :agent_thought_chunk, chunk)
+        %{state | turn: %{turn | agent_thought_chunks: turn.agent_thought_chunks ++ [chunk]}}
+
+      "tool_call" ->
+        tool_call = extract_tool_call(update)
+        emit_event(state, :tool_call, tool_call)
+        %{state | turn: %{turn | tool_calls: turn.tool_calls ++ [tool_call]}}
+
+      "tool_call_update" ->
+        update_data = extract_tool_call_update(update)
+        emit_event(state, :tool_call_update, update_data)
+        %{state | turn: %{turn | tool_call_updates: turn.tool_call_updates ++ [update_data]}}
+
+      _other ->
+        %{state | turn: turn}
+    end
   end
 
-  defp agent_message_chunk_text(%{
-         "sessionUpdate" => "agent_message_chunk",
-         "content" => %{"text" => text}
-       })
-       when is_binary(text) do
-    text
+  defp emit_event(state, kind, data) do
+    state.event_sink.(%{kind: kind, data: data})
+    :ok
   end
 
-  defp agent_message_chunk_text(_update), do: nil
+  defp chunk_text(%{"content" => %{"text" => text}}) when is_binary(text), do: text
+  defp chunk_text(%{"content" => %{"type" => "text", "text" => text}}) when is_binary(text), do: text
+  defp chunk_text(%{"content" => text}) when is_binary(text), do: text
+  defp chunk_text(%{"text" => text}) when is_binary(text), do: text
+  defp chunk_text(_update), do: ""
+
+  defp extract_tool_call(update) do
+    content = content_map(update)
+
+    %{
+      "toolCallId" => first_present(update, content, ["toolCallId", "tool_call_id", "id"]),
+      "title" => first_present(update, content, ["title", "name"]),
+      "kind" => first_present(update, content, ["kind", "type"]),
+      "status" => first_present(update, content, ["status"]),
+      "content" => Map.get(content, "content", Map.get(update, "content")),
+      "locations" => first_present(update, content, ["locations"]),
+      "rawInput" => first_present(update, content, ["rawInput", "raw_input"]),
+      "rawOutput" => first_present(update, content, ["rawOutput", "raw_output"]),
+      "raw" => update
+    }
+  end
+
+  defp extract_tool_call_update(update) do
+    content = content_map(update)
+
+    %{
+      "toolCallId" => first_present(update, content, ["toolCallId", "tool_call_id", "id"]),
+      "status" => first_present(update, content, ["status"]),
+      "content" => Map.get(update, "content"),
+      "rawInput" => first_present(update, content, ["rawInput", "raw_input"]),
+      "rawOutput" => first_present(update, content, ["rawOutput", "raw_output"]),
+      "raw" => update
+    }
+  end
+
+  defp first_present(primary, secondary, keys) do
+    Enum.find_value(keys, fn key -> Map.get(primary, key) || Map.get(secondary, key) end)
+  end
+
+  defp content_map(%{"content" => content}) when is_map(content), do: content
+  defp content_map(_update), do: %{}
 
   defp maybe_send_queued_prompt(%{queued_prompt: nil} = state), do: state
 
@@ -319,7 +391,7 @@ defmodule Tractor.ACP.Session do
 
     case stop_reason do
       reason when reason in ["end_turn", "done"] ->
-        reply_prompt(state, {:ok, state.buffer |> Enum.reverse() |> Enum.join()})
+        reply_prompt(state, {:ok, state.turn})
 
       "max_tokens" ->
         fail_prompt(state, :max_tokens)
@@ -357,7 +429,7 @@ defmodule Tractor.ACP.Session do
         prompt_from: nil,
         prompt_timer: nil,
         prompt_timeout_ref: nil,
-        buffer: []
+        turn: %Turn{}
     }
   end
 

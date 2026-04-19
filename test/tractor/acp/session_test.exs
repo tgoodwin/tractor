@@ -1,7 +1,7 @@
 defmodule Tractor.ACP.SessionTest do
   use ExUnit.Case, async: false
 
-  alias Tractor.ACP.Session
+  alias Tractor.ACP.{Session, Turn}
 
   defmodule FakeAgent do
     def command(opts) do
@@ -35,7 +35,10 @@ defmodule Tractor.ACP.SessionTest do
   test "prompts a fake ACP agent and accumulates streaming deltas" do
     {:ok, pid} = Session.start_link(FakeAgent, cwd: File.cwd!())
 
-    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{response_text: "fake response: hello"} = turn} =
+             Session.prompt(pid, "hello", 1_000)
+
+    assert length(turn.agent_message_chunks) == 3
     assert :ok = Session.stop(pid)
   end
 
@@ -70,18 +73,23 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "noisy_stdout"}]
       )
 
-    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 1_000)
+
     assert :ok = Session.stop(pid)
   end
 
-  test "ignores non-agent-message session updates" do
+  test "captures non-agent-message session updates without changing response text" do
     {:ok, pid} =
       Session.start_link(FakeAgent,
         cwd: File.cwd!(),
         env: [{"TRACTOR_FAKE_ACP_MODE", "tool_update"}]
       )
 
-    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{response_text: "fake response: hello"} = turn} =
+             Session.prompt(pid, "hello", 1_000)
+
+    assert length(turn.tool_call_updates) == 1
     assert :ok = Session.stop(pid)
   end
 
@@ -123,9 +131,12 @@ defmodule Tractor.ACP.SessionTest do
       )
       |> Enum.map(fn {:ok, result} -> result end)
 
-    expected = Enum.map(1..50, fn index -> {:ok, "fake response: hello #{index}"} end)
+    responses =
+      Enum.map(results, fn {:ok, %Turn{response_text: response}} -> response end)
 
-    assert Enum.sort(results) == Enum.sort(expected)
+    expected = Enum.map(1..50, fn index -> "fake response: hello #{index}" end)
+
+    assert Enum.sort(responses) == Enum.sort(expected)
 
     assert eventually_port_count(ports_before)
   end
@@ -152,7 +163,9 @@ defmodule Tractor.ACP.SessionTest do
         ]
       )
 
-    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 1_000)
+
     child_pid = child_pid_file |> File.read!() |> String.to_integer()
 
     assert os_process_alive?(child_pid)
@@ -165,10 +178,55 @@ defmodule Tractor.ACP.SessionTest do
   test "real gemini ACP round trip" do
     if System.get_env("TRACTOR_REAL_GEMINI") == "1" do
       {:ok, pid} = Session.start_link(Tractor.Agent.Gemini, cwd: File.cwd!())
-      assert {:ok, response} = Session.prompt(pid, "Reply with the single word tractor.", 120_000)
+      assert {:ok, %Turn{response_text: response}} =
+               Session.prompt(pid, "Reply with the single word tractor.", 120_000)
+
       assert is_binary(response)
       assert :ok = Session.stop(pid)
     end
+  end
+
+  test "captures thought chunks, tool calls, updates, and sink order" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"FAKE_ACP_EVENTS", "full"}]
+      )
+
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+    assert turn.response_text == "fake response: hello"
+    assert [%{"text" => "thinking "}] = turn.agent_thought_chunks
+    assert [%{"toolCallId" => "tool-1"}] = turn.tool_calls
+    assert [%{"toolCallId" => "tool-1", "status" => "completed"}] = turn.tool_call_updates
+
+    assert_receive {:sink, :agent_thought_chunk}
+    assert_receive {:sink, :tool_call}
+    assert_receive {:sink, :tool_call_update}
+    assert_receive {:sink, :agent_message_chunk}
+
+    assert :ok = Session.stop(pid)
+  end
+
+  test "unknown discriminator is preserved for audit and otherwise ignored" do
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [{"TRACTOR_FAKE_ACP_MODE", "unknown_update"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello", events: events}} =
+             Session.prompt(pid, "hello", 1_000)
+
+    assert Enum.any?(events, &(&1["type"] == "unknown_shape"))
+    assert :ok = Session.stop(pid)
   end
 
   defp eventually_port_count(expected) do
@@ -208,4 +266,5 @@ defmodule Tractor.ACP.SessionTest do
   rescue
     _error -> :ok
   end
+
 end
