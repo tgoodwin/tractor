@@ -65,7 +65,11 @@ defmodule Tractor.Handler.Codergen do
 
   defp interpolate(prompt, context) do
     Enum.reduce(context, prompt, fn {node_id, output}, prompt ->
-      String.replace(prompt, "{{#{node_id}}}", output)
+      if is_binary(output) do
+        String.replace(prompt, "{{#{node_id}}}", output)
+      else
+        prompt
+      end
     end)
   end
 

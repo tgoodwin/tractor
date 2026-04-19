@@ -207,7 +207,10 @@ defmodule Tractor.ACP.Session do
   end
 
   defp port_env(env) do
-    Enum.map(env, fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)
+    Enum.map(env, fn
+      {key, false} -> {String.to_charlist(key), false}
+      {key, value} -> {String.to_charlist(key), String.to_charlist(value)}
+    end)
   end
 
   defp send_initialize(state) do

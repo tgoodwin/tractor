@@ -29,8 +29,16 @@ defmodule Tractor.AgentTest do
 
   test "provider adapters expose default ACP commands" do
     assert Gemini.command([]) == {"gemini", ["--acp"], []}
-    assert Claude.command([]) == {"npx", ["acp-claude-code"], []}
+    assert Claude.command([]) == {"npx", ["acp-claude-code"], [{"CLAUDECODE", false}]}
     assert Codex.command([]) == {"codex-acp", [], []}
+  end
+
+  test "Claude adapter unsets CLAUDECODE even with env overrides" do
+    System.put_env("TRACTOR_ACP_CLAUDE_ENV_JSON", ~s({"FOO":"bar"}))
+
+    assert {_exe, _args, env} = Claude.command([])
+    assert {"CLAUDECODE", false} in env
+    assert {"FOO", "bar"} in env
   end
 
   test "provider adapters honor command, args, and env JSON overrides" do
