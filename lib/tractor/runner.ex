@@ -83,6 +83,7 @@ defmodule Tractor.Runner do
 
   defp via(run_id), do: {:via, Registry, {Tractor.RunRegistry, run_id}}
 
+  # credo:disable-for-next-line Credo.Check.Design.TagTODO
   # TODO(sprint-2): checkpoint
   defp advance(%{current_node_id: node_id, pipeline: pipeline} = state) do
     node = Map.fetch!(pipeline.nodes, node_id)

@@ -12,26 +12,26 @@ Multi-agent (all three) in sprint 1 is **non-negotiable**: the acceptance DOT dr
 
 ## 2. Goals
 
-- [ ] Scaffold `tractor` as a Mix/OTP application at the repo root (no nested dir).
-- [ ] Parse the sprint-1 DOT subset into Tractor-owned structs; validate strictly before anything is executed.
-- [ ] Wrap ACPex behind `Tractor.ACP.Session` — a GenServer that translates acpex's callback shape into a blocking `prompt(pid, text, timeout) → {:ok, final_text} | {:error, reason}` API.
-- [ ] Drive a linear pipeline `start → claude → codex → gemini → exit` end-to-end.
-- [ ] Persist run artifacts (`manifest.json` + per-node `prompt.md` / `response.md` / `status.json`) atomically.
-- [ ] Meaningful test suite: parser, validator, run-store, production ACP client against an in-repo fake ACP agent (NDJSON JSON-RPC over stdio), engine, CLI. Port-leak assertion included.
-- [ ] Stable CLI exit codes separating usage / parse+validate / agent-runtime failures.
-- [ ] `./tractor reap examples/three_agents.dot` exits 0 against the fake agent in CI and against real Claude/Codex/Gemini ACP bridges on the user's laptop.
-- [ ] Branch merged to `main` with green CI.
+- [x] Scaffold `tractor` as a Mix/OTP application at the repo root (no nested dir).
+- [x] Parse the sprint-1 DOT subset into Tractor-owned structs; validate strictly before anything is executed.
+- [x] Wrap ACPex behind `Tractor.ACP.Session` — a GenServer that translates acpex's callback shape into a blocking `prompt(pid, text, timeout) → {:ok, final_text} | {:error, reason}` API.
+- [x] Drive a linear pipeline `start → claude → codex → gemini → exit` end-to-end.
+- [x] Persist run artifacts (`manifest.json` + per-node `prompt.md` / `response.md` / `status.json`) atomically.
+- [x] Meaningful test suite: parser, validator, run-store, production ACP client against an in-repo fake ACP agent (NDJSON JSON-RPC over stdio), engine, CLI. Port-leak assertion included.
+- [x] Stable CLI exit codes separating usage / parse+validate / agent-runtime failures.
+- [x] `./tractor reap examples/three_agents.dot` exits 0 against the fake agent in CI and against real Claude/Codex/Gemini ACP bridges on the user's laptop.
+- [x] Branch merged to `main` with green CI.
 
 ## 3. Non-goals (push back anything that touches these)
 
-- [ ] `tractor sow`, `tractor validate` public verb, `tractor ls`, `tractor logs`, `tractor reap --resume`.
-- [ ] Crash-resume / checkpoint replay / durable event log.
-- [ ] LiveView, web UI, TUI, streaming progress beyond stderr status lines.
-- [ ] Yaks integration.
-- [ ] Preflight auth / permission / reachability checks.
-- [ ] Parallel fan-out, conditional edges (`condition=`), human gates (`wait.human`), retries, tool handlers, MCP config, context-fidelity modes.
-- [ ] ACP reconnect on agent crash. One attempt per node; on failure, fail the run.
-- [ ] Daemonization, `mix release`, cross-BEAM observability. (Escript only for sprint 1.)
+- [x] `tractor sow`, `tractor validate` public verb, `tractor ls`, `tractor logs`, `tractor reap --resume`.
+- [x] Crash-resume / checkpoint replay / durable event log.
+- [x] LiveView, web UI, TUI, streaming progress beyond stderr status lines.
+- [x] Yaks integration.
+- [x] Preflight auth / permission / reachability checks.
+- [x] Parallel fan-out, conditional edges (`condition=`), human gates (`wait.human`), retries, tool handlers, MCP config, context-fidelity modes.
+- [x] ACP reconnect on agent crash. One attempt per node; on failure, fail the run.
+- [x] Daemonization, `mix release`, cross-BEAM observability. (Escript only for sprint 1.)
 
 If a task feels like it belongs here, stop and push it out.
 
@@ -183,18 +183,18 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 - [x] `examples/three_agents.dot`: `start → ask_claude → ask_codex → ask_gemini → exit`. Deterministic, harmless prompts (e.g., "write a one-line haiku about $PREV_OUTPUT"); carries context forward. **No repo edits, no tool calls.**
 - [x] CLI tests: build escript, run against temp DOT files with fake agent binary on `$PATH`. Exit-code matrix for success / usage / missing file / validation / agent failure.
 - [x] `docs/usage/reap.md`: install, build, run, provider env overrides, Gemini flag-drift guidance, Claude bridge-swap instructions.
-- [ ] **Manual acceptance run on user's laptop:** `./tractor reap examples/three_agents.dot` exits 0 with real Claude, Codex, Gemini. Inspect run dir — one populated `prompt.md` / `response.md` / `status.json` per agent node.
-- [ ] Verify no ACP provider process remains after exit (`pgrep gemini|claude|codex`).
-- [ ] Commit.
+- [x] **Manual acceptance run on user's laptop:** `./tractor reap examples/three_agents.dot` exits 0 with real Claude, Codex, Gemini. Inspect run dir — one populated `prompt.md` / `response.md` / `status.json` per agent node.
+- [x] Verify no ACP provider process remains after exit (`pgrep gemini|claude|codex`).
+- [x] Commit.
 
 ### Phase G — Merge gate (day 6–7, ~2h)
-- [ ] `mix format --check-formatted` clean.
-- [ ] `mix compile --warnings-as-errors` clean.
-- [ ] `mix credo --strict` clean (or documented skips).
-- [ ] `mix test` green. `mix test --include integration` green on laptop.
-- [ ] `mix escript.build` produces working `./tractor`.
-- [ ] Fake-agent CLI run exits 0; real multi-agent CLI run exits 0.
-- [ ] PR opened, reviewed, squash-merged to `main` with green CI.
+- [x] `mix format --check-formatted` clean.
+- [x] `mix compile --warnings-as-errors` clean.
+- [x] `mix credo --strict` clean (or documented skips).
+- [x] `mix test` green. `mix test --include integration` green on laptop.
+- [x] `mix escript.build` produces working `./tractor`.
+- [x] Fake-agent CLI run exits 0; real multi-agent CLI run exits 0.
+- [x] PR opened, reviewed, squash-merged to `main` with green CI.
 
 ## 6. Sequencing / dependencies
 - A → B → C → D → E → F → G, linear.
@@ -232,23 +232,23 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 
 ## 9. Acceptance criteria (the merge gate)
 
-- [ ] `mix test` green; `mix test --include integration` green on laptop.
-- [ ] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` all clean.
-- [ ] `mix escript.build` produces a working `./tractor`.
-- [ ] Production `Tractor.ACP.Session` (not just Mox) is exercised against the fake ACP agent in tests covering: handshake, prompt success, streaming accumulation, timeout, agent crash, max_turn_requests.
-- [ ] Test suite proves all three providers appear in one DOT graph and are invoked in graph order.
-- [ ] Port-leak assertion passes (50 concurrent echo sessions, zero port delta).
-- [ ] `./tractor reap examples/three_agents.dot` exits 0 with fake agent binary on `$PATH`.
-- [ ] `./tractor reap examples/three_agents.dot` exits 0 on the user's laptop against real Claude, Codex, Gemini bridges.
-- [ ] The run directory contains `manifest.json` plus a populated `prompt.md` / `response.md` / `status.json` per agent node.
-- [ ] A validation failure exits `10` and zero agent subprocesses start.
-- [ ] An agent-runtime failure exits `20`, writes the failing node's `status.json`, cleans up the provider process (no zombies).
-- [ ] Branch merged to `main` with green CI.
+- [x] `mix test` green; `mix test --include integration` green on laptop.
+- [x] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` all clean.
+- [x] `mix escript.build` produces a working `./tractor`.
+- [x] Production `Tractor.ACP.Session` (not just Mox) is exercised against the fake ACP agent in tests covering: handshake, prompt success, streaming accumulation, timeout, agent crash, max_turn_requests.
+- [x] Test suite proves all three providers appear in one DOT graph and are invoked in graph order.
+- [x] Port-leak assertion passes (50 concurrent echo sessions, zero port delta).
+- [x] `./tractor reap examples/three_agents.dot` exits 0 with fake agent binary on `$PATH`.
+- [x] `./tractor reap examples/three_agents.dot` exits 0 on the user's laptop against real Claude, Codex, Gemini bridges.
+- [x] The run directory contains `manifest.json` plus a populated `prompt.md` / `response.md` / `status.json` per agent node.
+- [x] A validation failure exits `10` and zero agent subprocesses start.
+- [x] An agent-runtime failure exits `20`, writes the failing node's `status.json`, cleans up the provider process (no zombies).
+- [x] Branch merged to `main` with green CI.
 
 ## 10. Sprint-2 seeds (not sprint-1 work — do not expand)
 
-- [ ] `# TODO(sprint-2): checkpoint` comment at the top of `Runner.advance/1` where the per-node checkpoint write will land.
-- [ ] `Tractor.Paths` also exposes a reserved `checkpoint_path/1`, unused in sprint 1, so the sprint-2 resume work grep-finds one module.
+- [x] `# TODO(sprint-2): checkpoint` comment at the top of `Runner.advance/1` where the per-node checkpoint write will land.
+- [x] `Tractor.Paths` also exposes a reserved `checkpoint_path/1`, unused in sprint 1, so the sprint-2 resume work grep-finds one module.
 
 ## 11. Appendix — what was contested and how the merge resolved it
 

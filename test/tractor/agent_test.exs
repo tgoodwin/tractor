@@ -1,6 +1,8 @@
 defmodule Tractor.AgentTest do
   use ExUnit.Case, async: false
 
+  alias Tractor.Agent.{Claude, Codex, Gemini}
+
   setup do
     env_vars = [
       "TRACTOR_ACP_GEMINI_COMMAND",
@@ -26,9 +28,9 @@ defmodule Tractor.AgentTest do
   end
 
   test "provider adapters expose default ACP commands" do
-    assert Tractor.Agent.Gemini.command([]) == {"gemini", ["--acp"], []}
-    assert Tractor.Agent.Claude.command([]) == {"npx", ["acp-claude-code"], []}
-    assert Tractor.Agent.Codex.command([]) == {"codex-acp", [], []}
+    assert Gemini.command([]) == {"gemini", ["--acp"], []}
+    assert Claude.command([]) == {"npx", ["acp-claude-code"], []}
+    assert Codex.command([]) == {"codex-acp", [], []}
   end
 
   test "provider adapters honor command, args, and env JSON overrides" do
@@ -36,7 +38,7 @@ defmodule Tractor.AgentTest do
     System.put_env("TRACTOR_ACP_GEMINI_ARGS", ~s(["--experimental-acp"]))
     System.put_env("TRACTOR_ACP_GEMINI_ENV_JSON", ~s({"TOKEN":"secret","MODE":"test"}))
 
-    assert Tractor.Agent.Gemini.command([]) ==
+    assert Gemini.command([]) ==
              {"gemini-dev", ["--experimental-acp"], [{"MODE", "test"}, {"TOKEN", "secret"}]}
   end
 end

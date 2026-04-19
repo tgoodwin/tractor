@@ -4,9 +4,10 @@ defmodule Tractor.Agent.Gemini do
   """
 
   @behaviour Tractor.Agent
+  alias Tractor.Agent.Config
 
   @impl Tractor.Agent
   def command(_opts) do
-    Tractor.Agent.Config.command("gemini", "gemini", ["--acp"])
+    Config.command("gemini", "gemini", ["--acp"])
   end
 end

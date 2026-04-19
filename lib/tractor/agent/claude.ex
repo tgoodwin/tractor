@@ -4,9 +4,10 @@ defmodule Tractor.Agent.Claude do
   """
 
   @behaviour Tractor.Agent
+  alias Tractor.Agent.Config
 
   @impl Tractor.Agent
   def command(_opts) do
-    Tractor.Agent.Config.command("claude", "npx", ["acp-claude-code"])
+    Config.command("claude", "npx", ["acp-claude-code"])
   end
 end

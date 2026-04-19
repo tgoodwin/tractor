@@ -90,12 +90,12 @@ defmodule Tractor.ACP.Session do
 
   @impl true
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    case Jason.decode(line) do
-      {:ok, message} ->
-        {:noreply, handle_message(message, state)}
+    line = String.trim_leading(line)
 
-      {:error, reason} ->
-        {:noreply, fail_prompt(state, {:invalid_json, reason})}
+    if String.starts_with?(line, "{") do
+      handle_json_line(line, state)
+    else
+      {:noreply, state}
     end
   end
 
@@ -109,11 +109,20 @@ defmodule Tractor.ACP.Session do
 
   def handle_info({:prompt_timeout, _timeout_ref}, state), do: {:noreply, state}
 
+  defp handle_json_line(line, state) do
+    case Jason.decode(line) do
+      {:ok, message} ->
+        {:noreply, handle_message(message, state)}
+
+      {:error, reason} ->
+        {:noreply, fail_prompt(state, {:invalid_json, reason})}
+    end
+  end
+
   @impl true
   def terminate(_reason, state) do
-    close_port(state.port)
-    Process.sleep(500)
     terminate_os_process(state.os_pid)
+    close_port(state.port)
     :ok
   end
 
@@ -241,8 +250,8 @@ defmodule Tractor.ACP.Session do
   defp handle_message(%{"method" => "session/update", "params" => params}, state) do
     update = params["update"] || %{}
 
-    case {state.status, update["type"], get_in(update, ["content", "text"])} do
-      {:prompting, "agent_message_chunk", text} when is_binary(text) ->
+    case {state.status, agent_message_chunk_text(update)} do
+      {:prompting, text} when is_binary(text) ->
         %{state | buffer: [text | state.buffer]}
 
       _other ->
@@ -251,6 +260,21 @@ defmodule Tractor.ACP.Session do
   end
 
   defp handle_message(_message, state), do: state
+
+  defp agent_message_chunk_text(%{"type" => "agent_message_chunk", "content" => %{"text" => text}})
+       when is_binary(text) do
+    text
+  end
+
+  defp agent_message_chunk_text(%{
+         "sessionUpdate" => "agent_message_chunk",
+         "content" => %{"text" => text}
+       })
+       when is_binary(text) do
+    text
+  end
+
+  defp agent_message_chunk_text(_update), do: nil
 
   defp maybe_send_queued_prompt(%{queued_prompt: nil} = state), do: state
 
@@ -341,13 +365,59 @@ defmodule Tractor.ACP.Session do
   defp terminate_os_process(nil), do: :ok
 
   defp terminate_os_process(pid) do
-    if os_process_alive?(pid) do
-      System.cmd("kill", ["-TERM", Integer.to_string(pid)], stderr_to_stdout: true)
+    pids = descendant_pids(pid) ++ [pid]
+
+    signal_os_processes(pids, "-TERM")
+
+    unless wait_for_os_processes_exit(pids) do
+      signal_os_processes(pids, "-KILL")
+      wait_for_os_processes_exit(pids)
     end
 
     :ok
   rescue
     _error -> :ok
+  end
+
+  defp descendant_pids(pid) do
+    pid
+    |> child_pids()
+    |> Enum.flat_map(fn child_pid -> descendant_pids(child_pid) ++ [child_pid] end)
+  end
+
+  defp child_pids(pid) do
+    case System.cmd("pgrep", ["-P", Integer.to_string(pid)], stderr_to_stdout: true) do
+      {output, 0} ->
+        output
+        |> String.split()
+        |> Enum.map(&String.to_integer/1)
+
+      _other ->
+        []
+    end
+  rescue
+    _error -> []
+  end
+
+  defp signal_os_processes(pids, signal) do
+    Enum.each(pids, fn pid ->
+      try do
+        System.cmd("kill", [signal, Integer.to_string(pid)], stderr_to_stdout: true)
+      rescue
+        _error -> :ok
+      end
+    end)
+  end
+
+  defp wait_for_os_processes_exit(pids) do
+    Enum.any?(1..20, fn _attempt ->
+      if Enum.any?(pids, &os_process_alive?/1) do
+        Process.sleep(50)
+        false
+      else
+        true
+      end
+    end)
   end
 
   defp os_process_alive?(pid) do

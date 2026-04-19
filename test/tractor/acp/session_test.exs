@@ -63,6 +63,28 @@ defmodule Tractor.ACP.SessionTest do
     assert :ok = Session.stop(pid)
   end
 
+  test "ignores non-JSON provider stdout lines" do
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [{"TRACTOR_FAKE_ACP_MODE", "noisy_stdout"}]
+      )
+
+    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    assert :ok = Session.stop(pid)
+  end
+
+  test "ignores non-agent-message session updates" do
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [{"TRACTOR_FAKE_ACP_MODE", "tool_update"}]
+      )
+
+    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    assert :ok = Session.stop(pid)
+  end
+
   test "maps prompt timeout" do
     {:ok, pid} =
       Session.start_link(FakeAgent,
@@ -108,6 +130,37 @@ defmodule Tractor.ACP.SessionTest do
     assert eventually_port_count(ports_before)
   end
 
+  @tag :tmp_dir
+  test "stops provider child processes", %{tmp_dir: tmp_dir} do
+    child_pid_file = Path.join(tmp_dir, "child.pid")
+
+    on_exit(fn ->
+      if File.exists?(child_pid_file) do
+        child_pid_file
+        |> File.read!()
+        |> String.to_integer()
+        |> kill_os_process()
+      end
+    end)
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [
+          {"TRACTOR_FAKE_ACP_MODE", "spawn_child"},
+          {"TRACTOR_FAKE_ACP_CHILD_PID_FILE", child_pid_file}
+        ]
+      )
+
+    assert {:ok, "fake response: hello"} = Session.prompt(pid, "hello", 1_000)
+    child_pid = child_pid_file |> File.read!() |> String.to_integer()
+
+    assert os_process_alive?(child_pid)
+
+    assert :ok = Session.stop(pid)
+    assert eventually_os_process_gone?(child_pid)
+  end
+
   @tag :integration
   test "real gemini ACP round trip" do
     if System.get_env("TRACTOR_REAL_GEMINI") == "1" do
@@ -127,5 +180,32 @@ defmodule Tractor.ACP.SessionTest do
         false
       end
     end)
+  end
+
+  defp eventually_os_process_gone?(pid) do
+    Enum.any?(1..20, fn _attempt ->
+      if os_process_alive?(pid) do
+        Process.sleep(25)
+        false
+      else
+        true
+      end
+    end)
+  end
+
+  defp os_process_alive?(pid) do
+    case System.cmd("kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true) do
+      {_output, 0} -> true
+      _other -> false
+    end
+  rescue
+    _error -> false
+  end
+
+  defp kill_os_process(pid) do
+    System.cmd("kill", ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
+    :ok
+  rescue
+    _error -> :ok
   end
 end

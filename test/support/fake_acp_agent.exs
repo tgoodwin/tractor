@@ -5,8 +5,18 @@ defmodule Tractor.FakeACPAgent do
 
   def run do
     mode = System.get_env("TRACTOR_FAKE_ACP_MODE", "ok")
+    maybe_spawn_child(mode)
     loop(%{mode: mode, session_id: "fake-session"})
   end
+
+  defp maybe_spawn_child("spawn_child") do
+    sleep = System.find_executable("sleep")
+    port = Port.open({:spawn_executable, sleep}, [:binary, :exit_status, args: ["60"]])
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    File.write!(System.fetch_env!("TRACTOR_FAKE_ACP_CHILD_PID_FILE"), Integer.to_string(pid))
+  end
+
+  defp maybe_spawn_child(_mode), do: :ok
 
   defp loop(state) do
     case IO.read(:stdio, :line) do
@@ -68,6 +78,25 @@ defmodule Tractor.FakeACPAgent do
     send_delta(state.session_id, "partial before max turn")
     reply(message["id"], %{"stopReason" => "max_turn_requests"})
     state
+  end
+
+  defp handle_prompt(message, %{mode: "noisy_stdout"} = state) do
+    IO.write("INFO fake provider stdout log\n")
+    handle_prompt(message, %{state | mode: "ok"})
+  end
+
+  defp handle_prompt(message, %{mode: "tool_update"} = state) do
+    notify("session/update", %{
+      "sessionId" => state.session_id,
+      "update" => %{
+        "sessionUpdate" => "tool_call_update",
+        "content" => [
+          %{"type" => "content", "content" => %{"type" => "text", "text" => "tool output"}}
+        ]
+      }
+    })
+
+    handle_prompt(message, %{state | mode: "ok"})
   end
 
   defp handle_prompt(message, state) do

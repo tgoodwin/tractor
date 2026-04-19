@@ -50,9 +50,8 @@ defmodule Tractor.DotParser do
     graph
     |> collect_nodes()
     |> Enum.reduce_while({:ok, %{}}, fn node, {:ok, nodes} ->
-      with {:ok, normalized} <- normalize_node(node) do
-        {:cont, {:ok, Map.put(nodes, normalized.id, normalized)}}
-      else
+      case normalize_node(node) do
+        {:ok, normalized} -> {:cont, {:ok, Map.put(nodes, normalized.id, normalized)}}
         {:error, diagnostic} -> {:halt, {:error, diagnostic}}
       end
     end)
@@ -82,9 +81,8 @@ defmodule Tractor.DotParser do
     graph
     |> collect_edges()
     |> Enum.reduce_while({:ok, []}, fn edge, {:ok, edges} ->
-      with {:ok, normalized} <- normalize_edge(edge) do
-        {:cont, {:ok, [normalized | edges]}}
-      else
+      case normalize_edge(edge) do
+        {:ok, normalized} -> {:cont, {:ok, [normalized | edges]}}
         {:error, diagnostic} -> {:halt, {:error, diagnostic}}
       end
     end)

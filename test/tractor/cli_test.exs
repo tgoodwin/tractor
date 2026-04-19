@@ -60,7 +60,10 @@ defmodule Tractor.CLITest do
 
     validation_dot = Path.expand("../fixtures/dot/missing_provider.dot", __DIR__)
     tractor = Path.expand("tractor")
-    {_stdout, validation_code} = System.cmd(tractor, ["reap", validation_dot], stderr_to_stdout: true)
+
+    {_stdout, validation_code} =
+      System.cmd(tractor, ["reap", validation_dot], stderr_to_stdout: true)
+
     assert validation_code == 10
 
     failure_dot = Path.expand("../fixtures/dot/valid_linear.dot", __DIR__)
@@ -72,7 +75,10 @@ defmodule Tractor.CLITest do
     ]
 
     {_stdout, failure_code} =
-      System.cmd(tractor, ["reap", failure_dot, "--runs-dir", tmp_dir], env: env, stderr_to_stdout: true)
+      System.cmd(tractor, ["reap", failure_dot, "--runs-dir", tmp_dir],
+        env: env,
+        stderr_to_stdout: true
+      )
 
     assert failure_code == 20
   end
