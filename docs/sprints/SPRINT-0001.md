@@ -150,18 +150,18 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 - [x] `Tractor.Validator.validate/1` — start/exit cardinality, acyclic (`:digraph_utils.is_acyclic/1`), edge endpoint existence, codergen `llm_provider` presence + allowed value, reject unsupported attrs/handlers/graph directives listed in §4.3.
 - [x] Fixture set under `test/fixtures/dot/`: `valid_linear.dot`, `valid_three_agents.dot`, `cyclic.dot`, `no_start.dot`, `two_starts.dot`, `no_exit.dot`, `missing_provider.dot`, `unknown_provider.dot`, `rejected_handler.dot`, `edge_to_missing.dot`, `undirected.dot`.
 - [x] One assertion per fixture failure mode; parser tests for chained edges, inherited defaults, type override, duration coercion.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase C — ACP wrapper + fake-agent round-trip (day 2–4, ~7h, riskiest)
-- [ ] **2h spike:** read `lostbean/acpex` source; confirm callback shape, Port framing, and reachability of `session/prompt` + `session/update` + terminal turn. Decide: stay on ACPex or fall back to raw Port. Document the call in `docs/sprints/notes/acp-spike.md`.
-- [ ] `test/support/fake_acp_agent.exs` — standalone escript/Elixir script that speaks NDJSON JSON-RPC over stdio, supports `initialize`, `session/new`, `session/prompt` → emits 2–3 `session/update` deltas + `stopReason: "end_turn"`; can also be scripted to return errors/timeouts via env var.
-- [ ] `Tractor.AgentClient` behaviour (`start_session/2`, `prompt/3`, `stop/1`). Mox-defined for engine tests.
-- [ ] `Tractor.ACP.Session` GenServer (production impl of AgentClient). `trap_exit`, explicit per-call timeout default 5 min, state machine, `terminate/2` cleanup, OS-pid best-effort SIGTERM.
-- [ ] `Tractor.Agent` behaviour + `Gemini` / `Claude` / `Codex` adapters with env-override resolution.
-- [ ] **Integration tests (real `Tractor.ACP.Session` ↔ fake agent):** handshake, prompt→final-text round-trip, streaming delta accumulation, `stopReason` terminal, timeout failure, agent crash failure, `{:error, :max_turn_requests}` mapping.
-- [ ] **Port-leak assertion:** `length(:erlang.ports())` before/after each session test; 50 concurrent echo sessions all resolve with zero port delta.
-- [ ] `@tag :integration` manual test: one real `gemini --acp` round-trip. Skipped in CI.
-- [ ] **Checkpoint:** do not start Phase D until a fake-agent prompt cycle runs green through the real `Tractor.ACP.Session`. (This is the best single idea that came out of the critiques.)
+- [x] **2h spike:** read `lostbean/acpex` source; confirm callback shape, Port framing, and reachability of `session/prompt` + `session/update` + terminal turn. Decide: stay on ACPex or fall back to raw Port. Document the call in `docs/sprints/notes/acp-spike.md`.
+- [x] `test/support/fake_acp_agent.exs` — standalone escript/Elixir script that speaks NDJSON JSON-RPC over stdio, supports `initialize`, `session/new`, `session/prompt` → emits 2–3 `session/update` deltas + `stopReason: "end_turn"`; can also be scripted to return errors/timeouts via env var.
+- [x] `Tractor.AgentClient` behaviour (`start_session/2`, `prompt/3`, `stop/1`). Mox-defined for engine tests.
+- [x] `Tractor.ACP.Session` GenServer (production impl of AgentClient). `trap_exit`, explicit per-call timeout default 5 min, state machine, `terminate/2` cleanup, OS-pid best-effort SIGTERM.
+- [x] `Tractor.Agent` behaviour + `Gemini` / `Claude` / `Codex` adapters with env-override resolution.
+- [x] **Integration tests (real `Tractor.ACP.Session` ↔ fake agent):** handshake, prompt→final-text round-trip, streaming delta accumulation, `stopReason` terminal, timeout failure, agent crash failure, `{:error, :max_turn_requests}` mapping.
+- [x] **Port-leak assertion:** `length(:erlang.ports())` before/after each session test; 50 concurrent echo sessions all resolve with zero port delta.
+- [x] `@tag :integration` manual test: one real `gemini --acp` round-trip. Skipped in CI.
+- [x] **Checkpoint:** do not start Phase D until a fake-agent prompt cycle runs green through the real `Tractor.ACP.Session`. (This is the best single idea that came out of the critiques.)
 - [ ] Commit.
 
 ### Phase D — RunStore (day 4, ~3h — after Phase C so manifest shape follows real data)
