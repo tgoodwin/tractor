@@ -4,7 +4,7 @@ defmodule TractorWeb.RunLive.Show do
   use Phoenix.LiveView
 
   alias Tractor.{Run, RunBus}
-  alias TractorWeb.GraphRenderer
+  alias TractorWeb.{Format, GraphRenderer}
   alias TractorWeb.RunLive.Timeline
 
   embed_templates("../templates/run_live/*")
@@ -34,6 +34,7 @@ defmodule TractorWeb.RunLive.Show do
          socket
          |> assign(pipeline: pipeline, run_dir: run_dir, graph_svg: svg, node_states: node_states)
          |> push_graph_node_states(node_states)
+         |> push_all_graph_badges(pipeline, run_dir, node_states)
          |> select_node(selected)}
 
       {:error, _reason} ->
@@ -52,6 +53,7 @@ defmodule TractorWeb.RunLive.Show do
       socket
       |> assign(:node_states, node_states)
       |> push_graph_node_state(node_id, Map.get(node_states, node_id))
+      |> maybe_push_graph_badges(node_id, event["kind"])
       |> maybe_insert_selected_event(node_id, event)
 
     {:noreply, socket}
@@ -103,16 +105,21 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   defp read_status(run_dir, node_id) do
+    run_dir
+    |> read_status_json(node_id)
+    |> Map.get("status", "pending")
+    |> normalize_status()
+  end
+
+  defp read_status_json(run_dir, node_id) do
     path = Path.join([run_dir, node_id, "status.json"])
 
     if File.exists?(path) do
       path
       |> File.read!()
       |> Jason.decode!()
-      |> Map.get("status", "pending")
-      |> normalize_status()
     else
-      "pending"
+      %{}
     end
   end
 
@@ -141,6 +148,75 @@ defmodule TractorWeb.RunLive.Show do
 
   defp push_graph_node_state(socket, node_id, state) do
     push_event(socket, "graph:node_state", %{node_id: node_id, state: state})
+  end
+
+  defp push_all_graph_badges(socket, pipeline, run_dir, node_states) do
+    Enum.reduce(pipeline.nodes, socket, fn {node_id, _node}, socket ->
+      push_graph_badges(socket, node_id, run_dir, Map.get(node_states, node_id))
+    end)
+  end
+
+  defp maybe_push_graph_badges(socket, node_id, kind)
+       when kind in ["node_succeeded", "node_failed", "parallel_completed"] do
+    state = Map.get(socket.assigns.node_states, node_id)
+    push_graph_badges(socket, node_id, socket.assigns.run_dir, state)
+  end
+
+  defp maybe_push_graph_badges(socket, _node_id, _kind), do: socket
+
+  defp push_graph_badges(socket, node_id, run_dir, state) do
+    push_event(socket, "graph:badges", badge_payload(run_dir, node_id, state))
+  end
+
+  defp badge_payload(run_dir, node_id, state) do
+    status = read_status_json(run_dir, node_id)
+
+    %{
+      node_id: node_id,
+      state: state || "pending",
+      duration: duration_badge(run_dir, node_id, status),
+      tokens: token_badge(status)
+    }
+  end
+
+  defp duration_badge(run_dir, node_id, status) do
+    started_at = parse_time(status["started_at"]) || node_started_at(run_dir, node_id)
+    finished_at = parse_time(status["finished_at"])
+
+    if started_at && finished_at do
+      finished_at
+      |> DateTime.diff(started_at, :millisecond)
+      |> Format.duration_ms()
+    end
+  end
+
+  defp token_badge(status) do
+    case get_in(status, ["token_usage", "total_tokens"]) do
+      nil -> nil
+      tokens -> Format.token_count(tokens)
+    end
+  end
+
+  defp node_started_at(run_dir, node_id) do
+    run_dir
+    |> read_node_events(node_id)
+    |> Enum.find(&(&1["kind"] == "node_started"))
+    |> case do
+      nil -> nil
+      event -> parse_time(get_in(event, ["data", "started_at"])) || parse_time(event["ts"])
+    end
+  end
+
+  defp read_node_events(run_dir, node_id) do
+    path = Path.join([run_dir, node_id, "events.jsonl"])
+
+    if File.exists?(path) do
+      path
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+    else
+      []
+    end
   end
 
   defp normalize_status("ok"), do: "succeeded"

@@ -7,6 +7,8 @@ const GraphBoard = {
   mounted() {
     this.svg = this.el.querySelector("svg");
     if (!this.svg) return;
+    this.badgePayloads = new Map();
+    this.placeBadges = this.placeBadges.bind(this);
 
     if (window.svgPanZoom) {
       this.panZoom = window.svgPanZoom(this.svg, {
@@ -17,11 +19,14 @@ const GraphBoard = {
         center: true,
         minZoom: 0.2,
         maxZoom: 8,
-        dblClickZoomEnabled: false
+        dblClickZoomEnabled: false,
+        onZoom: this.placeBadges,
+        onPan: this.placeBadges
       });
     }
 
     this.el.addEventListener("dblclick", () => this.reset());
+    window.addEventListener("resize", this.placeBadges);
 
     this.svg.querySelectorAll("g.tractor-node[data-node-id]").forEach((node) => {
       node.addEventListener("click", (event) => {
@@ -38,9 +43,16 @@ const GraphBoard = {
     this.handleEvent("graph:selected", ({ node_id }) => {
       this.applySelected(node_id);
     });
+
+    this.handleEvent("graph:badges", (payload) => {
+      this.applyBadges(payload);
+    });
+
+    window.requestAnimationFrame(this.placeBadges);
   },
 
   destroyed() {
+    window.removeEventListener("resize", this.placeBadges);
     if (this.panZoom) this.panZoom.destroy();
   },
 
@@ -56,6 +68,9 @@ const GraphBoard = {
     if (!node) return;
     node.classList.remove(...nodeStates);
     if (state) node.classList.add(state);
+
+    const payload = this.badgePayloads.get(nodeId);
+    if (payload) this.applyBadges({ ...payload, state });
   },
 
   applySelected(nodeId) {
@@ -65,6 +80,71 @@ const GraphBoard = {
 
     const selected = this.findNode(nodeId);
     if (selected) selected.classList.add("is-selected");
+  },
+
+  placeBadges() {
+    if (!this.svg) return;
+
+    this.svg.querySelectorAll("g.tractor-node[data-node-id]").forEach((node) => {
+      const badge = this.ensureBadge(node);
+      if (!badge) return;
+
+      try {
+        const previousDisplay = badge.style.display;
+        badge.style.display = "none";
+        const box = node.getBBox();
+        badge.style.display = previousDisplay;
+        badge.setAttribute("transform", `translate(${box.x + box.width / 2} ${box.y - 8})`);
+      } catch (_error) {
+        badge.style.display = "";
+        badge.setAttribute("visibility", "hidden");
+      }
+    });
+  },
+
+  ensureBadge(node) {
+    let badge = node.querySelector(":scope > g.tractor-badges");
+    if (badge) return badge;
+
+    const svgNs = "http://www.w3.org/2000/svg";
+    badge = document.createElementNS(svgNs, "g");
+    badge.classList.add("tractor-badges");
+
+    const duration = document.createElementNS(svgNs, "text");
+    duration.classList.add("tractor-badge-duration");
+    duration.setAttribute("x", "0");
+    duration.setAttribute("y", "0");
+    duration.setAttribute("text-anchor", "middle");
+
+    const tokens = document.createElementNS(svgNs, "text");
+    tokens.classList.add("tractor-badge-tokens");
+    tokens.setAttribute("x", "0");
+    tokens.setAttribute("y", "12");
+    tokens.setAttribute("text-anchor", "middle");
+
+    badge.append(duration, tokens);
+    node.appendChild(badge);
+    return badge;
+  },
+
+  applyBadges({ node_id: nodeId, duration, tokens, state }) {
+    if (!nodeId) return;
+
+    const payload = { node_id: nodeId, duration, tokens, state };
+    this.badgePayloads.set(nodeId, payload);
+
+    const node = this.findNode(nodeId);
+    if (!node) return;
+
+    const badge = this.ensureBadge(node);
+    if (!badge) return;
+
+    badge.querySelector(".tractor-badge-duration").textContent = duration || "";
+    badge.querySelector(".tractor-badge-tokens").textContent = tokens || "";
+
+    const terminal = state === "succeeded" || state === "failed";
+    badge.classList.toggle("is-visible", terminal && Boolean(duration || tokens));
+    this.placeBadges();
   },
 
   findNode(nodeId) {

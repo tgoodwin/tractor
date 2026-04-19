@@ -318,16 +318,16 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] `handle_info/2` for live events: convert each ACP event to one or more `%Entry{}` and `stream_insert` into the selected node's timeline (only if `selected_node_id` matches).
 - [x] Scroll-position preservation hook (§5.7).
 - [x] LiveView tests: mount rebuilds timeline for selected node; stream insertion for live events; select_node rebuilds from disk for target node.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase F — SVG badges via `GraphBoard` hook (0.75 day)
 
-- [ ] Hook: after SVG mount, compute bbox for each `g.tractor-node` and append a `<g class="tractor-badges">` child containing empty `text` elements for duration + tokens.
-- [ ] `RunLive.Show.handle_info/2` on terminal lifecycle events reads the node's `status.json` (or in-memory `node_states`) and pushes `graph:badges` to the hook with `{node_id, duration, tokens}`.
-- [ ] Hook's `applyBadges` fills in text content and toggles visibility based on node state.
-- [ ] Badges have `pointer-events: none` so clicks pass through to the node.
-- [ ] Badge re-placement triggers: initial mount (rAF), window resize, pan/zoom events (optional — they transform with the SVG so re-placement isn't needed unless text scaling becomes wonky).
-- [ ] Visual check: parallel_audit run shows 3 branches with 3 different token magnitudes formatted distinctly (e.g., `412`, `28k`, `1.2M`).
+- [x] Hook: after SVG mount, compute bbox for each `g.tractor-node` and append a `<g class="tractor-badges">` child containing empty `text` elements for duration + tokens.
+- [x] `RunLive.Show.handle_info/2` on terminal lifecycle events reads the node's `status.json` (or in-memory `node_states`) and pushes `graph:badges` to the hook with `{node_id, duration, tokens}`.
+- [x] Hook's `applyBadges` fills in text content and toggles visibility based on node state.
+- [x] Badges have `pointer-events: none` so clicks pass through to the node.
+- [x] Badge re-placement triggers: initial mount (rAF), window resize, pan/zoom events (optional — they transform with the SVG so re-placement isn't needed unless text scaling becomes wonky).
+- [x] Visual check: parallel_audit run shows 3 branches with 3 different token magnitudes formatted distinctly (e.g., `412`, `28k`, `1.2M`).
 - [ ] Commit.
 
 ### Phase G — Polish, a11y, demo, merge (0.5 day)

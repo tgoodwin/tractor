@@ -405,6 +405,26 @@ summary {
   stroke-width: 3;
 }
 
+.tractor-badges {
+  display: none;
+  pointer-events: none;
+  font-family: var(--mono-font);
+  font-size: 10px;
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.tractor-badges.is-visible {
+  display: block;
+}
+
+.tractor-badge-tokens {
+  fill: var(--tone-usage);
+}
+
 @keyframes pulse-node {
   0%,
   100% {

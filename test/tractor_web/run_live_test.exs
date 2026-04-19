@@ -132,6 +132,39 @@ defmodule TractorWeb.RunLiveTest do
     assert_push_event(view, "graph:node_state", %{node_id: "exit", state: "succeeded"})
   end
 
+  @tag :tmp_dir
+  test "terminal lifecycle events push graph badge payloads", %{
+    conn: conn,
+    run_id: run_id,
+    run_dir: run_dir
+  } do
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+
+    node_dir = Path.join(run_dir, "start")
+    File.mkdir_p!(node_dir)
+
+    :ok = RunEvents.emit(run_id, "start", :node_started, %{"started_at" => "2026-04-19T10:00:00Z"})
+
+    File.write!(
+      Path.join(node_dir, "status.json"),
+      Jason.encode!(%{
+        "status" => "ok",
+        "started_at" => "2026-04-19T10:00:00Z",
+        "finished_at" => "2026-04-19T10:00:02Z",
+        "token_usage" => %{"total_tokens" => 28_000}
+      })
+    )
+
+    :ok = RunEvents.emit(run_id, "start", :node_succeeded, %{"status" => "ok"})
+
+    assert_push_event(view, "graph:badges", %{
+      node_id: "start",
+      state: "succeeded",
+      duration: "2s",
+      tokens: "28k"
+    })
+  end
+
   defp dot_file(tmp_dir) do
     path = Path.join(tmp_dir, "live.dot")
 
