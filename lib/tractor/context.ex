@@ -29,8 +29,12 @@ defmodule Tractor.Context do
     Map.merge(context, updates)
   end
 
-  defp json_safe?(value) when is_pid(value) or is_reference(value) or is_function(value), do: false
-  defp json_safe?(value) when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value), do: true
+  defp json_safe?(value) when is_pid(value) or is_reference(value) or is_function(value),
+    do: false
+
+  defp json_safe?(value)
+       when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value),
+       do: true
 
   defp json_safe?(value) when is_list(value) do
     Enum.all?(value, &json_safe?/1)

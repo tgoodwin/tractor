@@ -338,7 +338,10 @@ defmodule Tractor.ACP.Session do
   end
 
   defp chunk_text(%{"content" => %{"text" => text}}) when is_binary(text), do: text
-  defp chunk_text(%{"content" => %{"type" => "text", "text" => text}}) when is_binary(text), do: text
+
+  defp chunk_text(%{"content" => %{"type" => "text", "text" => text}}) when is_binary(text),
+    do: text
+
   defp chunk_text(%{"content" => text}) when is_binary(text), do: text
   defp chunk_text(%{"text" => text}) when is_binary(text), do: text
   defp chunk_text(_update), do: ""

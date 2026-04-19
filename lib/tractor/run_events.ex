@@ -64,5 +64,4 @@ defmodule Tractor.RunEvents do
         end
     end
   end
-
 end

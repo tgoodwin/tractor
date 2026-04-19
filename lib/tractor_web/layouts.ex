@@ -3,5 +3,5 @@ defmodule TractorWeb.Layouts do
 
   use Phoenix.Component
 
-  embed_templates "templates/layouts/*"
+  embed_templates("templates/layouts/*")
 end

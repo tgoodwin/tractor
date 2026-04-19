@@ -178,6 +178,7 @@ defmodule Tractor.ACP.SessionTest do
   test "real gemini ACP round trip" do
     if System.get_env("TRACTOR_REAL_GEMINI") == "1" do
       {:ok, pid} = Session.start_link(Tractor.Agent.Gemini, cwd: File.cwd!())
+
       assert {:ok, %Turn{response_text: response}} =
                Session.prompt(pid, "Reply with the single word tractor.", 120_000)
 
@@ -230,11 +231,11 @@ defmodule Tractor.ACP.SessionTest do
   end
 
   defp eventually_port_count(expected) do
-    Enum.any?(1..20, fn _attempt ->
+    Enum.any?(1..100, fn _attempt ->
       if length(:erlang.ports()) == expected do
         true
       else
-        Process.sleep(25)
+        Process.sleep(50)
         false
       end
     end)
@@ -266,5 +267,4 @@ defmodule Tractor.ACP.SessionTest do
   rescue
     _error -> :ok
   end
-
 end

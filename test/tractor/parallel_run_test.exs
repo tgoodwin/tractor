@@ -90,7 +90,9 @@ defmodule Tractor.ParallelRunTest do
   end
 
   @tag :tmp_dir
-  test "one branch can fail and fan-in still consolidates successful branches", %{tmp_dir: tmp_dir} do
+  test "one branch can fail and fan-in still consolidates successful branches", %{
+    tmp_dir: tmp_dir
+  } do
     stub(Tractor.AgentClientMock, :prompt, fn
       _pid, "b", _timeout -> {:error, :boom}
       _pid, prompt, _timeout -> {:ok, %Tractor.ACP.Turn{response_text: "ok #{prompt}"}}

@@ -13,6 +13,28 @@ Run a DOT pipeline:
 ./bin/tractor reap examples/three_agents.dot
 ```
 
+Run with the local LiveView observer:
+
+```sh
+./bin/tractor reap --serve examples/parallel_audit.dot
+```
+
+`--serve` starts an HTTP observer on `127.0.0.1`, prints the run URL before the
+first node starts, runs the pipeline, then keeps the page available for
+post-mortem inspection until Ctrl-C.
+
+Use an explicit loopback port:
+
+```sh
+./bin/tractor reap --serve --port 4040 examples/parallel_audit.dot
+```
+
+Suppress browser auto-open:
+
+```sh
+./bin/tractor reap --serve --no-open examples/parallel_audit.dot
+```
+
 Write runs to a specific directory:
 
 ```sh
@@ -26,6 +48,21 @@ Set a prompt timeout:
 ```
 
 Supported duration suffixes are `ms`, `s`, `m`, and `h`.
+
+## Observer Requirements
+
+The observer renders DOT through Graphviz at runtime. Install `dot` before using
+`--serve`:
+
+```sh
+brew install graphviz
+# or
+sudo apt install graphviz
+```
+
+The page shows the DOT graph as SVG with node states, and a side panel for the
+selected node's prompt, response, ACP message chunks, reasoning trace from ACP,
+tool calls, and stderr.
 
 ## Provider Overrides
 

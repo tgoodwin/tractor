@@ -1,0 +1,48 @@
+digraph {
+  graph [goal="Compare three audit perspectives on a tiny Elixir function"]
+
+  start [shape=Mdiamond]
+  audit [shape=component, max_parallel=3]
+
+  claude_audit [
+    shape=box,
+    llm_provider=claude,
+    prompt="Audit this tiny Elixir function for correctness: def add(a, b), do: a + b"
+  ]
+
+  codex_audit [
+    shape=box,
+    llm_provider=codex,
+    prompt="Audit this tiny Elixir function for maintainability: def add(a, b), do: a + b"
+  ]
+
+  gemini_audit [
+    shape=box,
+    llm_provider=gemini,
+    prompt="Audit this tiny Elixir function for edge cases: def add(a, b), do: a + b"
+  ]
+
+  consolidate [
+    shape=tripleoctagon,
+    llm_provider=claude,
+    prompt="Consolidate these audit notes:\n{{branch_responses}}"
+  ]
+
+  finalize [
+    shape=box,
+    llm_provider=claude,
+    prompt="Phrase a short recommendation based on this consolidation:\n{{consolidate}}"
+  ]
+
+  exit [shape=Msquare]
+
+  start -> audit
+  audit -> claude_audit
+  audit -> codex_audit
+  audit -> gemini_audit
+  claude_audit -> consolidate
+  codex_audit -> consolidate
+  gemini_audit -> consolidate
+  consolidate -> finalize
+  finalize -> exit
+}

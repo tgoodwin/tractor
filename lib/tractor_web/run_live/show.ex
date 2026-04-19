@@ -6,7 +6,7 @@ defmodule TractorWeb.RunLive.Show do
   alias Tractor.{Run, RunBus}
   alias TractorWeb.GraphRenderer
 
-  embed_templates "../templates/run_live/*"
+  embed_templates("../templates/run_live/*")
 
   @impl true
   def mount(%{"run_id" => run_id}, _session, socket) do
@@ -70,7 +70,11 @@ defmodule TractorWeb.RunLive.Show do
     |> stream(:thought_chunks, event_stream(events, "agent_thought_chunk"), reset: true)
   end
 
-  defp maybe_insert_selected_event(%{assigns: %{selected_node_id: node_id}} = socket, node_id, event) do
+  defp maybe_insert_selected_event(
+         %{assigns: %{selected_node_id: node_id}} = socket,
+         node_id,
+         event
+       ) do
     case event["kind"] do
       "agent_message_chunk" ->
         stream_insert(socket, :message_chunks, stream_item(event))
@@ -112,10 +116,18 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   defp update_node_state(states, node_id, "node_started"), do: Map.put(states, node_id, "running")
-  defp update_node_state(states, node_id, "node_succeeded"), do: Map.put(states, node_id, "succeeded")
+
+  defp update_node_state(states, node_id, "node_succeeded"),
+    do: Map.put(states, node_id, "succeeded")
+
   defp update_node_state(states, node_id, "node_failed"), do: Map.put(states, node_id, "failed")
-  defp update_node_state(states, node_id, "parallel_started"), do: Map.put(states, node_id, "running")
-  defp update_node_state(states, node_id, "parallel_completed"), do: Map.put(states, node_id, "succeeded")
+
+  defp update_node_state(states, node_id, "parallel_started"),
+    do: Map.put(states, node_id, "running")
+
+  defp update_node_state(states, node_id, "parallel_completed"),
+    do: Map.put(states, node_id, "succeeded")
+
   defp update_node_state(states, _node_id, _kind), do: states
 
   defp normalize_status("ok"), do: "succeeded"
@@ -176,7 +188,11 @@ defmodule TractorWeb.RunLive.Show do
 
   defp apply_node_states(svg, node_states) do
     Enum.reduce(node_states, svg, fn {node_id, state}, svg ->
-      Regex.replace(~r/(<g[^>]*class="[^"]*)(?="[^>]*data-node-id="#{Regex.escape(node_id)}")/, svg, "\\1 #{state}")
+      Regex.replace(
+        ~r/(<g[^>]*class="[^"]*)(?="[^>]*data-node-id="#{Regex.escape(node_id)}")/,
+        svg,
+        "\\1 #{state}"
+      )
     end)
   end
 end

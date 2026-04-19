@@ -9,17 +9,18 @@ defmodule TractorWeb.Endpoint do
     signing_salt: "tractor"
   ]
 
-  socket "/live", Phoenix.LiveView.Socket,
+  socket("/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: false
+  )
 
-  plug Plug.Static,
+  plug(Plug.Static,
     at: "/",
-    from: :tractor,
+    from: "priv/static",
     gzip: false,
     only: ~w(assets favicon.ico)
+  )
 
-  plug Plug.Session, @session_options
-  plug TractorWeb.Router
-
+  plug(Plug.Session, @session_options)
+  plug(TractorWeb.Router)
 end

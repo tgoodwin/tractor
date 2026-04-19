@@ -83,6 +83,68 @@ defmodule Tractor.CLITest do
     assert failure_code == 20
   end
 
+  @tag :tmp_dir
+  test "escript serve prints URL and serves LiveView shell", %{tmp_dir: tmp_dir} do
+    dot = Path.join(tmp_dir, "serve.dot")
+
+    File.write!(dot, """
+    digraph {
+      start [shape=Mdiamond]
+      exit [shape=Msquare]
+      start -> exit
+    }
+    """)
+
+    assert {_output, 0} = System.cmd("mix", ["escript.build"])
+    tractor = Path.expand("bin/tractor")
+
+    port =
+      Port.open({:spawn_executable, tractor}, [
+        :binary,
+        :exit_status,
+        {:line, 4096},
+        {:args, ["reap", "--serve", "--port", "0", "--no-open", "--runs-dir", tmp_dir, dot]},
+        :stderr_to_stdout
+      ])
+
+    {:os_pid, os_pid} = Port.info(port, :os_pid)
+    url = wait_for_url(port)
+
+    try do
+      assert url =~ "/runs/"
+      assert {html, 0} = System.cmd("curl", ["-fsS", url])
+      assert html =~ "tractor-shell"
+      asset_url = URI.merge(url, "/assets/app.css") |> URI.to_string()
+      assert {css, 0} = System.cmd("curl", ["-fsS", asset_url])
+      assert css =~ "tractor-shell"
+    after
+      System.cmd("kill", ["-TERM", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    end
+  end
+
+  @tag :tmp_dir
+  test "--serve without dot on PATH returns actionable exit 2", %{tmp_dir: tmp_dir} do
+    dot = Path.join(tmp_dir, "serve.dot")
+
+    File.write!(dot, """
+    digraph {
+      start [shape=Mdiamond]
+      exit [shape=Msquare]
+      start -> exit
+    }
+    """)
+
+    original_path = System.get_env("PATH")
+    System.put_env("PATH", tmp_dir)
+
+    try do
+      assert {2, "", message} = Tractor.CLI.run(["reap", "--serve", dot])
+      assert message =~ "install graphviz"
+    after
+      if original_path, do: System.put_env("PATH", original_path), else: System.delete_env("PATH")
+    end
+  end
+
   defp fake_agent_wrapper!(tmp_dir) do
     path = Path.join(tmp_dir, "fake-acp-agent")
     elixir = System.find_executable("elixir")
@@ -96,5 +158,20 @@ defmodule Tractor.CLITest do
 
     File.chmod!(path, 0o755)
     path
+  end
+
+  defp wait_for_url(port) do
+    receive do
+      {^port, {:data, {:eol, line}}} ->
+        case Regex.run(~r{https?://127\.0\.0\.1:\d+/runs/\S+}, line) do
+          [url] -> url
+          _other -> wait_for_url(port)
+        end
+
+      {^port, {:exit_status, status}} ->
+        flunk("serve process exited before URL with status #{status}")
+    after
+      5_000 -> flunk("serve process did not print URL")
+    end
   end
 end

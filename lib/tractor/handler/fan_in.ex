@@ -6,6 +6,7 @@ defmodule Tractor.Handler.FanIn do
   @behaviour Tractor.Handler
 
   alias Tractor.ACP.Turn
+  alias Tractor.Handler.Codergen
   alias Tractor.Node
 
   @status_rank %{"success" => 3, "partial_success" => 2, "failed" => 1}
@@ -46,9 +47,14 @@ defmodule Tractor.Handler.FanIn do
   end
 
   defp fetch_results(context) do
-    case Enum.find(context, fn {key, _value} -> String.starts_with?(to_string(key), "parallel.results.") end) do
-      {key, results} when is_list(results) -> {:ok, String.replace_prefix(key, "parallel.results.", ""), results}
-      _other -> {:error, :all_branches_failed}
+    case Enum.find(context, fn {key, _value} ->
+           String.starts_with?(to_string(key), "parallel.results.")
+         end) do
+      {key, results} when is_list(results) ->
+        {:ok, String.replace_prefix(key, "parallel.results.", ""), results}
+
+      _other ->
+        {:error, :all_branches_failed}
     end
   end
 
@@ -58,7 +64,7 @@ defmodule Tractor.Handler.FanIn do
       |> Kernel.||(summary)
       |> render_branch_prompt(results, summary)
 
-    Tractor.Handler.Codergen.run(%{node | prompt: prompt}, context, run_dir)
+    Codergen.run(%{node | prompt: prompt}, context, run_dir)
     |> case do
       {:ok, response, updates} ->
         {:ok, response, merge_fan_in_updates(updates, response, best)}
@@ -69,7 +75,8 @@ defmodule Tractor.Handler.FanIn do
   end
 
   defp render_branch_prompt(prompt, results, summary) do
-    Enum.reduce(results, String.replace(prompt, "{{branch_responses}}", summary), fn result, prompt ->
+    Enum.reduce(results, String.replace(prompt, "{{branch_responses}}", summary), fn result,
+                                                                                     prompt ->
       String.replace(prompt, "{{branch:#{result["branch_id"]}}}", inspect(result["outcome"]))
     end)
   end

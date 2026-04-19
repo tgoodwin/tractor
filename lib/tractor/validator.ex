@@ -200,7 +200,9 @@ defmodule Tractor.Validator do
 
         case discover_parallel_block(pipeline, parallel_id) do
           {:ok, fan_in_id, branch_ids} ->
-            diagnostics = validate_single_node_branches(diagnostics, pipeline, branch_ids, fan_in_id)
+            diagnostics =
+              validate_single_node_branches(diagnostics, pipeline, branch_ids, fan_in_id)
+
             {diagnostics, Map.update(matches, fan_in_id, [parallel_id], &[parallel_id | &1])}
 
           {:error, code} ->
@@ -214,12 +216,18 @@ defmodule Tractor.Validator do
           diagnostics
 
         [] ->
-          diagnostic(diagnostics, :fan_in_without_parallel, "parallel.fan_in has no matching upstream parallel",
+          diagnostic(
+            diagnostics,
+            :fan_in_without_parallel,
+            "parallel.fan_in has no matching upstream parallel",
             node_id: fan_in_id
           )
 
         _many ->
-          diagnostic(diagnostics, :multiple_upstream_parallel, "parallel.fan_in has multiple upstream parallel nodes",
+          diagnostic(
+            diagnostics,
+            :multiple_upstream_parallel,
+            "parallel.fan_in has multiple upstream parallel nodes",
             node_id: fan_in_id
           )
       end
@@ -227,6 +235,7 @@ defmodule Tractor.Validator do
   end
 
   defp validate_join_policy(diagnostics, %Node{id: node_id} = node) do
+    # credo:disable-for-next-line Credo.Check.Design.TagTODO
     # TODO(sprint-3): join_policy=first_success
     maybe_add(
       diagnostics,
@@ -282,6 +291,7 @@ defmodule Tractor.Validator do
     Enum.reduce(branch_ids, diagnostics, fn branch_id, diagnostics ->
       outgoing = Enum.filter(edges, &(&1.from == branch_id))
 
+      # credo:disable-for-next-line Credo.Check.Design.TagTODO
       # TODO(sprint-3): sub-DAG branches
       maybe_add(
         diagnostics,
@@ -311,7 +321,13 @@ defmodule Tractor.Validator do
         do_reachable_fan_ins(nodes, edges, rest, seen, acc)
 
       get_in(nodes, [node_id, Access.key(:type)]) == "parallel.fan_in" ->
-        do_reachable_fan_ins(nodes, edges, rest, MapSet.put(seen, node_id), MapSet.put(acc, node_id))
+        do_reachable_fan_ins(
+          nodes,
+          edges,
+          rest,
+          MapSet.put(seen, node_id),
+          MapSet.put(acc, node_id)
+        )
 
       true ->
         next = outgoing_to_existing(edges, nodes, node_id)
@@ -329,7 +345,9 @@ defmodule Tractor.Validator do
   end
 
   defp parallel_message(:no_common_fan_in), do: "parallel node has no common downstream fan-in"
-  defp parallel_message(:multiple_common_fan_ins), do: "parallel node has multiple common downstream fan-ins"
+
+  defp parallel_message(:multiple_common_fan_ins),
+    do: "parallel node has multiple common downstream fan-ins"
 
   defp add_attr_diagnostics(diagnostics, %Pipeline{graph_attrs: graph_attrs, edges: edges}) do
     diagnostics =

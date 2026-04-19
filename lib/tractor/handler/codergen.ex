@@ -38,7 +38,6 @@ defmodule Tractor.Handler.Codergen do
              stderr_log: stderr_log,
              event_sink: event_sink
            ) do
-
       case agent_client.prompt(session, prompt, timeout) do
         {:ok, turn} ->
           :ok = agent_client.stop(session)

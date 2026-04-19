@@ -11,37 +11,37 @@ Deliver two co-dependent things in one sprint because they share an event substr
 
 ## 2. Goals
 
-- [ ] `tractor reap --serve PATH` boots Phoenix/LiveView bound to `127.0.0.1`, prints the URL to stderr **before the first node starts**, runs the pipeline, then keeps serving after completion for post-mortem inspection. Ctrl-C is the clean shutdown.
-- [ ] LiveView renders the DOT-derived graph as clickable SVG with node states: `pending`, `running`, `succeeded`, `failed`. Multiple `running` nodes visible at once during a parallel block.
-- [ ] Clicking a node shows: prompt, response, ordered ACP message chunks, ordered ACP thought chunks, tool calls grouped by `toolCallId` with updates in arrival order, and tailed `stderr.log`.
-- [ ] `Tractor.ACP.Session` captures `agent_message_chunk`, `agent_thought_chunk`, `tool_call`, `tool_call_update` in arrival order; exposes a structured `%Tractor.ACP.Turn{}` as the handler-facing return shape.
-- [ ] Every node writes an append-only `<run_dir>/<node_id>/events.jsonl` stream; `RunEvents.emit/4` writes disk first, then broadcasts to `Phoenix.PubSub`.
-- [ ] `RunStore` exposes explicit node-lifecycle markers (`mark_node_pending/running/succeeded/failed`) so a late-opening browser can rebuild full node state from disk alone.
-- [ ] `Tractor.Runner` moves from single-active to multi-active coordination while preserving deterministic top-level traversal (at most one active node outside a parallel region).
-- [ ] `shape=component` parses and executes as the `parallel` handler; `shape=tripleoctagon` as `parallel.fan_in`.
-- [ ] Parallel branches receive **isolated, JSON-safe context clones**; branch mutations never leak back into parent context.
-- [ ] Branch concurrency is bounded by `max_parallel` (default `4`, attribute override).
-- [ ] `join_policy=wait_all` is implemented with **spec-aligned partial-success semantics**: all-branches-succeed → success; ≥1 succeed and ≥1 fail → partial_success (fan-in still runs); all fail → fail.
-- [ ] Fan-in handler consolidates branch results under the spec keys `parallel.results.<parallel_node_id>` and writes `parallel.fan_in.best_id` + `parallel.fan_in.best_outcome`; selection heuristic: status rank desc, then score desc, then lexical branch id.
+- [x] `tractor reap --serve PATH` boots Phoenix/LiveView bound to `127.0.0.1`, prints the URL to stderr **before the first node starts**, runs the pipeline, then keeps serving after completion for post-mortem inspection. Ctrl-C is the clean shutdown.
+- [x] LiveView renders the DOT-derived graph as clickable SVG with node states: `pending`, `running`, `succeeded`, `failed`. Multiple `running` nodes visible at once during a parallel block.
+- [x] Clicking a node shows: prompt, response, ordered ACP message chunks, ordered ACP thought chunks, tool calls grouped by `toolCallId` with updates in arrival order, and tailed `stderr.log`.
+- [x] `Tractor.ACP.Session` captures `agent_message_chunk`, `agent_thought_chunk`, `tool_call`, `tool_call_update` in arrival order; exposes a structured `%Tractor.ACP.Turn{}` as the handler-facing return shape.
+- [x] Every node writes an append-only `<run_dir>/<node_id>/events.jsonl` stream; `RunEvents.emit/4` writes disk first, then broadcasts to `Phoenix.PubSub`.
+- [x] `RunStore` exposes explicit node-lifecycle markers (`mark_node_pending/running/succeeded/failed`) so a late-opening browser can rebuild full node state from disk alone.
+- [x] `Tractor.Runner` moves from single-active to multi-active coordination while preserving deterministic top-level traversal (at most one active node outside a parallel region).
+- [x] `shape=component` parses and executes as the `parallel` handler; `shape=tripleoctagon` as `parallel.fan_in`.
+- [x] Parallel branches receive **isolated, JSON-safe context clones**; branch mutations never leak back into parent context.
+- [x] Branch concurrency is bounded by `max_parallel` (default `4`, attribute override).
+- [x] `join_policy=wait_all` is implemented with **spec-aligned partial-success semantics**: all-branches-succeed → success; ≥1 succeed and ≥1 fail → partial_success (fan-in still runs); all fail → fail.
+- [x] Fan-in handler consolidates branch results under the spec keys `parallel.results.<parallel_node_id>` and writes `parallel.fan_in.best_id` + `parallel.fan_in.best_outcome`; selection heuristic: status rank desc, then score desc, then lexical branch id.
 - [ ] Acceptance DOT: `examples/parallel_audit.dot` = `start → audit [shape=component] → 3 codergen branches (claude/codex/gemini) → consolidate [shape=tripleoctagon] → finalize (codergen) → exit`. Runs end-to-end via `./bin/tractor reap --serve`. Browser shows live concurrent branches + streaming reasoning + clickable post-mortem.
-- [ ] **Sprint-1 regression gate:** `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0, identical stderr shape, no Phoenix booted.
+- [x] **Sprint-1 regression gate:** `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0, identical stderr shape, no Phoenix booted.
 - [ ] Branch merged to `main` with green CI and a real laptop demo.
 
 ## 3. Non-goals (push back hard)
 
-- [ ] **Auth / multi-user UI.** 127.0.0.1 binding only. No login, no session middleware, no user model. If asked, refuse — threat model is "user's own laptop."
-- [ ] **UI control commands.** Read-only viewer. No cancel, no retry, no step, no re-prompt, no edit-and-rerun. Click handlers are inspection-only.
-- [ ] **Crash-resume / checkpoints.** Still deferred. Parallel makes resume harder (branch state) — explicitly don't touch.
-- [ ] **Other spec handlers.** `conditional`, `wait.human`, `tool`, `stack.manager_loop` stay rejected by the validator with the existing diagnostic codes.
-- [ ] **Conditional edges, edge `condition=` attr.** Edge selection inside a single branch remains sprint-1's weight-desc + lexical-tie-break.
-- [ ] **`join_policy=first_success` (and other policies).** Requires in-flight ACP cancellation, which is its own sub-project (can't cleanly cancel an ACP prompt turn without corrupting JSON-RPC framing). Validator rejects with `:unsupported_join_policy`. Sprint-3 seed.
-- [ ] **Sub-DAG branches.** A branch must be exactly one node for sprint 2. Validator rejects multi-node branches with `:nested_branches_unsupported`. Sprint-3 seed.
-- [ ] **Per-branch retries.** Retry attr on branches is ignored; a branch failure contributes partial-success semantics, nothing else.
-- [ ] **Persisted run history browser.** UI shows the *current* run only. No `/runs` index, no run picker, no diff view. Sprint-3+ if at all.
-- [ ] **WebSockets / endpoint exposed beyond localhost.** Hardcoded `{127, 0, 0, 1}`. No `0.0.0.0`, no nginx config, no TLS.
-- [ ] **Node asset pipeline (Tailwind / esbuild / npm).** Plain static `app.css`, 10-line `app.js` that imports LiveView. Nothing more.
-- [ ] **Yaks / `tractor sow` / `tractor ls` / `tractor logs`.** Sprint-3+.
-- [ ] **Hot code reload, `mix release`** (unless Phase A spike forces the fallback).
+- [x] **Auth / multi-user UI.** 127.0.0.1 binding only. No login, no session middleware, no user model. If asked, refuse — threat model is "user's own laptop."
+- [x] **UI control commands.** Read-only viewer. No cancel, no retry, no step, no re-prompt, no edit-and-rerun. Click handlers are inspection-only.
+- [x] **Crash-resume / checkpoints.** Still deferred. Parallel makes resume harder (branch state) — explicitly don't touch.
+- [x] **Other spec handlers.** `conditional`, `wait.human`, `tool`, `stack.manager_loop` stay rejected by the validator with the existing diagnostic codes.
+- [x] **Conditional edges, edge `condition=` attr.** Edge selection inside a single branch remains sprint-1's weight-desc + lexical-tie-break.
+- [x] **`join_policy=first_success` (and other policies).** Requires in-flight ACP cancellation, which is its own sub-project (can't cleanly cancel an ACP prompt turn without corrupting JSON-RPC framing). Validator rejects with `:unsupported_join_policy`. Sprint-3 seed.
+- [x] **Sub-DAG branches.** A branch must be exactly one node for sprint 2. Validator rejects multi-node branches with `:nested_branches_unsupported`. Sprint-3 seed.
+- [x] **Per-branch retries.** Retry attr on branches is ignored; a branch failure contributes partial-success semantics, nothing else.
+- [x] **Persisted run history browser.** UI shows the *current* run only. No `/runs` index, no run picker, no diff view. Sprint-3+ if at all.
+- [x] **WebSockets / endpoint exposed beyond localhost.** Hardcoded `{127, 0, 0, 1}`. No `0.0.0.0`, no nginx config, no TLS.
+- [x] **Node asset pipeline (Tailwind / esbuild / npm).** Plain static `app.css`, 10-line `app.js` that imports LiveView. Nothing more.
+- [x] **Yaks / `tractor sow` / `tractor ls` / `tractor logs`.** Sprint-3+.
+- [x] **Hot code reload, `mix release`** (unless Phase A spike forces the fallback).
 
 ## 4. Architecture — the opinionated calls
 
@@ -223,10 +223,10 @@ Add to `Tractor.RunStore`:
 
 Extend `reap`:
 
-- [ ] `--serve` → boot `TractorWeb.Endpoint` under `WebSup` **before** the run starts, print URL to stderr, then run the pipeline, then on completion print `Serving post-mortem at <URL> (Ctrl-C to exit)` and block on `:timer.sleep(:infinity)`. Trap SIGINT → stop endpoint → `System.halt(0)`.
-- [ ] `--port N` → loopback port for `--serve`. Default `0` (ephemeral); resolve actual port via endpoint info.
-- [ ] `--no-open` → suppress auto-open. Without it, `--serve` attempts `System.cmd("open", [url])` on macOS, `xdg-open` on Linux, `Task.start` wrapped so failure is silent.
-- [ ] Without `--serve`, behavior is identical to sprint 1 — no Phoenix is booted, no port is opened.
+- [x] `--serve` → boot `TractorWeb.Endpoint` under `WebSup` **before** the run starts, print URL to stderr, then run the pipeline, then on completion print `Serving post-mortem at <URL> (Ctrl-C to exit)` and block on `:timer.sleep(:infinity)`. Trap SIGINT → stop endpoint → `System.halt(0)`.
+- [x] `--port N` → loopback port for `--serve`. Default `0` (ephemeral); resolve actual port via endpoint info.
+- [x] `--no-open` → suppress auto-open. Without it, `--serve` attempts `System.cmd("open", [url])` on macOS, `xdg-open` on Linux, `Task.start` wrapped so failure is silent.
+- [x] Without `--serve`, behavior is identical to sprint 1 — no Phoenix is booted, no port is opened.
 
 **Exit codes** stay sprint-1 (`0`/`2`/`3`/`10`/`20`/`130`). SIGINT under `--serve` exits `0` (graceful post-mortem shutdown).
 
@@ -333,17 +333,17 @@ Extend `reap`:
   - [x] `select_node` loads prompt/response/chunks from disk.
   - [x] Late mount (run already complete) rebuilds full UI state from disk.
 - [x] `dot` probe: on endpoint startup, fail with actionable error if `dot` not on PATH.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase F — CLI `--serve` + acceptance + merge gate (day 8–10, ~5h)
 
-- [ ] Add `--serve`, `--port`, `--no-open` to `Tractor.CLI` `OptionParser` strict list.
-- [ ] `--serve` flow: ensure Phoenix deps started, probe for `dot`, start `TractorWeb.Endpoint` under `WebSup` with resolved loopback port, print URL to stderr BEFORE starting the run, start the run, await result, print run dir to stdout on success, print "Serving post-mortem at <URL> (Ctrl-C to exit)" to stderr, block on `:timer.sleep(:infinity)`. Trap SIGINT → stop endpoint → `System.halt(0)`.
-- [ ] `--no-open` absent: `Task.start` wrapping `System.cmd("open", [url])` on macOS / `xdg-open` on Linux. Failure silent.
-- [ ] No-`--serve` flow identical to sprint 1 — no Phoenix deps started.
-- [ ] `examples/parallel_audit.dot`: `start → audit [shape=component, max_parallel=3] → claude_audit/codex_audit/gemini_audit [shape=box llm_provider=...] → consolidate [shape=tripleoctagon llm_provider=claude] → finalize [shape=box llm_provider=claude] → exit`. Harmless prompts ("audit this tiny code snippet for $concern"), fan-in consolidates the three audits, finalize phrases a recommendation.
-- [ ] CLI tests: build escript, run `--serve --port 0`, assert URL printed on stderr, `GET <url>/runs/<id>` returns 200 with LiveView shell.
-- [ ] CLI tests: `--serve` without `dot` on PATH fails with actionable error and exit 2.
+- [x] Add `--serve`, `--port`, `--no-open` to `Tractor.CLI` `OptionParser` strict list.
+- [x] `--serve` flow: ensure Phoenix deps started, probe for `dot`, start `TractorWeb.Endpoint` under `WebSup` with resolved loopback port, print URL to stderr BEFORE starting the run, start the run, await result, print run dir to stdout on success, print "Serving post-mortem at <URL> (Ctrl-C to exit)" to stderr, block on `:timer.sleep(:infinity)`. Trap SIGINT → stop endpoint → `System.halt(0)`.
+- [x] `--no-open` absent: `Task.start` wrapping `System.cmd("open", [url])` on macOS / `xdg-open` on Linux. Failure silent.
+- [x] No-`--serve` flow identical to sprint 1 — no Phoenix deps started.
+- [x] `examples/parallel_audit.dot`: `start → audit [shape=component, max_parallel=3] → claude_audit/codex_audit/gemini_audit [shape=box llm_provider=...] → consolidate [shape=tripleoctagon llm_provider=claude] → finalize [shape=box llm_provider=claude] → exit`. Harmless prompts ("audit this tiny code snippet for $concern"), fan-in consolidates the three audits, finalize phrases a recommendation.
+- [x] CLI tests: build escript, run `--serve --port 0`, assert URL printed on stderr, `GET <url>/runs/<id>` returns 200 with LiveView shell.
+- [x] CLI tests: `--serve` without `dot` on PATH fails with actionable error and exit 2.
 - [ ] **Manual acceptance on user's laptop:**
   - [ ] `./bin/tractor reap --serve examples/parallel_audit.dot` with real Claude/Codex/Gemini bridges.
   - [ ] Browser opens automatically (unless `--no-open`).
@@ -352,10 +352,10 @@ Extend `reap`:
   - [ ] Fan-in node highlights after, then finalize.
   - [ ] Run completes; UI keeps serving; post-mortem inspection works indefinitely.
   - [ ] Ctrl-C exits 0; `pgrep gemini|claude|codex` returns empty.
-- [ ] **Sprint-1 regression smoke:** `./bin/tractor reap examples/three_agents.dot` still exits 0 with identical stderr shape.
-- [ ] `docs/usage/reap.md` updated: `--serve`, `--port`, `--no-open`, Graphviz runtime dep install line, example screenshot.
-- [ ] `README.md` updated.
-- [ ] Merge-gate checks: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix test`, `mix test --include integration` (laptop), `mix escript.build` (or `mix release` if Phase A forced fallback).
+- [x] **Sprint-1 regression smoke:** `./bin/tractor reap examples/three_agents.dot` still exits 0 with identical stderr shape.
+- [x] `docs/usage/reap.md` updated: `--serve`, `--port`, `--no-open`, Graphviz runtime dep install line, example screenshot.
+- [x] `README.md` updated.
+- [x] Merge-gate checks: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict`, `mix test`, `mix test --include integration` (laptop), `mix escript.build` (or `mix release` if Phase A forced fallback).
 - [ ] PR opened, reviewed, squash-merged to `main` with green CI.
 
 ## 6. Sequencing
@@ -404,20 +404,20 @@ Extend `reap`:
 
 ## 9. Acceptance criteria (the merge gate)
 
-- [ ] `mix test` green; `mix test --include integration` green on laptop.
-- [ ] All sprint-1 acceptance criteria still pass (linear pipelines, exit codes, port-leak assertion, no-`--serve` path opens no listener).
-- [ ] Engine test: 3-branch parallel block — all branches have overlapping `started_at`/`finished_at` windows (true concurrency).
-- [ ] Engine test: branch context isolation — three branches each write a unique sentinel, none cross-contaminated, none leaked into parent context.
-- [ ] Engine test: `max_parallel=2` with 3 branches — at most 2 in flight at any moment.
-- [ ] Engine test: one branch failure under `wait_all` — other branches complete; fan-in receives partial results; run succeeds (partial_success) if fan-in picks a successful branch.
-- [ ] Engine test: all branches fail — run fails with `:all_branches_failed`.
-- [ ] Engine test: fan-in selection heuristic (status > score > lexical) passes crafted fixtures.
-- [ ] Validator tests: rejects `join_policy != "wait_all"`, missing fan-in, multiple fan-ins, sub-DAG branches, `max_parallel` out of range.
-- [ ] ACP test: `agent_thought_chunk` and `tool_call` + `tool_call_update` flow through `Session` event sink in arrival order; both discriminator spellings accepted.
-- [ ] `events.jsonl` test: per-node file contains lifecycle + ACP events with monotonic per-node `seq`; late disk reader reconstructs equivalent state to live broadcast.
-- [ ] LiveView test: stub broadcasts flip node CSS classes; multiple concurrent `running` render simultaneously; `select_node` loads prompt/response/chunks from disk.
-- [ ] HTTP test: `--serve --port 0` starts Phoenix; GET `/runs/<id>` returns 200; endpoint bound to `127.0.0.1`.
-- [ ] CLI test: `--serve` without `dot` on PATH fails with actionable error + exit 2.
+- [x] `mix test` green; `mix test --include integration` green on laptop.
+- [x] All sprint-1 acceptance criteria still pass (linear pipelines, exit codes, port-leak assertion, no-`--serve` path opens no listener).
+- [x] Engine test: 3-branch parallel block — all branches have overlapping `started_at`/`finished_at` windows (true concurrency).
+- [x] Engine test: branch context isolation — three branches each write a unique sentinel, none cross-contaminated, none leaked into parent context.
+- [x] Engine test: `max_parallel=2` with 3 branches — at most 2 in flight at any moment.
+- [x] Engine test: one branch failure under `wait_all` — other branches complete; fan-in receives partial results; run succeeds (partial_success) if fan-in picks a successful branch.
+- [x] Engine test: all branches fail — run fails with `:all_branches_failed`.
+- [x] Engine test: fan-in selection heuristic (status > score > lexical) passes crafted fixtures.
+- [x] Validator tests: rejects `join_policy != "wait_all"`, missing fan-in, multiple fan-ins, sub-DAG branches, `max_parallel` out of range.
+- [x] ACP test: `agent_thought_chunk` and `tool_call` + `tool_call_update` flow through `Session` event sink in arrival order; both discriminator spellings accepted.
+- [x] `events.jsonl` test: per-node file contains lifecycle + ACP events with monotonic per-node `seq`; late disk reader reconstructs equivalent state to live broadcast.
+- [x] LiveView test: stub broadcasts flip node CSS classes; multiple concurrent `running` render simultaneously; `select_node` loads prompt/response/chunks from disk.
+- [x] HTTP test: `--serve --port 0` starts Phoenix; GET `/runs/<id>` returns 200; endpoint bound to `127.0.0.1`.
+- [x] CLI test: `--serve` without `dot` on PATH fails with actionable error + exit 2.
 - [ ] `./bin/tractor reap --serve examples/parallel_audit.dot` on user's laptop against real Claude/Codex/Gemini:
   - URL printed to stderr before run starts.
   - Browser auto-opens unless `--no-open`.
@@ -426,19 +426,19 @@ Extend `reap`:
   - Fan-in node consolidates and produces output downstream.
   - Run completes; UI keeps serving; any node clickable for full post-mortem.
   - Ctrl-C exits 0; `pgrep gemini|claude|codex` returns empty.
-- [ ] `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0 with identical stderr shape and no Phoenix booted.
-- [ ] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` clean.
-- [ ] `mix escript.build` produces a working `./bin/tractor` that serves the UI (or `mix release` equivalent if Phase A spike forced fallback; docs reflect either way).
+- [x] `./bin/tractor reap examples/three_agents.dot` (no `--serve`) still exits 0 with identical stderr shape and no Phoenix booted.
+- [x] `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix credo --strict` clean.
+- [x] `mix escript.build` produces a working `./bin/tractor` that serves the UI (or `mix release` equivalent if Phase A spike forced fallback; docs reflect either way).
 - [ ] Branch merged to `main` with green CI.
 
 ## 10. Sprint-3 seeds (do not expand here)
 
-- [ ] `# TODO(sprint-3): sub-DAG branches` at the validator's `:nested_branches_unsupported` rejection site.
-- [ ] `# TODO(sprint-3): join_policy=first_success` at the validator's `:unsupported_join_policy` rejection site — requires ACP cancellation primitive.
-- [ ] `# TODO(sprint-3): cancel in-flight branches on sibling failure` in Runner's branch-failure path — also requires ACP cancel.
-- [ ] `# TODO(sprint-3): run history browser` — reserve `/runs` route (currently 404).
-- [ ] `# TODO(sprint-3): pure-Elixir layered-DAG layout` as a `dot` fallback if the Graphviz runtime dep becomes painful.
-- [ ] `# TODO(sprint-3): checkpoint` — the events.jsonl + `status.json` substrate is the seed of a durable resume log.
+- [x] `# TODO(sprint-3): sub-DAG branches` at the validator's `:nested_branches_unsupported` rejection site.
+- [x] `# TODO(sprint-3): join_policy=first_success` at the validator's `:unsupported_join_policy` rejection site — requires ACP cancellation primitive.
+- [x] `# TODO(sprint-3): cancel in-flight branches on sibling failure` in Runner's branch-failure path — also requires ACP cancel.
+- [x] `# TODO(sprint-3): run history browser` — reserve `/runs` route (currently 404).
+- [x] `# TODO(sprint-3): pure-Elixir layered-DAG layout` as a `dot` fallback if the Graphviz runtime dep becomes painful.
+- [x] `# TODO(sprint-3): checkpoint` — the events.jsonl + `status.json` substrate is the seed of a durable resume log.
 
 ## 11. Appendix — contested calls and how the merge resolved them
 
@@ -457,3 +457,9 @@ Extend `reap`:
 | Dep set: Tailwind+esbuild (Gemini) vs plain CSS (Codex, Claude) | **Plain CSS** | Sprint-1's "keep escript boring" principle. Tailwind+esbuild = multi-day yak, zero demo value. |
 | Runner model: split active/queued (Codex) vs frontier + agenda (Claude+Gemini) | **Frontier + agenda** | Frontier keyed by `Task.async_nolink` ref is the natural Elixir shape; agenda-as-explicit-state is easier to debug than recompute-every-tick. |
 | Sequencing: UI waits on engine (Codex) vs UI starts on stub events mid-phase B (Claude) | **Start UI mid-phase B** | UI is the acceptance artifact; don't serialize it behind engine work. |
+
+## Blockers
+
+- Real bridge manual acceptance is not complete. `./bin/tractor reap --serve --no-open --timeout 300s examples/parallel_audit.dot` reached the printed URL and started the three audit branches concurrently; Codex and Gemini completed, but the Claude ACP bridge remained running/hung, so the fan-in/finalize/post-mortem path could not be accepted against all three real bridges.
+- The manual criterion `pgrep gemini|claude|codex returns empty` cannot be satisfied from this Codex environment because unrelated Claude/Codex helper processes are already active outside Tractor. Broadly killing or attributing those processes would be unsafe.
+- PR opened/reviewed/squash-merged with green CI is outside this local workspace run. The local merge-gate commands are green, and the PR/CI checklist items remain unchecked.

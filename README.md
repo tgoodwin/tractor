@@ -1,15 +1,23 @@
 # Tractor
 
-Tractor runs a Graphviz DOT pipeline through coding agents. Sprint 1 supports
-one command:
+Tractor runs a Graphviz DOT pipeline through coding agents.
 
 ```sh
 ./bin/tractor reap examples/three_agents.dot
 ```
 
-The sprint-one path parses a strict DOT subset, walks a linear pipeline, and
-drives Claude, Codex, and Gemini through ACP-compatible bridge commands. Run
-artifacts are written under the configured Tractor data directory.
+The default path parses a strict DOT subset, walks the pipeline, and drives
+Claude, Codex, and Gemini through ACP-compatible bridge commands. Run artifacts
+are written under the configured Tractor data directory.
+
+Use the local observer UI for live inspection and post-mortems:
+
+```sh
+./bin/tractor reap --serve examples/parallel_audit.dot
+```
+
+The observer binds to `127.0.0.1`, prints a `/runs/<run_id>` URL before the run
+starts, and keeps serving after completion until Ctrl-C.
 
 ## Install
 
@@ -18,6 +26,14 @@ Tractor is an Elixir escript.
 ```sh
 mix deps.get
 mix escript.build
+```
+
+`--serve` requires Graphviz at runtime:
+
+```sh
+brew install graphviz
+# or
+sudo apt install graphviz
 ```
 
 ## ACP Bridges

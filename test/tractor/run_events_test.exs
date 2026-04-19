@@ -78,7 +78,9 @@ defmodule Tractor.RunEventsTest do
     live_kinds = receive_kinds(2)
 
     status = store.run_dir |> Path.join("ask/status.json") |> File.read!() |> Jason.decode!()
-    disk_kinds = store.run_dir |> Path.join("ask/events.jsonl") |> read_events() |> Enum.map(& &1["kind"])
+
+    disk_kinds =
+      store.run_dir |> Path.join("ask/events.jsonl") |> read_events() |> Enum.map(& &1["kind"])
 
     assert status["status"] == "ok"
     assert disk_kinds == live_kinds

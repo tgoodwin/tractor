@@ -8,7 +8,8 @@ defmodule Tractor.Engine.BranchExecutor do
 
   @spec run_until(function(), Tractor.Node.t(), map(), Path.t(), String.t()) ::
           {:ok, String.t(), map()} | {:error, term()}
-  def run_until(handler_fun, node, context, run_dir, _fan_in_id) when is_function(handler_fun, 3) do
+  def run_until(handler_fun, node, context, run_dir, _fan_in_id)
+      when is_function(handler_fun, 3) do
     handler_fun.(node, context, run_dir)
   end
 end

@@ -73,7 +73,9 @@ defmodule Tractor.Runner do
   end
 
   def handle_call(:info, _from, state) do
-    {:reply, {:ok, %{pipeline: state.pipeline, run_dir: state.store.run_dir, run_id: state.store.run_id}}, state}
+    {:reply,
+     {:ok, %{pipeline: state.pipeline, run_dir: state.store.run_dir, run_id: state.store.run_id}},
+     state}
   end
 
   @impl true
@@ -141,7 +143,10 @@ defmodule Tractor.Runner do
 
     log_starting(node)
     RunStore.mark_node_running(state.store, node.id, started_at)
-    RunEvents.emit(state.store.run_id, node.id, :node_started, %{"started_at" => DateTime.to_iso8601(started_at)})
+
+    RunEvents.emit(state.store.run_id, node.id, :node_started, %{
+      "started_at" => DateTime.to_iso8601(started_at)
+    })
 
     task =
       Task.Supervisor.async_nolink(Tractor.HandlerTasks, fn ->
@@ -274,7 +279,11 @@ defmodule Tractor.Runner do
         |> release_parallel_branches(parallel_id)
 
       {:error, reason} ->
-        fail_node(state, %{node_id: parallel_id, started_at_ms: System.monotonic_time(:millisecond)}, reason)
+        fail_node(
+          state,
+          %{node_id: parallel_id, started_at_ms: System.monotonic_time(:millisecond)},
+          reason
+        )
     end
   end
 
@@ -305,7 +314,10 @@ defmodule Tractor.Runner do
 
         state
         |> put_in([Access.key(:branch_contexts), branch_id], branch_context)
-        |> update_in([Access.key(:parallel_state), parallel_id, :running], &MapSet.put(&1, branch_id))
+        |> update_in(
+          [Access.key(:parallel_state), parallel_id, :running],
+          &MapSet.put(&1, branch_id)
+        )
         |> start_task(node, branch_context, %{branch_id: branch_id, parallel_id: parallel_id})
 
       {:error, reason} ->
@@ -344,8 +356,11 @@ defmodule Tractor.Runner do
   end
 
   defp handle_branch_result({:error, reason}, entry, state) do
+    # credo:disable-for-next-line Credo.Check.Design.TagTODO
+    # TODO(sprint-3): cancel in-flight branches on sibling failure
     log_done(entry.node_id, {:error, reason}, entry.started_at_ms)
     RunStore.mark_node_failed(state.store, entry.node_id, reason)
+
     RunEvents.emit(state.store.run_id, entry.node_id, :node_failed, %{"reason" => inspect(reason)})
 
     settle_branch(state, entry.parallel_id, %{
@@ -363,7 +378,10 @@ defmodule Tractor.Runner do
 
     state =
       state
-      |> update_in([Access.key(:parallel_state), parallel_id, :running], &MapSet.delete(&1, result["branch_id"]))
+      |> update_in(
+        [Access.key(:parallel_state), parallel_id, :running],
+        &MapSet.delete(&1, result["branch_id"])
+      )
       |> update_in([Access.key(:parallel_state), parallel_id, :settled], &(&1 ++ [result]))
 
     parallel = Map.fetch!(state.parallel_state, parallel_id)
@@ -386,7 +404,10 @@ defmodule Tractor.Runner do
     status = parallel_status(results)
     finished_at = DateTime.utc_now() |> DateTime.to_iso8601()
 
-    RunStore.mark_node_succeeded(state.store, parallel_id, %{"status" => status, "finished_at" => finished_at})
+    RunStore.mark_node_succeeded(state.store, parallel_id, %{
+      "status" => status,
+      "finished_at" => finished_at
+    })
 
     RunEvents.emit(state.store.run_id, parallel_id, :parallel_completed, %{
       "status" => status,

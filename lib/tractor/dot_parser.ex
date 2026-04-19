@@ -231,7 +231,13 @@ defmodule Tractor.DotParser do
         do_reachable_fan_ins(nodes, edges, rest, seen, acc)
 
       get_in(nodes, [node_id, Access.key(:type)]) == "parallel.fan_in" ->
-        do_reachable_fan_ins(nodes, edges, rest, MapSet.put(seen, node_id), MapSet.put(acc, node_id))
+        do_reachable_fan_ins(
+          nodes,
+          edges,
+          rest,
+          MapSet.put(seen, node_id),
+          MapSet.put(acc, node_id)
+        )
 
       true ->
         next = outgoing_to_existing(edges, nodes, node_id)

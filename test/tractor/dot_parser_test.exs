@@ -99,7 +99,6 @@ defmodule Tractor.DotParserTest do
     assert pipeline.nodes["join"].type == "parallel.fan_in"
   end
 
-
   @tag :tmp_dir
   test "parse errors return diagnostics", %{tmp_dir: tmp_dir} do
     path = dot_file(tmp_dir, "bad.dot", "digraph { start -> }")
