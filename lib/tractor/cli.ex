@@ -36,7 +36,8 @@ defmodule Tractor.CLI do
          {:ok, pipeline} <- DotParser.parse_file(path),
          :ok <- Validator.validate(pipeline),
          {:ok, run_id} <- Run.start(pipeline, run_opts(opts)),
-         {:ok, result} <- Run.await(run_id, timeout_ms(opts[:timeout])) do
+         {:ok, timeout} <- timeout_ms(opts[:timeout]),
+         {:ok, result} <- Run.await(run_id, timeout) do
       {0, result.run_dir <> "\n", ""}
     else
       {:usage, message} -> {2, "", message}
@@ -66,8 +67,18 @@ defmodule Tractor.CLI do
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
 
-  defp timeout_ms(nil), do: 300_000
-  defp timeout_ms(value), do: String.to_integer(value)
+  defp timeout_ms(nil), do: {:ok, 300_000}
+
+  defp timeout_ms(value) do
+    case Regex.run(~r/^(\d+)(ms|s|m|h)?$/, value) do
+      [_, amount, nil] -> {:ok, String.to_integer(amount)}
+      [_, amount, "ms"] -> {:ok, String.to_integer(amount)}
+      [_, amount, "s"] -> {:ok, String.to_integer(amount) * 1_000}
+      [_, amount, "m"] -> {:ok, String.to_integer(amount) * 60_000}
+      [_, amount, "h"] -> {:ok, String.to_integer(amount) * 3_600_000}
+      _other -> {:usage, @usage}
+    end
+  end
 
   defp format_diagnostics(diagnostics) do
     Enum.map_join(diagnostics, "", fn diagnostic ->

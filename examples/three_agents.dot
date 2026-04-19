@@ -1,0 +1,23 @@
+digraph {
+  graph [goal="Run one harmless prompt through Claude, Codex, and Gemini"]
+
+  start [shape=Mdiamond]
+  ask_claude [
+    shape=box,
+    llm_provider=claude,
+    prompt="Write a one-line haiku about a tractor starting work."
+  ]
+  ask_codex [
+    shape=box,
+    llm_provider=codex,
+    prompt="Write a one-line haiku that continues this thought: {{ask_claude}}"
+  ]
+  ask_gemini [
+    shape=box,
+    llm_provider=gemini,
+    prompt="Write a one-line haiku that calmly concludes this sequence: {{ask_codex}}"
+  ]
+  exit [shape=Msquare]
+
+  start -> ask_claude -> ask_codex -> ask_gemini -> exit
+}

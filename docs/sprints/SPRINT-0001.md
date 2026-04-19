@@ -176,13 +176,13 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 - [x] `Tractor.Run.start/1` public API: takes `%Pipeline{}` + options, returns `{:ok, run_id}`. `Tractor.Run.await/2` for the CLI to block.
 - [x] Engine tests (Mox for `AgentClient`): 4-node pipeline `start → echo × 2 → exit` walks in order; final context contains both outputs. Handler-error propagation. Handler-crash propagation. **Three-provider ordering test:** DOT with `claude → codex → gemini` exercises the right Mox expectation per node.
 - [x] **Validation-before-spawn test:** a DOT with a rejection causes exit `10` and starts zero agent subprocesses (asserted via Mox call count).
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase F — CLI + example + acceptance (day 5–6, ~3h)
-- [ ] `Tractor.CLI.main/1` — `reap PATH` with `OptionParser`. Exit codes per §4.11. **Use `System.halt/1`, not `exit/1`** (escript footgun).
-- [ ] `examples/three_agents.dot`: `start → ask_claude → ask_codex → ask_gemini → exit`. Deterministic, harmless prompts (e.g., "write a one-line haiku about $PREV_OUTPUT"); carries context forward. **No repo edits, no tool calls.**
-- [ ] CLI tests: build escript, run against temp DOT files with fake agent binary on `$PATH`. Exit-code matrix for success / usage / missing file / validation / agent failure.
-- [ ] `docs/usage/reap.md`: install, build, run, provider env overrides, Gemini flag-drift guidance, Claude bridge-swap instructions.
+- [x] `Tractor.CLI.main/1` — `reap PATH` with `OptionParser`. Exit codes per §4.11. **Use `System.halt/1`, not `exit/1`** (escript footgun).
+- [x] `examples/three_agents.dot`: `start → ask_claude → ask_codex → ask_gemini → exit`. Deterministic, harmless prompts (e.g., "write a one-line haiku about $PREV_OUTPUT"); carries context forward. **No repo edits, no tool calls.**
+- [x] CLI tests: build escript, run against temp DOT files with fake agent binary on `$PATH`. Exit-code matrix for success / usage / missing file / validation / agent failure.
+- [x] `docs/usage/reap.md`: install, build, run, provider env overrides, Gemini flag-drift guidance, Claude bridge-swap instructions.
 - [ ] **Manual acceptance run on user's laptop:** `./tractor reap examples/three_agents.dot` exits 0 with real Claude, Codex, Gemini. Inspect run dir — one populated `prompt.md` / `response.md` / `status.json` per agent node.
 - [ ] Verify no ACP provider process remains after exit (`pgrep gemini|claude|codex`).
 - [ ] Commit.
