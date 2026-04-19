@@ -66,6 +66,40 @@ defmodule Tractor.RunEventsTest do
   end
 
   @tag :tmp_dir
+  test "usage events land in events jsonl and broadcast stream", %{tmp_dir: tmp_dir} do
+    {:ok, store} = RunStore.open(%Pipeline{}, runs_dir: tmp_dir, run_id: "run-usage-events")
+    :ok = RunBus.subscribe(store.run_id)
+
+    sink = fn %{kind: kind, data: data} ->
+      RunEvents.emit(store.run_id, "ask", kind, data)
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "usage_update"}]
+      )
+
+    assert {:ok, _turn} = Session.prompt(pid, "hello", 1_000)
+    assert :ok = Session.stop(pid)
+
+    events = store.run_dir |> Path.join("ask/events.jsonl") |> read_events()
+    usage = Enum.find(events, &(&1["kind"] == "usage"))
+
+    assert %{
+             "data" => %{
+               "input_tokens" => 123,
+               "output_tokens" => 45,
+               "total_tokens" => 168
+             }
+           } = usage
+
+    live_kinds = receive_kinds(length(events))
+    assert live_kinds == Enum.map(events, & &1["kind"])
+  end
+
+  @tag :tmp_dir
   test "late reader rebuilds node state from status and events", %{tmp_dir: tmp_dir} do
     {:ok, store} = RunStore.open(%Pipeline{}, runs_dir: tmp_dir, run_id: "run-rebuild")
     :ok = RunBus.subscribe(store.run_id)

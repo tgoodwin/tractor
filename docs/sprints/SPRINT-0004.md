@@ -270,17 +270,17 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] WebFetch https://papercompute.com/ and https://www.extend.ai/; paste relevant CSS tokens into `docs/sprints/notes/sprint-0004-references.md` with citations.
 - [x] Confirm `vercel-labs/agent-browser` CLI works: drive a smoke run and screenshot the current observer. Document the exact invocation pattern in `docs/sprints/notes/sprint-0004-agent-browser.md`.
 - [x] Update `test/support/fake_acp_agent.exs` (env-gated) to optionally emit usage payloads in two different shapes: one via `session/update`, one via `session/prompt` result.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase B — ACP token-usage capture (0.5 day)
 
-- [ ] Add `token_usage` field to `%Tractor.ACP.Turn{}` with typespec; default `nil`.
-- [ ] Extend `Session` update-capture path to match usage under `usage | tokenUsage | token_usage | modelUsage | content.usage` keys; normalize per-field name variants (`input_tokens | inputTokens | prompt_tokens`).
-- [ ] Merge usage from `finish_prompt/2` result before replying.
-- [ ] Emit `:usage` event through `state.event_sink` when usage is updated.
-- [ ] `Handler.Codergen` writes `token_usage` into `status.json` on node completion.
-- [ ] Unit tests: `Session` captures usage from both wire paths, merges correctly, tolerates unknown shapes without failing; `events.jsonl` contains a `:usage` entry; `status.json` carries the normalized struct.
-- [ ] Regression: existing `Turn` assertions still pass with `token_usage: nil`.
+- [x] Add `token_usage` field to `%Tractor.ACP.Turn{}` with typespec; default `nil`.
+- [x] Extend `Session` update-capture path to match usage under `usage | tokenUsage | token_usage | modelUsage | content.usage` keys; normalize per-field name variants (`input_tokens | inputTokens | prompt_tokens`).
+- [x] Merge usage from `finish_prompt/2` result before replying.
+- [x] Emit `:usage` event through `state.event_sink` when usage is updated.
+- [x] `Handler.Codergen` writes `token_usage` into `status.json` on node completion.
+- [x] Unit tests: `Session` captures usage from both wire paths, merges correctly, tolerates unknown shapes without failing; `events.jsonl` contains a `:usage` entry; `status.json` carries the normalized struct.
+- [x] Regression: existing `Turn` assertions still pass with `token_usage: nil`.
 - [ ] Commit.
 
 ### Phase C — Vendor svg-pan-zoom + `GraphBoard` hook (1 day, architectural)

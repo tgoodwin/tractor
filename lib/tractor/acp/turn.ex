@@ -8,7 +8,15 @@ defmodule Tractor.ACP.Turn do
             agent_thought_chunks: [],
             tool_calls: [],
             tool_call_updates: [],
+            token_usage: nil,
             events: []
+
+  @type token_usage :: %{
+          optional(:input_tokens) => non_neg_integer(),
+          optional(:output_tokens) => non_neg_integer(),
+          optional(:total_tokens) => non_neg_integer(),
+          optional(:raw) => map()
+        }
 
   @type t :: %__MODULE__{
           response_text: String.t(),
@@ -16,6 +24,7 @@ defmodule Tractor.ACP.Turn do
           agent_thought_chunks: [map()],
           tool_calls: [map()],
           tool_call_updates: [map()],
+          token_usage: token_usage() | nil,
           events: [map()]
         }
 end

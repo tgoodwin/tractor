@@ -63,6 +63,43 @@ defmodule Tractor.RunTest do
   end
 
   @tag :tmp_dir
+  test "writes codergen token usage to node status json", %{tmp_dir: tmp_dir} do
+    pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("one", "codergen", provider: "codex", prompt: "First"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "one"), edge("one", "exit")]
+      )
+
+    usage = %{input_tokens: 12, output_tokens: 8, total_tokens: 20, raw: %{"totalTokens" => 20}}
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Codex, _opts ->
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, "First", 300_000 ->
+      {:ok, %Tractor.ACP.Turn{response_text: "one out", token_usage: usage}}
+    end)
+
+    expect(Tractor.AgentClientMock, :stop, fn _pid -> :ok end)
+
+    assert {:ok, run_id} = Run.start(pipeline, runs_dir: tmp_dir, run_id: "run-token-usage")
+    assert {:ok, result} = Run.await(run_id, 1_000)
+
+    status = read_json(Path.join(result.run_dir, "one/status.json"))
+
+    assert status["token_usage"] == %{
+             "input_tokens" => 12,
+             "output_tokens" => 8,
+             "total_tokens" => 20,
+             "raw" => %{"totalTokens" => 20}
+           }
+  end
+
+  @tag :tmp_dir
   test "propagates handler errors", %{tmp_dir: tmp_dir} do
     pipeline =
       pipeline(

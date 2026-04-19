@@ -39,6 +39,7 @@ defmodule Tractor.ACP.SessionTest do
              Session.prompt(pid, "hello", 1_000)
 
     assert length(turn.agent_message_chunks) == 3
+    assert turn.token_usage == nil
     assert :ok = Session.stop(pid)
   end
 
@@ -212,6 +213,95 @@ defmodule Tractor.ACP.SessionTest do
     assert_receive {:sink, :tool_call}
     assert_receive {:sink, :tool_call_update}
     assert_receive {:sink, :agent_message_chunk}
+
+    assert :ok = Session.stop(pid)
+  end
+
+  test "captures token usage from session update payloads" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "usage_update"}]
+      )
+
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+
+    assert %{
+             input_tokens: 123,
+             output_tokens: 45,
+             total_tokens: 168,
+             raw: %{"inputTokens" => 123, "outputTokens" => 45, "totalTokens" => 168}
+           } = turn.token_usage
+
+    assert_receive {:sink, :usage, %{total_tokens: 168}}
+    assert :ok = Session.stop(pid)
+  end
+
+  test "captures token usage from final prompt result" do
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [{"TRACTOR_FAKE_ACP_MODE", "usage_result"}]
+      )
+
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+
+    assert %{
+             input_tokens: 200,
+             output_tokens: 50,
+             total_tokens: 250,
+             raw: %{"prompt_tokens" => 200, "completion_tokens" => 50, "total_tokens" => 250}
+           } = turn.token_usage
+
+    assert :ok = Session.stop(pid)
+  end
+
+  test "merges token usage with last non-nil field winning" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "usage_merge"}]
+      )
+
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+
+    assert %{
+             input_tokens: 123,
+             output_tokens: 88,
+             total_tokens: 211,
+             raw: %{"output_tokens" => 88, "total_tokens" => 211}
+           } = turn.token_usage
+
+    assert_receive {:sink, :usage, %{input_tokens: 123, output_tokens: 45, total_tokens: 168}}
+    assert_receive {:sink, :usage, %{input_tokens: 123, output_tokens: 88, total_tokens: 211}}
+    assert :ok = Session.stop(pid)
+  end
+
+  test "ignores malformed token usage without failing the turn" do
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [{"TRACTOR_FAKE_ACP_MODE", "usage_malformed"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello", token_usage: nil}} =
+             Session.prompt(pid, "hello", 1_000)
 
     assert :ok = Session.stop(pid)
   end

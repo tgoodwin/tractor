@@ -300,9 +300,11 @@ defmodule Tractor.ACP.Session do
   defp capture_update(state, update) do
     kind = update["type"] || update["sessionUpdate"]
     turn = %{state.turn | events: state.turn.events ++ [update]}
+    state = %{state | turn: turn} |> maybe_capture_usage(update)
 
     case kind do
       "agent_message_chunk" ->
+        turn = state.turn
         chunk = %{"text" => chunk_text(update), "raw" => update}
         emit_event(state, :agent_message_chunk, chunk)
 
@@ -316,22 +318,42 @@ defmodule Tractor.ACP.Session do
         }
 
       "agent_thought_chunk" ->
+        turn = state.turn
         chunk = %{"text" => chunk_text(update), "raw" => update}
         emit_event(state, :agent_thought_chunk, chunk)
         %{state | turn: %{turn | agent_thought_chunks: turn.agent_thought_chunks ++ [chunk]}}
 
       "tool_call" ->
+        turn = state.turn
         tool_call = extract_tool_call(update)
         emit_event(state, :tool_call, tool_call)
         %{state | turn: %{turn | tool_calls: turn.tool_calls ++ [tool_call]}}
 
       "tool_call_update" ->
+        turn = state.turn
         update_data = extract_tool_call_update(update)
         emit_event(state, :tool_call_update, update_data)
         %{state | turn: %{turn | tool_call_updates: turn.tool_call_updates ++ [update_data]}}
 
       _other ->
-        %{state | turn: turn}
+        state
+    end
+  end
+
+  defp maybe_capture_usage(state, payload) do
+    case normalize_usage(payload) do
+      nil ->
+        state
+
+      usage ->
+        merged = merge_usage(state.turn.token_usage, usage)
+
+        if merged == state.turn.token_usage do
+          state
+        else
+          emit_event(state, :usage, merged)
+          %{state | turn: %{state.turn | token_usage: merged}}
+        end
     end
   end
 
@@ -382,6 +404,66 @@ defmodule Tractor.ACP.Session do
     Enum.find_value(keys, fn key -> Map.get(primary, key) || Map.get(secondary, key) end)
   end
 
+  defp normalize_usage(payload) when is_map(payload) do
+    payload
+    |> usage_payload()
+    |> normalize_usage_payload()
+  end
+
+  defp normalize_usage(_payload), do: nil
+
+  defp usage_payload(payload) do
+    content = content_map(payload)
+
+    Enum.find_value(["usage", "tokenUsage", "token_usage", "modelUsage"], fn key ->
+      Map.get(payload, key)
+    end) || Map.get(content, "usage")
+  end
+
+  defp normalize_usage_payload(payload) when is_map(payload) do
+    usage =
+      %{
+        input_tokens: usage_integer(payload, ["input_tokens", "inputTokens", "prompt_tokens"]),
+        output_tokens: usage_integer(payload, ["output_tokens", "outputTokens", "completion_tokens"]),
+        total_tokens: usage_integer(payload, ["total_tokens", "totalTokens"]),
+        raw: payload
+      }
+      |> Enum.reject(fn {key, value} -> key != :raw and is_nil(value) end)
+      |> Map.new()
+
+    if map_size(Map.delete(usage, :raw)) == 0, do: nil, else: usage
+  end
+
+  defp normalize_usage_payload(_payload), do: nil
+
+  defp usage_integer(payload, keys) do
+    Enum.find_value(keys, fn key ->
+      case Map.get(payload, key) do
+        value when is_integer(value) and value >= 0 -> value
+        value when is_binary(value) -> parse_usage_integer(value)
+        _other -> nil
+      end
+    end)
+  end
+
+  defp parse_usage_integer(value) do
+    case Integer.parse(value) do
+      {integer, ""} when integer >= 0 -> integer
+      _other -> nil
+    end
+  end
+
+  defp merge_usage(nil, usage), do: usage
+
+  defp merge_usage(current, usage) do
+    Enum.reduce([:input_tokens, :output_tokens, :total_tokens, :raw], current, fn key, acc ->
+      case Map.get(usage, key) do
+        nil -> acc
+        value -> Map.put(acc, key, value)
+      end
+    end)
+  end
+
   defp content_map(%{"content" => content}) when is_map(content), do: content
   defp content_map(_update), do: %{}
 
@@ -395,6 +477,7 @@ defmodule Tractor.ACP.Session do
 
   defp finish_prompt(state, result) do
     stop_reason = result["stopReason"] || result["stop_reason"]
+    state = maybe_capture_usage(state, result)
 
     case stop_reason do
       reason when reason in ["end_turn", "done"] ->

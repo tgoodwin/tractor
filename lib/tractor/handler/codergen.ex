@@ -47,7 +47,7 @@ defmodule Tractor.Handler.Codergen do
            %{
              prompt: prompt,
              response: response,
-             status: %{"status" => "ok", "provider" => node.llm_provider},
+             status: status(node, turn),
              provider_command: %{
                provider: node.llm_provider,
                command: command,
@@ -75,4 +75,16 @@ defmodule Tractor.Handler.Codergen do
 
   defp response_text(%Tractor.ACP.Turn{response_text: response}), do: response
   defp response_text(response) when is_binary(response), do: response
+
+  defp status(node, %Tractor.ACP.Turn{token_usage: nil}) do
+    %{"status" => "ok", "provider" => node.llm_provider}
+  end
+
+  defp status(node, %Tractor.ACP.Turn{token_usage: token_usage}) do
+    %{"status" => "ok", "provider" => node.llm_provider, "token_usage" => token_usage}
+  end
+
+  defp status(node, _response) do
+    %{"status" => "ok", "provider" => node.llm_provider}
+  end
 end
