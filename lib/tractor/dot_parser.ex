@@ -72,13 +72,24 @@ defmodule Tractor.DotParser do
          id: node_id,
          type: type,
          label: attrs["label"],
-         prompt: attrs["prompt"],
+         prompt: unescape_prompt(attrs["prompt"]),
          llm_provider: attrs["llm_provider"],
          llm_model: attrs["llm_model"],
          timeout: timeout,
          attrs: attrs
        }}
     end
+  end
+
+  # DOT attribute values are literal; authors write `\n` expecting a newline.
+  # Translate common escapes so prompts can be multi-line without DOT gymnastics.
+  defp unescape_prompt(nil), do: nil
+
+  defp unescape_prompt(prompt) when is_binary(prompt) do
+    prompt
+    |> String.replace("\\n", "\n")
+    |> String.replace("\\r", "\r")
+    |> String.replace("\\t", "\t")
   end
 
   defp normalize_edges(graph) do

@@ -47,7 +47,7 @@
               <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
               <span class="tl-summary">{entry.summary}</span>
             </summary>
-            <pre>{entry_body(entry.body)}</pre>
+            <div class={"tl-body tl-body-#{entry.type}"}>{render_entry_body(entry)}</div>
           </details>
         </li>
       </ol>

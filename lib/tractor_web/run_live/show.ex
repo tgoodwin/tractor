@@ -301,4 +301,20 @@ defmodule TractorWeb.RunLive.Show do
 
   defp entry_body(body) when is_binary(body), do: body
   defp entry_body(body), do: Jason.encode!(body, pretty: true)
+
+  # Text-ish entry types render as markdown (preserves newlines, lists, code fences).
+  # Structured types (tool calls, lifecycle, usage) keep the raw JSON presentation.
+  defp render_entry_body(%{type: type, body: body})
+       when type in [:prompt, :response, :thinking, :message, :stderr] and is_binary(body) do
+    TractorWeb.Markdown.to_html(body)
+  end
+
+  defp render_entry_body(%{body: body}) do
+    {:safe,
+     [
+       "<pre class=\"tractor-raw-json\">",
+       body |> entry_body() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string(),
+       "</pre>"
+     ]}
+  end
 end

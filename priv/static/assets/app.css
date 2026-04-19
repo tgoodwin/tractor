@@ -136,12 +136,6 @@ body {
   overflow: hidden;
   border-right: 2px solid var(--divider);
   background-color: var(--surface);
-  background-image:
-    linear-gradient(to right, var(--grid-faint) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-faint) 1px, transparent 1px),
-    linear-gradient(to right, var(--grid-strong) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-strong) 1px, transparent 1px);
-  background-size: 8px 8px, 8px 8px, 40px 40px, 40px 40px;
 }
 
 .graph-svg {
