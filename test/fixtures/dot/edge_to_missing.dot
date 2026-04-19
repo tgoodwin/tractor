@@ -1,0 +1,6 @@
+digraph {
+  start [shape=Mdiamond]
+  exit [shape=Msquare]
+
+  start -> missing
+}

@@ -1,0 +1,10 @@
+digraph {
+  graph [goal="linear fixture"]
+
+  start [shape=Mdiamond]
+  ask [shape=box, prompt="Say one word", llm_provider=codex]
+  exit [shape=Msquare]
+
+  start -> ask
+  ask -> exit
+}

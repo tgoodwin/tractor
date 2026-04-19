@@ -1,0 +1,7 @@
+digraph {
+  start [shape=Mdiamond]
+  ask [shape=box, prompt="unknown provider", llm_provider=llama]
+  exit [shape=Msquare]
+
+  start -> ask -> exit
+}

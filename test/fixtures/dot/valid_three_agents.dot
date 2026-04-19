@@ -1,0 +1,11 @@
+digraph {
+  graph [goal="three agent fixture"]
+
+  start [shape=Mdiamond]
+  ask_claude [shape=box, prompt="Say claude", llm_provider=claude]
+  ask_codex [shape=box, prompt="Say codex after {{ask_claude}}", llm_provider=codex]
+  ask_gemini [shape=box, prompt="Say gemini after {{ask_codex}}", llm_provider=gemini]
+  exit [shape=Msquare]
+
+  start -> ask_claude -> ask_codex -> ask_gemini -> exit
+}

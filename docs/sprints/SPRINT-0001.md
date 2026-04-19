@@ -141,15 +141,15 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 - [x] Supervision skeleton: `Tractor.Application` with `RunRegistry`, `AgentRegistry`, `HandlerTasks`, `ACP.SessionSup`, `RunSup`. Empty children start fine.
 - [x] `README.md` skeleton: intent, install, ACP bridge install notes for all three (including `Xuanwo/acp-claude-code` archived caveat).
 - [x] GitHub Actions CI: `mix deps.get && mix compile --warnings-as-errors && mix format --check-formatted && mix credo --strict && mix test`. Integration tag excluded in CI.
-- [ ] First commit.
+- [x] First commit.
 
 ### Phase B — DOT parse + validate (day 1–2, ~5h)
-- [ ] `Tractor.Pipeline` / `Tractor.Node` / `Tractor.Edge` structs with typed fields.
-- [ ] `Tractor.Diagnostic` struct: `code`, `message`, `node_id?`, `edge?`, `path?`.
-- [ ] `Tractor.DotParser.parse_file/1` via Dotx → `{:ok, %Pipeline{}} | {:error, [%Diagnostic{}]}`. Shape → type mapping, `type=` override, duration coercion for `timeout`.
-- [ ] `Tractor.Validator.validate/1` — start/exit cardinality, acyclic (`:digraph_utils.is_acyclic/1`), edge endpoint existence, codergen `llm_provider` presence + allowed value, reject unsupported attrs/handlers/graph directives listed in §4.3.
-- [ ] Fixture set under `test/fixtures/dot/`: `valid_linear.dot`, `valid_three_agents.dot`, `cyclic.dot`, `no_start.dot`, `two_starts.dot`, `no_exit.dot`, `missing_provider.dot`, `unknown_provider.dot`, `rejected_handler.dot`, `edge_to_missing.dot`, `undirected.dot`.
-- [ ] One assertion per fixture failure mode; parser tests for chained edges, inherited defaults, type override, duration coercion.
+- [x] `Tractor.Pipeline` / `Tractor.Node` / `Tractor.Edge` structs with typed fields.
+- [x] `Tractor.Diagnostic` struct: `code`, `message`, `node_id?`, `edge?`, `path?`.
+- [x] `Tractor.DotParser.parse_file/1` via Dotx → `{:ok, %Pipeline{}} | {:error, [%Diagnostic{}]}`. Shape → type mapping, `type=` override, duration coercion for `timeout`.
+- [x] `Tractor.Validator.validate/1` — start/exit cardinality, acyclic (`:digraph_utils.is_acyclic/1`), edge endpoint existence, codergen `llm_provider` presence + allowed value, reject unsupported attrs/handlers/graph directives listed in §4.3.
+- [x] Fixture set under `test/fixtures/dot/`: `valid_linear.dot`, `valid_three_agents.dot`, `cyclic.dot`, `no_start.dot`, `two_starts.dot`, `no_exit.dot`, `missing_provider.dot`, `unknown_provider.dot`, `rejected_handler.dot`, `edge_to_missing.dot`, `undirected.dot`.
+- [x] One assertion per fixture failure mode; parser tests for chained edges, inherited defaults, type override, duration coercion.
 - [ ] Commit.
 
 ### Phase C — ACP wrapper + fake-agent round-trip (day 2–4, ~7h, riskiest)

@@ -1,0 +1,7 @@
+digraph {
+  start [shape=Mdiamond]
+  wait [type="wait.human"]
+  exit [shape=Msquare]
+
+  start -> wait -> exit
+}

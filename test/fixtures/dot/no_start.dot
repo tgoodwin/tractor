@@ -1,0 +1,6 @@
+digraph {
+  ask [shape=box, prompt="missing start", llm_provider=codex]
+  exit [shape=Msquare]
+
+  ask -> exit
+}

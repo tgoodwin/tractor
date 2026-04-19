@@ -1,0 +1,7 @@
+digraph {
+  start [shape=Mdiamond]
+  ask [shape=box, prompt="missing provider"]
+  exit [shape=Msquare]
+
+  start -> ask -> exit
+}

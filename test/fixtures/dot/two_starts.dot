@@ -1,0 +1,8 @@
+digraph {
+  start_a [shape=Mdiamond]
+  start_b [shape=Mdiamond]
+  exit [shape=Msquare]
+
+  start_a -> exit
+  start_b -> exit
+}
