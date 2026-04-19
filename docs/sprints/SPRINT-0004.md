@@ -289,11 +289,11 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] Load vendor script in root layout *before* `app.js`.
 - [x] Rewrite `app.js` (~50 lines) to define `GraphBoard` hook per §5.1 and register it with `LiveSocket`.
 - [x] Update `run_live/show.html.heex`: wrap graph container in `<div id="graph" phx-hook="GraphBoard" phx-update="ignore">`.
-- [ ] Remove `GraphRenderer.apply_node_states/2` (server-side regex class injection) from the live path. `GraphRenderer` still emits the initial SVG with `data-node-id` + `tractor-node` classes; runtime state is hook-applied. Add a comment in `GraphRenderer` banning re-renders.
-- [ ] `RunLive.Show.handle_info/2` for each lifecycle event pushes `graph:node_state` via `push_event` to the hook instead of re-rendering.
-- [ ] Hook binds node click listeners and calls `pushEvent("select_node", ...)`.
-- [ ] Hook: `applyState`, `applySelected`, `reset()` via dblclick.
-- [ ] Manual smoke: pan, zoom, dblclick reset, click node, drive a full parallel_audit run and confirm graph state updates without viewport reset.
+- [x] Remove `GraphRenderer.apply_node_states/2` (server-side regex class injection) from the live path. `GraphRenderer` still emits the initial SVG with `data-node-id` + `tractor-node` classes; runtime state is hook-applied. Add a comment in `GraphRenderer` banning re-renders.
+- [x] `RunLive.Show.handle_info/2` for each lifecycle event pushes `graph:node_state` via `push_event` to the hook instead of re-rendering.
+- [x] Hook binds node click listeners and calls `pushEvent("select_node", ...)`.
+- [x] Hook: `applyState`, `applySelected`, `reset()` via dblclick.
+- [x] Manual smoke: pan, zoom, dblclick reset, click node, drive a full parallel_audit run and confirm graph state updates without viewport reset.
 - [ ] Commit.
 
 ### Phase D — Cutting-mat CSS + layout grid (0.75 day)

@@ -50,6 +50,8 @@ defmodule TractorWeb.GraphRenderer do
   end
 
   defp inject_node_attrs(svg) do
+    # Runtime graph state is hook-owned. Do not inject pending/running/succeeded/failed
+    # classes here; LiveView must push graph:* events for GraphBoard to apply.
     Regex.replace(~r/<g([^>]*class="node"[^>]*)>\s*<title>([^<]+)<\/title>/, svg, fn _all,
                                                                                      attrs,
                                                                                      node_id ->
@@ -57,7 +59,7 @@ defmodule TractorWeb.GraphRenderer do
 
       attrs = String.replace(attrs, ~s(class="node"), ~s(class="node tractor-node"))
 
-      ~s(<g#{attrs} data-node-id="#{escaped}" phx-click="select_node" phx-value-node-id="#{escaped}"><title>#{escaped}</title>)
+      ~s(<g#{attrs} data-node-id="#{escaped}"><title>#{escaped}</title>)
     end)
   end
 

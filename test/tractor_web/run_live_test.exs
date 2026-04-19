@@ -68,9 +68,10 @@ defmodule TractorWeb.RunLiveTest do
   @tag :tmp_dir
   test "late mount rebuilds complete state from disk", %{conn: conn, run_id: run_id} do
     assert {:ok, _result} = Run.await(run_id, 1_000)
-    {:ok, _view, html} = live(conn, "/runs/#{run_id}")
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
 
-    assert html =~ "tractor-node succeeded"
+    assert_push_event(view, "graph:node_state", %{node_id: "start", state: "succeeded"})
+    assert_push_event(view, "graph:node_state", %{node_id: "exit", state: "succeeded"})
   end
 
   defp dot_file(tmp_dir) do

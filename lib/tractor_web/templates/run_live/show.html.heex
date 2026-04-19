@@ -2,7 +2,7 @@
   <section class="graph-panel">
     <h1>Run {@run_id}</h1>
     <div id="graph" class="graph-svg" phx-hook="GraphBoard" phx-update="ignore">
-      {Phoenix.HTML.raw(apply_node_states(@graph_svg, @node_states))}
+      {Phoenix.HTML.raw(@graph_svg)}
     </div>
   </section>
 

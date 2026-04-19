@@ -202,14 +202,4 @@ defmodule TractorWeb.RunLive.Show do
     |> Enum.sort()
     |> List.first()
   end
-
-  defp apply_node_states(svg, node_states) do
-    Enum.reduce(node_states, svg, fn {node_id, state}, svg ->
-      Regex.replace(
-        ~r/(<g[^>]*class="[^"]*)(?="[^>]*data-node-id="#{Regex.escape(node_id)}")/,
-        svg,
-        "\\1 #{state}"
-      )
-    end)
-  end
 end
