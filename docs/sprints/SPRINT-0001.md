@@ -168,14 +168,14 @@ Three implementations: `Start` (no-op success), `Exit` (no-op success), `Coderge
 - [x] `Tractor.Paths` — resolve `$TRACTOR_DATA_DIR` / `$XDG_DATA_HOME` defaults; expose `run_dir/1`, `atomic_write!/2`.
 - [x] `Tractor.RunStore` — `open/2`, `write_node/3`, `finalize/2`. Writes `manifest.json` + per-node `prompt.md` / `response.md` / `status.json`. Env values redacted in manifest.
 - [x] Tests with `tmp_dir`: directory structure, atomic replacement under crash simulation, JSON shape, env redaction.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase E — Handlers + Runner + public API (day 4–5, ~4h)
-- [ ] `Tractor.Handler` behaviour; `Start`, `Exit`, `Codergen` impls.
-- [ ] `Tractor.Runner` GenServer: state in §4.8, `:advance` loop, `Task.Supervisor.async_nolink`, `:DOWN` handling, RunStore writes per node.
-- [ ] `Tractor.Run.start/1` public API: takes `%Pipeline{}` + options, returns `{:ok, run_id}`. `Tractor.Run.await/2` for the CLI to block.
-- [ ] Engine tests (Mox for `AgentClient`): 4-node pipeline `start → echo × 2 → exit` walks in order; final context contains both outputs. Handler-error propagation. Handler-crash propagation. **Three-provider ordering test:** DOT with `claude → codex → gemini` exercises the right Mox expectation per node.
-- [ ] **Validation-before-spawn test:** a DOT with a rejection causes exit `10` and starts zero agent subprocesses (asserted via Mox call count).
+- [x] `Tractor.Handler` behaviour; `Start`, `Exit`, `Codergen` impls.
+- [x] `Tractor.Runner` GenServer: state in §4.8, `:advance` loop, `Task.Supervisor.async_nolink`, `:DOWN` handling, RunStore writes per node.
+- [x] `Tractor.Run.start/1` public API: takes `%Pipeline{}` + options, returns `{:ok, run_id}`. `Tractor.Run.await/2` for the CLI to block.
+- [x] Engine tests (Mox for `AgentClient`): 4-node pipeline `start → echo × 2 → exit` walks in order; final context contains both outputs. Handler-error propagation. Handler-crash propagation. **Three-provider ordering test:** DOT with `claude → codex → gemini` exercises the right Mox expectation per node.
+- [x] **Validation-before-spawn test:** a DOT with a rejection causes exit `10` and starts zero agent subprocesses (asserted via Mox call count).
 - [ ] Commit.
 
 ### Phase F — CLI + example + acceptance (day 5–6, ~3h)
