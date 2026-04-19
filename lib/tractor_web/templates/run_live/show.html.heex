@@ -1,41 +1,64 @@
 <main class="tractor-shell">
-  <section class="graph-panel">
-    <h1>Run {@run_id}</h1>
+  <header class="run-header">
+    <div>
+      <p class="eyebrow">Run</p>
+      <h1>{@run_id}</h1>
+    </div>
+    <div class="run-meta">
+      <span class="meta-label">Pipeline</span>
+      <span class="mono truncate">{@pipeline.path}</span>
+    </div>
+    <div class="run-meta">
+      <span class={"status-pill status-#{overall_status(@node_states)}"}>
+        {overall_status(@node_states)}
+      </span>
+      <span class="mono">{elapsed_label(@run_dir)}</span>
+    </div>
+  </header>
+
+  <section class="graph-surface" aria-label="Pipeline graph">
     <div id="graph" class="graph-svg" phx-hook="GraphBoard" phx-update="ignore">
       {Phoenix.HTML.raw(@graph_svg)}
     </div>
   </section>
 
   <aside class="node-panel">
-    <h2>{@selected_node_id || "Node"}</h2>
+    <div :if={is_nil(@selected_node_id)} class="empty-sidebar">
+      <div class="empty-mark" aria-hidden="true"></div>
+      <p>Select a node.</p>
+    </div>
 
-    <h3>Prompt</h3>
-    <pre id="node-prompt">{@prompt}</pre>
+    <div :if={@selected_node_id}>
+      <h2>{@selected_node_id}</h2>
 
-    <h3>Response</h3>
-    <pre id="node-response">{@response}</pre>
+      <h3>Prompt</h3>
+      <pre id="node-prompt">{@prompt}</pre>
 
-    <details>
-      <summary>reasoning trace from ACP</summary>
-      <div id="thought-chunks" phx-update="stream">
-        <p :for={{id, chunk} <- @streams.thought_chunks} id={id}>{chunk.text}</p>
+      <h3>Response</h3>
+      <pre id="node-response">{@response}</pre>
+
+      <details>
+        <summary>reasoning trace from ACP</summary>
+        <div id="thought-chunks" phx-update="stream">
+          <p :for={{id, chunk} <- @streams.thought_chunks} id={id}>{chunk.text}</p>
+        </div>
+      </details>
+
+      <h3>Message chunks</h3>
+      <div id="message-chunks" phx-update="stream">
+        <p :for={{id, chunk} <- @streams.message_chunks} id={id}>{chunk.text}</p>
       </div>
-    </details>
 
-    <h3>Message chunks</h3>
-    <div id="message-chunks" phx-update="stream">
-      <p :for={{id, chunk} <- @streams.message_chunks} id={id}>{chunk.text}</p>
+      <h3>Tool calls</h3>
+      <div id="tool-calls">
+        <section :for={{tool_id, events} <- @tool_groups} class="tool-call">
+          <h4>{tool_id}</h4>
+          <pre>{Jason.encode!(events, pretty: true)}</pre>
+        </section>
+      </div>
+
+      <h3>stderr</h3>
+      <pre id="node-stderr">{@stderr}</pre>
     </div>
-
-    <h3>Tool calls</h3>
-    <div id="tool-calls">
-      <section :for={{tool_id, events} <- @tool_groups} class="tool-call">
-        <h4>{tool_id}</h4>
-        <pre>{Jason.encode!(events, pretty: true)}</pre>
-      </section>
-    </div>
-
-    <h3>stderr</h3>
-    <pre id="node-stderr">{@stderr}</pre>
   </aside>
 </main>

@@ -202,4 +202,43 @@ defmodule TractorWeb.RunLive.Show do
     |> Enum.sort()
     |> List.first()
   end
+
+  defp overall_status(node_states) do
+    states = Map.values(node_states)
+
+    cond do
+      Enum.any?(states, &(&1 == "failed")) -> "failed"
+      Enum.any?(states, &(&1 == "running")) -> "running"
+      states != [] and Enum.all?(states, &(&1 == "succeeded")) -> "succeeded"
+      true -> "pending"
+    end
+  end
+
+  defp elapsed_label(nil), do: "elapsed n/a"
+
+  defp elapsed_label(run_dir) do
+    manifest_path = Path.join(run_dir, "manifest.json")
+
+    with true <- File.exists?(manifest_path),
+         {:ok, manifest} <- manifest_path |> File.read!() |> Jason.decode(),
+         {:ok, started_at, _offset} <- DateTime.from_iso8601(manifest["started_at"]) do
+      finished_at = parse_time(manifest["finished_at"]) || DateTime.utc_now()
+      "elapsed " <> format_elapsed(DateTime.diff(finished_at, started_at, :millisecond))
+    else
+      _other -> "elapsed n/a"
+    end
+  end
+
+  defp parse_time(nil), do: nil
+
+  defp parse_time(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, datetime, _offset} -> datetime
+      _other -> nil
+    end
+  end
+
+  defp format_elapsed(ms) when ms < 1_000, do: "#{max(ms, 0)}ms"
+  defp format_elapsed(ms) when ms < 60_000, do: "#{div(ms, 1_000)}s"
+  defp format_elapsed(ms), do: "#{div(ms, 60_000)}m#{rem(div(ms, 1_000), 60)}s"
 end

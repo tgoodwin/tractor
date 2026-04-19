@@ -294,17 +294,17 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] Hook binds node click listeners and calls `pushEvent("select_node", ...)`.
 - [x] Hook: `applyState`, `applySelected`, `reset()` via dblclick.
 - [x] Manual smoke: pan, zoom, dblclick reset, click node, drive a full parallel_audit run and confirm graph state updates without viewport reset.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase D — Cutting-mat CSS + layout grid (0.75 day)
 
-- [ ] Rewrite `priv/static/assets/app.css` around the CSS Grid shell per §5.6.
-- [ ] Implement the two-layer 8px/40px cutting-mat background on `.graph-surface`.
-- [ ] Define palette and typography as CSS custom properties on `:root`.
-- [ ] Header bar: run id, pipeline path, overall status pill, elapsed counter.
-- [ ] Empty-sidebar state: small cutting-mat illustration + "Select a node."
-- [ ] `prefers-reduced-motion` handling.
-- [ ] Visual check with agent-browser at 1440×900: graph surface shows the faint grid, thicker lines align with section dividers, palette is cool neutral, no warm-cream dominance.
+- [x] Rewrite `priv/static/assets/app.css` around the CSS Grid shell per §5.6.
+- [x] Implement the two-layer 8px/40px cutting-mat background on `.graph-surface`.
+- [x] Define palette and typography as CSS custom properties on `:root`.
+- [x] Header bar: run id, pipeline path, overall status pill, elapsed counter.
+- [x] Empty-sidebar state: small cutting-mat illustration + "Select a node."
+- [x] `prefers-reduced-motion` handling.
+- [x] Visual check with agent-browser at 1440×900: graph surface shows the faint grid, thicker lines align with section dividers, palette is cool neutral, no warm-cream dominance.
 - [ ] Commit.
 
 ### Phase E — Timeline data model + sidebar rendering (1.5 days — the meatiest chunk)
