@@ -281,14 +281,14 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] `Handler.Codergen` writes `token_usage` into `status.json` on node completion.
 - [x] Unit tests: `Session` captures usage from both wire paths, merges correctly, tolerates unknown shapes without failing; `events.jsonl` contains a `:usage` entry; `status.json` carries the normalized struct.
 - [x] Regression: existing `Turn` assertions still pass with `token_usage: nil`.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase C — Vendor svg-pan-zoom + `GraphBoard` hook (1 day, architectural)
 
-- [ ] Download `svg-pan-zoom@3.6.x` UMD minified → `priv/static/assets/vendor/svg-pan-zoom.min.js`; include `svg-pan-zoom.LICENSE.txt` alongside.
-- [ ] Load vendor script in root layout *before* `app.js`.
-- [ ] Rewrite `app.js` (~50 lines) to define `GraphBoard` hook per §5.1 and register it with `LiveSocket`.
-- [ ] Update `run_live/show.html.heex`: wrap graph container in `<div id="graph" phx-hook="GraphBoard" phx-update="ignore">`.
+- [x] Download `svg-pan-zoom@3.6.x` UMD minified → `priv/static/assets/vendor/svg-pan-zoom.min.js`; include `svg-pan-zoom.LICENSE.txt` alongside.
+- [x] Load vendor script in root layout *before* `app.js`.
+- [x] Rewrite `app.js` (~50 lines) to define `GraphBoard` hook per §5.1 and register it with `LiveSocket`.
+- [x] Update `run_live/show.html.heex`: wrap graph container in `<div id="graph" phx-hook="GraphBoard" phx-update="ignore">`.
 - [ ] Remove `GraphRenderer.apply_node_states/2` (server-side regex class injection) from the live path. `GraphRenderer` still emits the initial SVG with `data-node-id` + `tractor-node` classes; runtime state is hook-applied. Add a comment in `GraphRenderer` banning re-renders.
 - [ ] `RunLive.Show.handle_info/2` for each lifecycle event pushes `graph:node_state` via `push_event` to the hook instead of re-rendering.
 - [ ] Hook binds node click listeners and calls `pushEvent("select_node", ...)`.

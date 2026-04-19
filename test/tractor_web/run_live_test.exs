@@ -24,7 +24,7 @@ defmodule TractorWeb.RunLiveTest do
 
     :ok = RunEvents.emit(run_id, "start", :node_started, %{})
 
-    assert render(view) =~ "tractor-node running"
+    assert_push_event(view, "graph:node_state", %{node_id: "start", state: "running"})
   end
 
   @tag :tmp_dir
@@ -34,8 +34,8 @@ defmodule TractorWeb.RunLiveTest do
     :ok = RunEvents.emit(run_id, "start", :node_started, %{})
     :ok = RunEvents.emit(run_id, "exit", :node_started, %{})
 
-    html = render(view)
-    assert html |> String.split("tractor-node running") |> length() == 3
+    assert_push_event(view, "graph:node_state", %{node_id: "start", state: "running"})
+    assert_push_event(view, "graph:node_state", %{node_id: "exit", state: "running"})
   end
 
   @tag :tmp_dir

@@ -28,6 +28,7 @@ defmodule TractorWeb.RunLive.Show do
         {:ok,
          socket
          |> assign(pipeline: pipeline, run_dir: run_dir, graph_svg: svg, node_states: node_states)
+         |> push_graph_node_states(node_states)
          |> select_node(selected)}
 
       {:error, _reason} ->
@@ -40,9 +41,12 @@ defmodule TractorWeb.RunLive.Show do
 
   @impl true
   def handle_info({:run_event, node_id, event}, socket) do
+    node_states = update_node_state(socket.assigns.node_states, node_id, event["kind"])
+
     socket =
       socket
-      |> update(:node_states, &update_node_state(&1, node_id, event["kind"]))
+      |> assign(:node_states, node_states)
+      |> push_graph_node_state(node_id, Map.get(node_states, node_id))
       |> maybe_insert_selected_event(node_id, event)
 
     {:noreply, socket}
@@ -68,6 +72,7 @@ defmodule TractorWeb.RunLive.Show do
     )
     |> stream(:message_chunks, event_stream(events, "agent_message_chunk"), reset: true)
     |> stream(:thought_chunks, event_stream(events, "agent_thought_chunk"), reset: true)
+    |> push_event("graph:selected", %{node_id: node_id})
   end
 
   defp maybe_insert_selected_event(
@@ -129,6 +134,18 @@ defmodule TractorWeb.RunLive.Show do
     do: Map.put(states, node_id, "succeeded")
 
   defp update_node_state(states, _node_id, _kind), do: states
+
+  defp push_graph_node_states(socket, node_states) do
+    Enum.reduce(node_states, socket, fn {node_id, state}, socket ->
+      push_graph_node_state(socket, node_id, state)
+    end)
+  end
+
+  defp push_graph_node_state(socket, node_id, nil), do: push_graph_node_state(socket, node_id, "pending")
+
+  defp push_graph_node_state(socket, node_id, state) do
+    push_event(socket, "graph:node_state", %{node_id: node_id, state: state})
+  end
 
   defp normalize_status("ok"), do: "succeeded"
   defp normalize_status("success"), do: "succeeded"
