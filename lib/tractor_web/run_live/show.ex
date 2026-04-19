@@ -302,6 +302,24 @@ defmodule TractorWeb.RunLive.Show do
   defp entry_body(body) when is_binary(body), do: body
   defp entry_body(body), do: Jason.encode!(body, pretty: true)
 
+  defp node_pills(pipeline, node_id) do
+    case pipeline.nodes[node_id] do
+      %Tractor.Node{} = node ->
+        []
+        |> maybe_pill(node.llm_provider)
+        |> maybe_pill(node.llm_model)
+        |> maybe_pill(node.attrs["reasoning_effort"])
+        |> Enum.reverse()
+
+      _other ->
+        []
+    end
+  end
+
+  defp maybe_pill(acc, nil), do: acc
+  defp maybe_pill(acc, ""), do: acc
+  defp maybe_pill(acc, value), do: [value | acc]
+
   # Text-ish entry types render as markdown (preserves newlines, lists, code fences).
   # Structured types (tool calls, lifecycle, usage) keep the raw JSON presentation.
   defp render_entry_body(%{type: type, body: body})

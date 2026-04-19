@@ -158,8 +158,8 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 18px;
-  background: var(--surface-panel);
+  padding: 28px 18px 24px;
+  background: var(--surface);
 }
 
 .node-panel h2 {
@@ -176,6 +176,32 @@ body {
   margin: 2px 0 0;
 }
 
+.panel-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--mono, ui-monospace, "JetBrains Mono", Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  background: var(--surface-panel);
+  border: 1px solid rgba(37, 42, 37, 0.16);
+  color: var(--ink-muted, #4a5b49);
+}
+
+.pill-model {
+  border-color: rgba(63, 99, 61, 0.25);
+  background: rgba(63, 99, 61, 0.08);
+}
+
 .timeline {
   display: grid;
   gap: 10px;
@@ -187,7 +213,7 @@ body {
 .tl-entry {
   border-left: 3px solid var(--tone-lifecycle);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface-panel);
 }
 
 .tl-entry details {

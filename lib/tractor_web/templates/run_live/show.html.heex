@@ -32,6 +32,11 @@
       <div class="panel-heading">
         <p class="eyebrow">Node</p>
         <h2>{@selected_node_id}</h2>
+        <div :if={node_pills(@pipeline, @selected_node_id) != []} class="panel-pills">
+          <span :for={pill <- node_pills(@pipeline, @selected_node_id)} class="pill pill-model">
+            {pill}
+          </span>
+        </div>
       </div>
 
       <ol id="timeline" class="timeline" phx-update="stream" phx-hook="StickyTimeline">
