@@ -12,7 +12,9 @@ defmodule Tractor.Application do
       {Registry, keys: :unique, name: Tractor.AgentRegistry},
       {Task.Supervisor, name: Tractor.HandlerTasks},
       {DynamicSupervisor, strategy: :one_for_one, name: Tractor.ACP.SessionSup},
-      {DynamicSupervisor, strategy: :one_for_one, name: Tractor.RunSup}
+      {DynamicSupervisor, strategy: :one_for_one, name: Tractor.RunSup},
+      {Phoenix.PubSub, name: Tractor.PubSub},
+      {DynamicSupervisor, strategy: :one_for_one, name: Tractor.WebSup}
     ]
 
     opts = [strategy: :one_for_one, name: Tractor.Supervisor]

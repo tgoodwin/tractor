@@ -234,15 +234,15 @@ Extend `reap`:
 
 ### Phase A — Phoenix-in-escript spike + scaffold (day 1, ~5h)
 
-- [ ] **2h spike:** create throwaway `spike/` with `:phoenix`, `:phoenix_live_view`, `:phoenix_pubsub`, `:bandit` added to mix.exs. Build a "hello world" LiveView route. `mix escript.build` + run + GET the URL. Document outcome in `docs/sprints/notes/phoenix-escript-spike.md`. **Decision gate:** escript works → stay escript. Fails → switch `--serve` path to `mix release`, document invocation change, budget +1 day.
-- [ ] Add Phoenix deps to `mix.exs` post-spike. Update `mix.lock`.
-- [ ] Add `{Phoenix.PubSub, name: Tractor.PubSub}` to `Tractor.Application` static children (always on).
-- [ ] Add `Tractor.WebSup` as `DynamicSupervisor` to static children (empty — endpoint starts here on `--serve`).
-- [ ] Create `lib/tractor_web/`: `endpoint.ex` (host `127.0.0.1`, no code reloader, server true, runtime-only config), `router.ex` (single `live "/runs/:run_id", RunLive.Show` + 404 catch-all), `run_live/show.ex` skeleton, `templates/run_live/show.html.heex` stub.
-- [ ] Create `priv/static/assets/app.js` (~10 lines: import LiveView, connect socket) and `priv/static/assets/app.css` (empty scaffold).
-- [ ] `Tractor.RunBus` module: `subscribe/1`, `subscribe/2`, `broadcast/3`. Topic convention: `"run:<run_id>"` and `"run:<run_id>:node:<node_id>"`.
-- [ ] Unit test: normal `tractor reap` (no `--serve`) does NOT open a listener (assert `:gen_tcp.connect({127,0,0,1}, 4000, [])` fails).
-- [ ] Unit test: `TractorWeb.Server.start_link/1` binds only to `127.0.0.1` (config assertion).
+- [x] **2h spike:** create throwaway `spike/` with `:phoenix`, `:phoenix_live_view`, `:phoenix_pubsub`, `:bandit` added to mix.exs. Build a "hello world" LiveView route. `mix escript.build` + run + GET the URL. Document outcome in `docs/sprints/notes/phoenix-escript-spike.md`. **Decision gate:** escript works → stay escript. Fails → switch `--serve` path to `mix release`, document invocation change, budget +1 day.
+- [x] Add Phoenix deps to `mix.exs` post-spike. Update `mix.lock`.
+- [x] Add `{Phoenix.PubSub, name: Tractor.PubSub}` to `Tractor.Application` static children (always on).
+- [x] Add `Tractor.WebSup` as `DynamicSupervisor` to static children (empty — endpoint starts here on `--serve`).
+- [x] Create `lib/tractor_web/`: `endpoint.ex` (host `127.0.0.1`, no code reloader, server true, runtime-only config), `router.ex` (single `live "/runs/:run_id", RunLive.Show` + 404 catch-all), `run_live/show.ex` skeleton, `templates/run_live/show.html.heex` stub.
+- [x] Create `priv/static/assets/app.js` (~10 lines: import LiveView, connect socket) and `priv/static/assets/app.css` (empty scaffold).
+- [x] `Tractor.RunBus` module: `subscribe/1`, `subscribe/2`, `broadcast/3`. Topic convention: `"run:<run_id>"` and `"run:<run_id>:node:<node_id>"`.
+- [x] Unit test: normal `tractor reap` (no `--serve`) does NOT open a listener (assert `:gen_tcp.connect({127,0,0,1}, 4000, [])` fails).
+- [x] Unit test: `TractorWeb.Server.start_link/1` binds only to `127.0.0.1` (config assertion).
 - [ ] Commit.
 
 ### Phase B — Event substrate + ACP capture widening (day 2–3, ~7h)

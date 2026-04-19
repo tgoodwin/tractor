@@ -10,7 +10,11 @@ defmodule Tractor.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      escript: [main_module: Tractor.CLI, path: "bin/tractor"]
+      escript: [
+        main_module: Tractor.CLI,
+        path: "bin/tractor",
+        embed_extra_files: ["priv/static"]
+      ]
     ]
   end
 
@@ -28,6 +32,11 @@ defmodule Tractor.MixProject do
       {:dotx, "~> 0.3"},
       {:acpex, "~> 0.1"},
       {:jason, "~> 1.4"},
+      {:phoenix, "~> 1.7"},
+      {:phoenix_live_view, "~> 1.0"},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_pubsub, "~> 2.1"},
+      {:bandit, "~> 1.5"},
       {:mox, "~> 1.2", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]

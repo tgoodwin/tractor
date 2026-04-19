@@ -1,0 +1,22 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: #1d1f22;
+  background: #f7f8fa;
+}
+
+.tractor-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 100vh;
+}
+
+.graph-panel,
+.node-panel {
+  padding: 24px;
+}
+
+.node-panel {
+  border-left: 1px solid #d5d9e0;
+  background: #fff;
+}
