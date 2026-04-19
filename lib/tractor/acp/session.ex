@@ -127,8 +127,9 @@ defmodule Tractor.ACP.Session do
 
   @impl true
   def terminate(_reason, state) do
-    terminate_os_process(state.os_pid)
+    pids = os_process_tree(state.os_pid)
     close_port(state.port)
+    terminate_os_processes(pids)
     :ok
   end
 
@@ -464,11 +465,17 @@ defmodule Tractor.ACP.Session do
     _error -> :ok
   end
 
-  defp terminate_os_process(nil), do: :ok
+  defp os_process_tree(nil), do: []
 
-  defp terminate_os_process(pid) do
-    pids = descendant_pids(pid) ++ [pid]
+  defp os_process_tree(pid) do
+    descendant_pids(pid) ++ [pid]
+  rescue
+    _error -> []
+  end
 
+  defp terminate_os_processes([]), do: :ok
+
+  defp terminate_os_processes(pids) do
     signal_os_processes(pids, "-TERM")
 
     unless wait_for_os_processes_exit(pids) do

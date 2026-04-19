@@ -25,6 +25,7 @@ defmodule Tractor.Handler.Codergen do
 
     node_dir = Path.join(run_dir, node.id)
     File.mkdir_p!(node_dir)
+    Tractor.Paths.atomic_write!(Path.join(node_dir, "prompt.md"), prompt)
     stderr_log = Path.join(node_dir, "stderr.log")
 
     event_sink = fn %{kind: kind, data: data} ->

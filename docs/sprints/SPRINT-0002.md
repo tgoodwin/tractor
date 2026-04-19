@@ -290,29 +290,29 @@ Extend `reap`:
 - [x] `ready_set/1` / enqueue-after-completion logic.
 - [x] `{ref, result}` and `:DOWN` handlers updated for frontier.
 - [x] Run lifecycle broadcasts via `RunEvents`: `run_started`, `node_started`, `node_succeeded`, `node_failed`, `run_completed`, `run_failed`.
-- [ ] `Tractor.Pipeline` gains `parallel_blocks :: %{parallel_node_id => %ParallelBlock{branches, fan_in_id, max_parallel, join_policy}}`, populated by parser (Phase C).
-- [ ] Runner: on dequeuing a `parallel` node, enter `enter_parallel/2` — snapshot context, initialize `parallel_state[id]`, enqueue branch entries (up to `max_parallel`; queue the rest).
-- [ ] `Tractor.Engine.BranchExecutor.run_until/5` — walks branch from entry node to fan-in boundary. For sprint 2 with single-node branches this is effectively "run exactly the entry node and stop."
-- [ ] Branch context isolation: `Codergen` reads from `branch_contexts[branch_id]` when `branch_id` is set in its input env; never falls back to parent context.
-- [ ] Update `Codergen` to write `prompt.md` at node start (for UI to render `pending` nodes clickably), stream ACP events during the run via `RunEvents`, write `response.md` + `status.json` at completion, return structured `%Turn{}`.
-- [ ] Branches that fail emit `branch_settled` events; Runner does NOT cancel sibling branches; waits for all branches in the block (including their timeouts) to settle.
-- [ ] After all branches settle, store results in context under `parallel.results.<parallel_node_id>` as a list of `%{branch_id, entry_node_id, status, outcome, started_at, finished_at, score?}` maps.
-- [ ] Enqueue fan-in node; Runner advances to it directly (parallel node has no outgoing edges to non-branch nodes).
-- [ ] `Tractor.Handler.FanIn`:
-  - [ ] Reads upstream `parallel.results.<parallel_node_id>`.
-  - [ ] Writes `parallel.fan_in.best_id`, `parallel.fan_in.best_outcome`, `parallel.fan_in.summary` to parent context.
-  - [ ] Selection heuristic: status rank (success > partial_success > failed), then score desc, then lexical branch id.
-  - [ ] If fan-in node has `llm_provider`, drives ACP session with templated prompt (`{{branch:<id>}}`, `{{branch_responses}}`).
-  - [ ] Run success if ≥1 branch succeeded; fail if all failed or results empty.
-- [ ] **Tests:**
-  - [ ] Sprint-1 linear-pipeline regression (all sprint-1 engine tests green).
-  - [ ] 3-branch parallel: Mox Session emits branches with overlapping timestamps; assert true concurrency via `started_at` overlap.
-  - [ ] `max_parallel=2` with 3 branches: assert only 2 in flight at any moment.
-  - [ ] Branch context isolation sentinel test: 3 branches each write a unique key; assert pairwise isolation and no parent-context leak.
-  - [ ] One branch fails under `wait_all`: other branches finish; fan-in receives partial results; downstream sees fan-in's outcome; run succeeds with partial_success status if fan-in picks a successful branch.
-  - [ ] All branches fail: fan-in has nothing to consolidate; run fails with `:all_branches_failed`.
-  - [ ] Deterministic fan-in selection: crafted `parallel.results` fixtures with varying status/score/id; assert selection matches heuristic.
-  - [ ] JSON-safety enforcement: `Context.snapshot/1` rejects maps containing pids/refs/functions.
+- [x] `Tractor.Pipeline` gains `parallel_blocks :: %{parallel_node_id => %ParallelBlock{branches, fan_in_id, max_parallel, join_policy}}`, populated by parser (Phase C).
+- [x] Runner: on dequeuing a `parallel` node, enter `enter_parallel/2` — snapshot context, initialize `parallel_state[id]`, enqueue branch entries (up to `max_parallel`; queue the rest).
+- [x] `Tractor.Engine.BranchExecutor.run_until/5` — walks branch from entry node to fan-in boundary. For sprint 2 with single-node branches this is effectively "run exactly the entry node and stop."
+- [x] Branch context isolation: `Codergen` reads from `branch_contexts[branch_id]` when `branch_id` is set in its input env; never falls back to parent context.
+- [x] Update `Codergen` to write `prompt.md` at node start (for UI to render `pending` nodes clickably), stream ACP events during the run via `RunEvents`, write `response.md` + `status.json` at completion, return structured `%Turn{}`.
+- [x] Branches that fail emit `branch_settled` events; Runner does NOT cancel sibling branches; waits for all branches in the block (including their timeouts) to settle.
+- [x] After all branches settle, store results in context under `parallel.results.<parallel_node_id>` as a list of `%{branch_id, entry_node_id, status, outcome, started_at, finished_at, score?}` maps.
+- [x] Enqueue fan-in node; Runner advances to it directly (parallel node has no outgoing edges to non-branch nodes).
+- [x] `Tractor.Handler.FanIn`:
+  - [x] Reads upstream `parallel.results.<parallel_node_id>`.
+  - [x] Writes `parallel.fan_in.best_id`, `parallel.fan_in.best_outcome`, `parallel.fan_in.summary` to parent context.
+  - [x] Selection heuristic: status rank (success > partial_success > failed), then score desc, then lexical branch id.
+  - [x] If fan-in node has `llm_provider`, drives ACP session with templated prompt (`{{branch:<id>}}`, `{{branch_responses}}`).
+  - [x] Run success if ≥1 branch succeeded; fail if all failed or results empty.
+- [x] **Tests:**
+  - [x] Sprint-1 linear-pipeline regression (all sprint-1 engine tests green).
+  - [x] 3-branch parallel: Mox Session emits branches with overlapping timestamps; assert true concurrency via `started_at` overlap.
+  - [x] `max_parallel=2` with 3 branches: assert only 2 in flight at any moment.
+  - [x] Branch context isolation sentinel test: 3 branches each write a unique key; assert pairwise isolation and no parent-context leak.
+  - [x] One branch fails under `wait_all`: other branches finish; fan-in receives partial results; downstream sees fan-in's outcome; run succeeds with partial_success status if fan-in picks a successful branch.
+  - [x] All branches fail: fan-in has nothing to consolidate; run fails with `:all_branches_failed`.
+  - [x] Deterministic fan-in selection: crafted `parallel.results` fixtures with varying status/score/id; assert selection matches heuristic.
+  - [x] JSON-safety enforcement: `Context.snapshot/1` rejects maps containing pids/refs/functions.
 - [ ] Commit.
 
 ### Phase E — LiveView UI (day 6–8, ~7h, can start once Phase B lands)

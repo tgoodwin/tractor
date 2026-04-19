@@ -4,6 +4,7 @@ defmodule Tractor.DotParser do
   """
 
   alias Tractor.{Diagnostic, Edge, Node, Pipeline}
+  alias Tractor.Pipeline.ParallelBlock
 
   @shape_types %{
     "Mdiamond" => "start",
@@ -43,7 +44,8 @@ defmodule Tractor.DotParser do
          graph_type: graph.type,
          graph_attrs: graph_attrs,
          nodes: nodes,
-         edges: edges
+         edges: edges,
+         parallel_blocks: discover_parallel_blocks(nodes, edges)
        }}
     end
   end
@@ -182,5 +184,67 @@ defmodule Tractor.DotParser do
       edge: Keyword.get(opts, :edge),
       path: Keyword.get(opts, :path)
     }
+  end
+
+  defp discover_parallel_blocks(nodes, edges) do
+    nodes
+    |> Enum.filter(fn {_id, %Node{type: type}} -> type == "parallel" end)
+    |> Enum.reduce(%{}, fn {parallel_id, node}, blocks ->
+      branches = outgoing_to_existing(edges, nodes, parallel_id)
+
+      fan_ins =
+        branches
+        |> Enum.map(&reachable_fan_ins(nodes, edges, &1))
+        |> intersect_all()
+
+      case fan_ins do
+        [fan_in_id] ->
+          Map.put(blocks, parallel_id, %ParallelBlock{
+            parallel_node_id: parallel_id,
+            branches: branches,
+            fan_in_id: fan_in_id,
+            max_parallel: Node.max_parallel(node),
+            join_policy: Node.join_policy(node)
+          })
+
+        _other ->
+          blocks
+      end
+    end)
+  end
+
+  defp outgoing_to_existing(edges, nodes, node_id) do
+    edges
+    |> Enum.filter(&(&1.from == node_id and Map.has_key?(nodes, &1.to)))
+    |> Enum.map(& &1.to)
+  end
+
+  defp reachable_fan_ins(nodes, edges, start_id) do
+    do_reachable_fan_ins(nodes, edges, [start_id], MapSet.new(), MapSet.new())
+  end
+
+  defp do_reachable_fan_ins(_nodes, _edges, [], _seen, acc), do: acc
+
+  defp do_reachable_fan_ins(nodes, edges, [node_id | rest], seen, acc) do
+    cond do
+      MapSet.member?(seen, node_id) ->
+        do_reachable_fan_ins(nodes, edges, rest, seen, acc)
+
+      get_in(nodes, [node_id, Access.key(:type)]) == "parallel.fan_in" ->
+        do_reachable_fan_ins(nodes, edges, rest, MapSet.put(seen, node_id), MapSet.put(acc, node_id))
+
+      true ->
+        next = outgoing_to_existing(edges, nodes, node_id)
+        do_reachable_fan_ins(nodes, edges, next ++ rest, MapSet.put(seen, node_id), acc)
+    end
+  end
+
+  defp intersect_all([]), do: []
+
+  defp intersect_all([first | rest]) do
+    rest
+    |> Enum.reduce(first, &MapSet.intersection/2)
+    |> MapSet.to_list()
+    |> Enum.sort()
   end
 end

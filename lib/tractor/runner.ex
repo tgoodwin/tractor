@@ -5,7 +5,7 @@ defmodule Tractor.Runner do
 
   use GenServer
 
-  alias Tractor.{Edge, Node, Pipeline, RunEvents, RunStore}
+  alias Tractor.{Context, Edge, Node, Pipeline, RunEvents, RunStore}
 
   defstruct pipeline: nil,
             store: nil,
@@ -115,26 +115,54 @@ defmodule Tractor.Runner do
 
   defp start_node(%{pipeline: pipeline} = state, node_id) do
     node = Map.fetch!(pipeline.nodes, node_id)
+
+    if node.type == "parallel" do
+      enter_parallel(state, node)
+    else
+      start_task(state, node, state.context, %{branch_id: nil, parallel_id: nil})
+    end
+  end
+
+  defp start_task(state, node, context, entry_attrs) do
     handler = handler_for(node)
     started_at = DateTime.utc_now()
 
     log_starting(node)
-    RunStore.mark_node_running(state.store, node_id, started_at)
-    RunEvents.emit(state.store.run_id, node_id, :node_started, %{"started_at" => DateTime.to_iso8601(started_at)})
+    RunStore.mark_node_running(state.store, node.id, started_at)
+    RunEvents.emit(state.store.run_id, node.id, :node_started, %{"started_at" => DateTime.to_iso8601(started_at)})
 
     task =
       Task.Supervisor.async_nolink(Tractor.HandlerTasks, fn ->
-        handler.run(node, state.context, state.store.run_dir)
+        handler.run(node, context, state.store.run_dir)
       end)
 
     put_in(state.frontier[task.ref], %{
-      node_id: node_id,
-      branch_id: nil,
+      node_id: node.id,
+      branch_id: entry_attrs.branch_id,
+      parallel_id: entry_attrs.parallel_id,
+      started_at: DateTime.to_iso8601(started_at),
       started_at_ms: System.monotonic_time(:millisecond)
     })
   end
 
   defp handle_handler_result({:ok, outcome, updates}, entry, state) do
+    if entry.branch_id do
+      handle_branch_result({:ok, outcome, updates}, entry, state)
+    else
+      handle_node_success(outcome, updates, entry, state)
+    end
+  end
+
+  defp handle_handler_result({:error, reason}, %{branch_id: branch_id} = entry, state)
+       when not is_nil(branch_id) do
+    handle_branch_result({:error, reason}, entry, state)
+  end
+
+  defp handle_handler_result({:error, reason}, entry, state) do
+    fail_node(state, entry, reason)
+  end
+
+  defp handle_node_success(outcome, updates, entry, state) do
     node_id = entry.node_id
     node = Map.fetch!(state.pipeline.nodes, node_id)
     log_done(node_id, :ok, entry.started_at_ms)
@@ -144,7 +172,10 @@ defmodule Tractor.Runner do
 
     state = %{
       state
-      | context: Map.put(state.context, node_id, outcome),
+      | context:
+          state.context
+          |> Context.apply_updates(Map.get(updates, :context, %{}))
+          |> Map.put(node_id, outcome),
         provider_commands: collect_provider_command(state.provider_commands, updates),
         completed: MapSet.put(state.completed, node_id)
     }
@@ -156,10 +187,6 @@ defmodule Tractor.Runner do
       |> enqueue_next(node_id)
       |> advance()
     end
-  end
-
-  defp handle_handler_result({:error, reason}, entry, state) do
-    fail_node(state, entry, reason)
   end
 
   defp fail_node(state, entry, reason) do
@@ -207,6 +234,176 @@ defmodule Tractor.Runner do
     %{state | agenda: :queue.in(next_node_id(state.pipeline, node_id), state.agenda)}
   end
 
+  defp enter_parallel(state, %Node{id: parallel_id} = node) do
+    block = Map.fetch!(state.pipeline.parallel_blocks, parallel_id)
+    started_at = DateTime.utc_now()
+
+    log_starting(node)
+    RunStore.mark_node_running(state.store, parallel_id, started_at)
+
+    RunEvents.emit(state.store.run_id, parallel_id, :parallel_started, %{
+      "branches" => block.branches,
+      "fan_in_id" => block.fan_in_id
+    })
+
+    case Context.snapshot(state.context) do
+      {:ok, parent_context} ->
+        parallel_state = %{
+          block: block,
+          pending: block.branches,
+          running: MapSet.new(),
+          settled: [],
+          parent_context: parent_context,
+          started_at_ms: System.monotonic_time(:millisecond)
+        }
+
+        state
+        |> put_in([Access.key(:parallel_state), parallel_id], parallel_state)
+        |> release_parallel_branches(parallel_id)
+
+      {:error, reason} ->
+        fail_node(state, %{node_id: parallel_id, started_at_ms: System.monotonic_time(:millisecond)}, reason)
+    end
+  end
+
+  defp release_parallel_branches(state, parallel_id) do
+    parallel = Map.fetch!(state.parallel_state, parallel_id)
+    capacity = parallel.block.max_parallel - MapSet.size(parallel.running)
+    {to_start, pending} = Enum.split(parallel.pending, max(capacity, 0))
+
+    parallel = %{parallel | pending: pending}
+    state = put_in(state.parallel_state[parallel_id], parallel)
+
+    Enum.reduce(to_start, state, fn node_id, state ->
+      start_branch(state, parallel_id, node_id)
+    end)
+  end
+
+  defp start_branch(state, parallel_id, node_id) do
+    parallel = Map.fetch!(state.parallel_state, parallel_id)
+    branch_id = "#{parallel_id}:#{node_id}"
+    node = Map.fetch!(state.pipeline.nodes, node_id)
+
+    case Context.clone_for_branch(parallel.parent_context, branch_id) do
+      {:ok, branch_context} ->
+        RunEvents.emit(state.store.run_id, node_id, :branch_started, %{
+          "branch_id" => branch_id,
+          "parallel_node_id" => parallel_id
+        })
+
+        state
+        |> put_in([Access.key(:branch_contexts), branch_id], branch_context)
+        |> update_in([Access.key(:parallel_state), parallel_id, :running], &MapSet.put(&1, branch_id))
+        |> start_task(node, branch_context, %{branch_id: branch_id, parallel_id: parallel_id})
+
+      {:error, reason} ->
+        settle_branch(state, parallel_id, %{
+          "branch_id" => branch_id,
+          "entry_node_id" => node_id,
+          "status" => "failed",
+          "outcome" => inspect(reason),
+          "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+          "finished_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+        })
+    end
+  end
+
+  defp handle_branch_result({:ok, outcome, updates}, entry, state) do
+    log_done(entry.node_id, :ok, entry.started_at_ms)
+    write_success(state.store, entry.node_id, updates)
+    RunStore.mark_node_succeeded(state.store, entry.node_id, Map.get(updates, :status, %{}))
+    RunEvents.emit(state.store.run_id, entry.node_id, :node_succeeded, %{"status" => "ok"})
+
+    state =
+      update_in(state.branch_contexts[entry.branch_id], fn context ->
+        context
+        |> Context.apply_updates(Map.get(updates, :context, %{}))
+        |> Map.put(entry.node_id, outcome)
+      end)
+
+    settle_branch(state, entry.parallel_id, %{
+      "branch_id" => entry.branch_id,
+      "entry_node_id" => entry.node_id,
+      "status" => "success",
+      "outcome" => outcome,
+      "started_at" => entry.started_at,
+      "finished_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+    })
+  end
+
+  defp handle_branch_result({:error, reason}, entry, state) do
+    log_done(entry.node_id, {:error, reason}, entry.started_at_ms)
+    RunStore.mark_node_failed(state.store, entry.node_id, reason)
+    RunEvents.emit(state.store.run_id, entry.node_id, :node_failed, %{"reason" => inspect(reason)})
+
+    settle_branch(state, entry.parallel_id, %{
+      "branch_id" => entry.branch_id,
+      "entry_node_id" => entry.node_id,
+      "status" => "failed",
+      "outcome" => inspect(reason),
+      "started_at" => entry.started_at,
+      "finished_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+    })
+  end
+
+  defp settle_branch(state, parallel_id, result) do
+    RunEvents.emit(state.store.run_id, result["entry_node_id"], :branch_settled, result)
+
+    state =
+      state
+      |> update_in([Access.key(:parallel_state), parallel_id, :running], &MapSet.delete(&1, result["branch_id"]))
+      |> update_in([Access.key(:parallel_state), parallel_id, :settled], &(&1 ++ [result]))
+
+    parallel = Map.fetch!(state.parallel_state, parallel_id)
+
+    cond do
+      parallel.pending != [] ->
+        release_parallel_branches(state, parallel_id)
+
+      MapSet.size(parallel.running) == 0 ->
+        complete_parallel(state, parallel_id)
+
+      true ->
+        state
+    end
+  end
+
+  defp complete_parallel(state, parallel_id) do
+    parallel = Map.fetch!(state.parallel_state, parallel_id)
+    results = Enum.sort_by(parallel.settled, & &1["branch_id"])
+    status = parallel_status(results)
+    finished_at = DateTime.utc_now() |> DateTime.to_iso8601()
+
+    RunStore.mark_node_succeeded(state.store, parallel_id, %{"status" => status, "finished_at" => finished_at})
+
+    RunEvents.emit(state.store.run_id, parallel_id, :parallel_completed, %{
+      "status" => status,
+      "results" => results
+    })
+
+    state = %{
+      state
+      | context:
+          state.context
+          |> Map.put("parallel.results.#{parallel_id}", results)
+          |> Map.put(parallel_id, status),
+        completed: MapSet.put(state.completed, parallel_id),
+        agenda: :queue.in(parallel.block.fan_in_id, state.agenda)
+    }
+
+    advance(state)
+  end
+
+  defp parallel_status(results) do
+    successes = Enum.count(results, &(&1["status"] == "success"))
+
+    cond do
+      successes == length(results) -> "success"
+      successes > 0 -> "partial_success"
+      true -> "failed"
+    end
+  end
+
   defp write_success(store, node_id, updates) do
     RunStore.write_node(store, node_id, %{
       prompt: Map.get(updates, :prompt),
@@ -242,6 +439,7 @@ defmodule Tractor.Runner do
   defp handler_for(%Node{type: "start"}), do: Tractor.Handler.Start
   defp handler_for(%Node{type: "exit"}), do: Tractor.Handler.Exit
   defp handler_for(%Node{type: "codergen"}), do: Tractor.Handler.Codergen
+  defp handler_for(%Node{type: "parallel.fan_in"}), do: Tractor.Handler.FanIn
 
   defp next_node_id(%Pipeline{edges: edges}, node_id) do
     edges
