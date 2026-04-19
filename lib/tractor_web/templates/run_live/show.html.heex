@@ -29,36 +29,27 @@
     </div>
 
     <div :if={@selected_node_id}>
-      <h2>{@selected_node_id}</h2>
-
-      <h3>Prompt</h3>
-      <pre id="node-prompt">{@prompt}</pre>
-
-      <h3>Response</h3>
-      <pre id="node-response">{@response}</pre>
-
-      <details>
-        <summary>reasoning trace from ACP</summary>
-        <div id="thought-chunks" phx-update="stream">
-          <p :for={{id, chunk} <- @streams.thought_chunks} id={id}>{chunk.text}</p>
-        </div>
-      </details>
-
-      <h3>Message chunks</h3>
-      <div id="message-chunks" phx-update="stream">
-        <p :for={{id, chunk} <- @streams.message_chunks} id={id}>{chunk.text}</p>
+      <div class="panel-heading">
+        <p class="eyebrow">Node</p>
+        <h2>{@selected_node_id}</h2>
       </div>
 
-      <h3>Tool calls</h3>
-      <div id="tool-calls">
-        <section :for={{tool_id, events} <- @tool_groups} class="tool-call">
-          <h4>{tool_id}</h4>
-          <pre>{Jason.encode!(events, pretty: true)}</pre>
-        </section>
-      </div>
-
-      <h3>stderr</h3>
-      <pre id="node-stderr">{@stderr}</pre>
+      <ol id="timeline" class="timeline" phx-update="stream" phx-hook="StickyTimeline">
+        <li
+          :for={{id, entry} <- @streams.timeline}
+          id={id}
+          class={"tl-entry tl-#{entry.type} tl-#{entry.tone}"}
+          aria-label={timeline_aria_label(entry)}
+        >
+          <details open={timeline_open?(entry)}>
+            <summary>
+              <span class="tl-chip">{entry.title}</span>
+              <span class="tl-summary">{entry.summary}</span>
+            </summary>
+            <pre>{entry_body(entry.body)}</pre>
+          </details>
+        </li>
+      </ol>
     </div>
   </aside>
 </main>

@@ -39,12 +39,37 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
-  test "select_node loads prompt, response, chunks, and stderr from disk", %{
+  test "mount rebuilds timeline for the initially selected node", %{
     conn: conn,
     run_id: run_id,
     run_dir: run_dir
   } do
     assert {:ok, _result} = Run.await(run_id, 1_000)
+
+    node_dir = Path.join(run_dir, "exit")
+    File.mkdir_p!(node_dir)
+    File.write!(Path.join(node_dir, "prompt.md"), "Exit prompt")
+    File.write!(Path.join(node_dir, "response.md"), "Exit response")
+
+    {:ok, _view, html} = live(conn, "/runs/#{run_id}")
+
+    assert html =~ "Exit prompt"
+    assert html =~ "Exit response"
+    assert html =~ "tl-entry tl-prompt"
+    assert html =~ "tl-entry tl-response"
+  end
+
+  @tag :tmp_dir
+  test "select_node rebuilds timeline from disk for the target node", %{
+    conn: conn,
+    run_id: run_id,
+    run_dir: run_dir
+  } do
+    assert {:ok, _result} = Run.await(run_id, 1_000)
+
+    exit_dir = Path.join(run_dir, "exit")
+    File.mkdir_p!(exit_dir)
+    File.write!(Path.join(exit_dir, "prompt.md"), "Exit prompt")
 
     node_dir = Path.join(run_dir, "start")
     File.mkdir_p!(node_dir)
@@ -60,9 +85,42 @@ defmodule TractorWeb.RunLiveTest do
 
     assert html =~ "Prompt text"
     assert html =~ "Response text"
-    assert html =~ "chunk one"
     assert html =~ "thought one"
     assert html =~ "stderr text"
+    refute html =~ "Exit prompt"
+    assert html =~ "tl-entry tl-prompt"
+    assert html =~ "tl-entry tl-response"
+    assert html =~ "tl-entry tl-thinking"
+    assert html =~ "tl-entry tl-stderr"
+  end
+
+  @tag :tmp_dir
+  test "live events stream into the selected node timeline only", %{
+    conn: conn,
+    run_id: run_id
+  } do
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+    render_click(view, :select_node, %{"node-id" => "start"})
+
+    :ok = RunEvents.emit(run_id, "exit", :agent_message_chunk, %{"text" => "hidden chunk"})
+    refute render(view) =~ "hidden chunk"
+
+    :ok = RunEvents.emit(run_id, "start", :agent_message_chunk, %{"text" => "live chunk"})
+    assert render(view) =~ "live chunk"
+
+    :ok =
+      RunEvents.emit(run_id, "start", :tool_call, %{
+        "kind" => "glob",
+        "toolCallId" => "tc_1",
+        "rawInput" => %{"pattern" => "*.ex"}
+      })
+
+    :ok = RunEvents.emit(run_id, "start", :tool_call_update, %{"toolCallId" => "tc_1", "status" => "done"})
+    html = render(view)
+
+    assert html =~ "[GLOB]"
+    assert html =~ "*.ex"
+    assert html =~ "done"
   end
 
   @tag :tmp_dir

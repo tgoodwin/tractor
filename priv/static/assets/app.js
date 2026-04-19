@@ -73,9 +73,30 @@ const GraphBoard = {
   }
 };
 
+const StickyTimeline = {
+  mounted() {
+    this.scroller = this.el.closest(".node-panel");
+    this.wasAtBottom = true;
+  },
+
+  beforeUpdate() {
+    if (!this.scroller) return;
+
+    const distanceFromBottom =
+      this.scroller.scrollHeight - this.scroller.scrollTop - this.scroller.clientHeight;
+
+    this.wasAtBottom = distanceFromBottom <= 40;
+  },
+
+  updated() {
+    if (!this.scroller || !this.wasAtBottom) return;
+    this.scroller.scrollTop = this.scroller.scrollHeight;
+  }
+};
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").content;
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { GraphBoard },
+  hooks: { GraphBoard, StickyTimeline },
   params: { _csrf_token: csrfToken }
 });
 

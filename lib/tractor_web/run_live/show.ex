@@ -5,6 +5,7 @@ defmodule TractorWeb.RunLive.Show do
 
   alias Tractor.{Run, RunBus}
   alias TractorWeb.GraphRenderer
+  alias TractorWeb.RunLive.Timeline
 
   embed_templates("../templates/run_live/*")
 
@@ -12,10 +13,14 @@ defmodule TractorWeb.RunLive.Show do
   def mount(%{"run_id" => run_id}, _session, socket) do
     socket =
       socket
-      |> assign(run_id: run_id, graph_svg: "", node_states: %{}, selected_node_id: nil)
-      |> assign(prompt: "", response: "", stderr: "", tool_groups: %{})
-      |> stream(:message_chunks, [])
-      |> stream(:thought_chunks, [])
+      |> assign(
+        run_id: run_id,
+        graph_svg: "",
+        node_states: %{},
+        selected_node_id: nil,
+        timeline_entries: []
+      )
+      |> stream(:timeline, [])
 
     case Run.info(run_id) do
       {:ok, %{pipeline: pipeline, run_dir: run_dir}} ->
@@ -60,18 +65,11 @@ defmodule TractorWeb.RunLive.Show do
   defp select_node(socket, nil), do: socket
 
   defp select_node(%{assigns: %{run_dir: run_dir}} = socket, node_id) do
-    events = read_events(run_dir, node_id)
+    entries = Timeline.from_disk(run_dir, node_id)
 
     socket
-    |> assign(
-      selected_node_id: node_id,
-      prompt: read_file(run_dir, node_id, "prompt.md"),
-      response: read_file(run_dir, node_id, "response.md"),
-      stderr: read_file(run_dir, node_id, "stderr.log"),
-      tool_groups: group_tools(events)
-    )
-    |> stream(:message_chunks, event_stream(events, "agent_message_chunk"), reset: true)
-    |> stream(:thought_chunks, event_stream(events, "agent_thought_chunk"), reset: true)
+    |> assign(selected_node_id: node_id, timeline_entries: entries)
+    |> stream(:timeline, entries, reset: true)
     |> push_event("graph:selected", %{node_id: node_id})
   end
 
@@ -80,21 +78,19 @@ defmodule TractorWeb.RunLive.Show do
          node_id,
          event
        ) do
-    case event["kind"] do
-      "agent_message_chunk" ->
-        stream_insert(socket, :message_chunks, stream_item(event))
-
-      "agent_thought_chunk" ->
-        stream_insert(socket, :thought_chunks, stream_item(event))
-
-      "tool_call" ->
-        update(socket, :tool_groups, &merge_tool_event(&1, event))
-
-      "tool_call_update" ->
-        update(socket, :tool_groups, &merge_tool_event(&1, event))
-
-      _other ->
+    case Timeline.insert(socket.assigns.timeline_entries, event) do
+      nil ->
         socket
+
+      {position, entry} ->
+        entries =
+          socket.assigns.timeline_entries
+          |> Enum.reject(&(&1.id == entry.id))
+          |> List.insert_at(position, entry)
+
+        socket
+        |> assign(:timeline_entries, entries)
+        |> stream_insert(:timeline, entry, at: position)
     end
   end
 
@@ -155,47 +151,6 @@ defmodule TractorWeb.RunLive.Show do
   defp normalize_status("running"), do: "running"
   defp normalize_status(_status), do: "pending"
 
-  defp read_events(run_dir, node_id) do
-    path = Path.join([run_dir, node_id, "events.jsonl"])
-
-    if File.exists?(path) do
-      path
-      |> File.stream!()
-      |> Enum.map(&Jason.decode!/1)
-    else
-      []
-    end
-  end
-
-  defp event_stream(events, kind) do
-    events
-    |> Enum.filter(&(&1["kind"] == kind))
-    |> Enum.map(&stream_item/1)
-  end
-
-  defp stream_item(event) do
-    %{
-      id: "#{event["kind"]}-#{event["seq"]}",
-      text: get_in(event, ["data", "text"]) || inspect(event["data"])
-    }
-  end
-
-  defp group_tools(events) do
-    events
-    |> Enum.filter(&(&1["kind"] in ["tool_call", "tool_call_update"]))
-    |> Enum.reduce(%{}, &merge_tool_event(&2, &1))
-  end
-
-  defp merge_tool_event(groups, event) do
-    id = get_in(event, ["data", "toolCallId"]) || "unknown"
-    Map.update(groups, id, [event], &(&1 ++ [event]))
-  end
-
-  defp read_file(run_dir, node_id, name) do
-    path = Path.join([run_dir, node_id, name])
-    if File.exists?(path), do: File.read!(path), else: ""
-  end
-
   defp first_node_id(pipeline) do
     pipeline.nodes
     |> Map.keys()
@@ -241,4 +196,11 @@ defmodule TractorWeb.RunLive.Show do
   defp format_elapsed(ms) when ms < 1_000, do: "#{max(ms, 0)}ms"
   defp format_elapsed(ms) when ms < 60_000, do: "#{div(ms, 1_000)}s"
   defp format_elapsed(ms), do: "#{div(ms, 60_000)}m#{rem(div(ms, 1_000), 60)}s"
+
+  defp timeline_open?(entry), do: not entry.collapsed_by_default?
+
+  defp timeline_aria_label(entry), do: "#{entry.title}: #{entry.summary}"
+
+  defp entry_body(body) when is_binary(body), do: body
+  defp entry_body(body), do: Jason.encode!(body, pretty: true)
 end

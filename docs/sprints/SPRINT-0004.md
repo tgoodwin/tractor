@@ -305,19 +305,19 @@ During a live run, timeline entries append via `stream_insert/3`. Default behavi
 - [x] Empty-sidebar state: small cutting-mat illustration + "Select a node."
 - [x] `prefers-reduced-motion` handling.
 - [x] Visual check with agent-browser at 1440×900: graph surface shows the faint grid, thicker lines align with section dividers, palette is cool neutral, no warm-cream dominance.
-- [ ] Commit.
+- [x] Commit.
 
 ### Phase E — Timeline data model + sidebar rendering (1.5 days — the meatiest chunk)
 
-- [ ] Implement `TractorWeb.ToolCallFormatter` per §5.5; tests for each matcher + fallthrough.
-- [ ] Implement `TractorWeb.RunLive.Timeline` per §5.4; tests for `from_disk` ordering, `insert` tie-breaking, synthesis rules.
-- [ ] `TractorWeb.Format` module: `duration_ms/1`, `token_count/1`, `humanize_bytes/1`, `truncate/2`. Tests cover the full formatting taxonomy.
-- [ ] Rewrite sidebar section of `show.html.heex`: timeline rendered as `<ol>` of `<details>` entries; each entry has `.tl-entry`, `.tl-<type>`, `.tl-<tone>` classes.
-- [ ] Replace separate prompt/response/thought/tool assigns in `RunLive.Show` with a single `:timeline` stream, populated on mount via `Timeline.from_disk/2` for the selected node.
-- [ ] `handle_event("select_node", ...)` rebuilds the timeline stream for the new node from disk.
-- [ ] `handle_info/2` for live events: convert each ACP event to one or more `%Entry{}` and `stream_insert` into the selected node's timeline (only if `selected_node_id` matches).
-- [ ] Scroll-position preservation hook (§5.7).
-- [ ] LiveView tests: mount rebuilds timeline for selected node; stream insertion for live events; select_node rebuilds from disk for target node.
+- [x] Implement `TractorWeb.ToolCallFormatter` per §5.5; tests for each matcher + fallthrough.
+- [x] Implement `TractorWeb.RunLive.Timeline` per §5.4; tests for `from_disk` ordering, `insert` tie-breaking, synthesis rules.
+- [x] `TractorWeb.Format` module: `duration_ms/1`, `token_count/1`, `humanize_bytes/1`, `truncate/2`. Tests cover the full formatting taxonomy.
+- [x] Rewrite sidebar section of `show.html.heex`: timeline rendered as `<ol>` of `<details>` entries; each entry has `.tl-entry`, `.tl-<type>`, `.tl-<tone>` classes.
+- [x] Replace separate prompt/response/thought/tool assigns in `RunLive.Show` with a single `:timeline` stream, populated on mount via `Timeline.from_disk/2` for the selected node.
+- [x] `handle_event("select_node", ...)` rebuilds the timeline stream for the new node from disk.
+- [x] `handle_info/2` for live events: convert each ACP event to one or more `%Entry{}` and `stream_insert` into the selected node's timeline (only if `selected_node_id` matches).
+- [x] Scroll-position preservation hook (§5.7).
+- [x] LiveView tests: mount rebuilds timeline for selected node; stream insertion for live events; select_node rebuilds from disk for target node.
 - [ ] Commit.
 
 ### Phase F — SVG badges via `GraphBoard` hook (0.75 day)
