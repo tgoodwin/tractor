@@ -27,9 +27,8 @@ defmodule TractorWeb.Server do
   def configure(opts) do
     port = Keyword.get(opts, :port, 0)
 
-    Application.put_env(:tractor, TractorWeb.Endpoint,
+    base = [
       adapter: Bandit.PhoenixAdapter,
-      http: [ip: @host, port: port],
       server: true,
       url: [host: "127.0.0.1"],
       secret_key_base: @secret_key_base,
@@ -37,7 +36,18 @@ defmodule TractorWeb.Server do
       pubsub_server: Tractor.PubSub,
       render_errors: [formats: [html: TractorWeb.ErrorHTML], layout: false],
       check_origin: false
-    )
+    ]
+
+    # Merge onto whatever compile-time config.exs / dev.exs set (e.g.
+    # code_reloader, live_reload patterns) so dev-mode extras survive.
+    existing = Application.get_env(:tractor, TractorWeb.Endpoint, [])
+
+    merged =
+      existing
+      |> Keyword.merge(base)
+      |> Keyword.put(:http, ip: @host, port: port)
+
+    Application.put_env(:tractor, TractorWeb.Endpoint, merged)
 
     :ok
   end

@@ -14,6 +14,14 @@ defmodule TractorWeb.Endpoint do
     longpoll: false
   )
 
+  # phoenix_live_reload in dev: exposes the websocket and watches files for
+  # hot-swapping CSS / HEEx / LiveView .ex.
+  if code_reloading? do
+    socket("/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket)
+    plug(Phoenix.LiveReloader)
+    plug(Phoenix.CodeReloader)
+  end
+
   plug(Plug.Static,
     at: "/",
     from: "priv/static",

@@ -25,7 +25,7 @@ defmodule TractorWeb.RunLive.Show do
       )
       |> stream(:timeline, [])
 
-    case Run.info(run_id) do
+    case resolve_run(run_id) do
       {:ok, %{pipeline: pipeline, run_dir: run_dir}} ->
         if connected?(socket) do
           RunBus.subscribe(run_id)
@@ -59,6 +59,39 @@ defmodule TractorWeb.RunLive.Show do
 
   defp list_runs(run_dir) do
     run_dir |> Path.dirname() |> RunIndex.list()
+  end
+
+  # Try the live registry first (a run that's still supervised by RunSup).
+  # Fall back to reading the manifest + re-parsing the DOT for post-mortem
+  # viewing of a run that finished (or crashed) before the page load.
+  defp resolve_run(run_id) do
+    case Run.info(run_id) do
+      {:ok, info} ->
+        {:ok, info}
+
+      {:error, :run_not_found} ->
+        load_from_disk(run_id)
+
+      other ->
+        other
+    end
+  end
+
+  defp load_from_disk(run_id) do
+    runs_dir = Path.join(Tractor.Paths.data_dir(), "runs")
+    run_dir = Path.join(runs_dir, run_id)
+    manifest_path = Path.join(run_dir, "manifest.json")
+
+    with true <- File.dir?(run_dir),
+         {:ok, raw} <- File.read(manifest_path),
+         {:ok, manifest} <- Jason.decode(raw),
+         pipeline_path when is_binary(pipeline_path) and pipeline_path != "" <-
+           manifest["pipeline_path"],
+         {:ok, pipeline} <- Tractor.DotParser.parse_file(pipeline_path) do
+      {:ok, %{pipeline: pipeline, run_dir: run_dir}}
+    else
+      _ -> {:error, :run_not_found}
+    end
   end
 
   @impl true
