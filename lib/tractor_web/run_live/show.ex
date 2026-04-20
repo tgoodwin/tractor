@@ -4,7 +4,7 @@ defmodule TractorWeb.RunLive.Show do
   use Phoenix.LiveView
 
   alias Tractor.{Run, RunBus}
-  alias TractorWeb.{Format, GraphRenderer, RunIndex}
+  alias TractorWeb.{Format, GraphRenderer, PhaseSummary, RunIndex}
   alias TractorWeb.RunLive.Timeline
 
   @runs_refresh_ms 5_000
@@ -36,6 +36,7 @@ defmodule TractorWeb.RunLive.Show do
         node_states = load_node_states(pipeline, run_dir)
         selected = first_node_id(pipeline)
         runs = list_runs(run_dir)
+        phases = PhaseSummary.summarize(run_dir)
 
         {:ok,
          socket
@@ -44,14 +45,15 @@ defmodule TractorWeb.RunLive.Show do
            run_dir: run_dir,
            graph_svg: svg,
            node_states: node_states,
-           runs: runs
+           runs: runs,
+           phases: phases
          )
          |> push_graph_node_states(node_states)
          |> push_all_graph_badges(pipeline, run_dir, node_states)
          |> select_node(selected)}
 
       {:error, _reason} ->
-        {:ok, assign(socket, missing?: true, runs: [])}
+        {:ok, assign(socket, missing?: true, runs: [], phases: [])}
     end
   end
 
@@ -65,17 +67,30 @@ defmodule TractorWeb.RunLive.Show do
   @impl true
   def handle_info(:refresh_runs, socket) do
     case socket.assigns[:run_dir] do
-      nil -> {:noreply, socket}
-      run_dir -> {:noreply, assign(socket, :runs, list_runs(run_dir))}
+      nil ->
+        {:noreply, socket}
+
+      run_dir ->
+        {:noreply,
+         socket
+         |> assign(:runs, list_runs(run_dir))
+         |> assign(:phases, PhaseSummary.summarize(run_dir))}
     end
   end
 
   def handle_info({:run_event, node_id, event}, socket) do
     node_states = update_node_state(socket.assigns.node_states, node_id, event["kind"])
 
+    phases =
+      case socket.assigns[:run_dir] do
+        nil -> socket.assigns[:phases] || []
+        run_dir -> PhaseSummary.summarize(run_dir)
+      end
+
     socket =
       socket
       |> assign(:node_states, node_states)
+      |> assign(:phases, phases)
       |> push_graph_node_state(node_id, Map.get(node_states, node_id))
       |> maybe_push_graph_badges(node_id, event["kind"])
       |> maybe_insert_selected_event(node_id, event)
@@ -323,6 +338,24 @@ defmodule TractorWeb.RunLive.Show do
 
   defp run_duration(entry), do: TractorWeb.RunIndex.duration_label(entry)
   defp run_status_label(entry), do: TractorWeb.RunIndex.status_label(entry.status)
+
+  defp phase_duration(phase), do: TractorWeb.PhaseSummary.phase_duration(phase)
+  defp phase_status_label(phase), do: TractorWeb.PhaseSummary.phase_status_label(phase)
+
+  # Map the phase struct's atom status onto the status-pill CSS classes we
+  # already have (completed / errored / running / interrupted / unknown).
+  defp phase_pill(%{status: :ok}), do: "completed"
+  defp phase_pill(%{status: :running}), do: "running"
+  defp phase_pill(%{status: :failed}), do: "errored"
+  defp phase_pill(%{status: :pending}), do: "unknown"
+  defp phase_pill(%{status: :skipped}), do: "unknown"
+
+  defp tractor_version do
+    case Application.spec(:tractor, :vsn) do
+      nil -> ""
+      vsn -> "v#{List.to_string(vsn)}"
+    end
+  end
 
   # Text-ish entry types render as markdown (preserves newlines, lists, code fences).
   # Structured types (tool calls, lifecycle, usage) keep the raw JSON presentation.
