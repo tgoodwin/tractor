@@ -473,6 +473,54 @@ body {
   line-height: 1.5;
 }
 
+/* Rendered-markdown entry body (prompt / response / thinking / message / stderr).
+   Give it the same horizontal breathing room as the summary row + a little
+   bottom padding so content doesn't crash into the card border. */
+.tl-body {
+  padding: 0 14px 14px;
+  color: var(--ink);
+}
+
+.tl-body > :first-child {
+  margin-top: 0;
+}
+
+.tl-body > :last-child {
+  margin-bottom: 0;
+}
+
+.tl-body p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+
+.tl-body ul,
+.tl-body ol {
+  padding-left: 22px;
+  margin: 0 0 10px;
+}
+
+.tl-body li {
+  margin-bottom: 4px;
+}
+
+.tl-body code {
+  font-family: var(--mono-font);
+  font-size: 12.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(63, 99, 61, 0.08);
+}
+
+.tl-body pre {
+  margin: 0 0 10px;
+}
+
+.tl-body pre code {
+  padding: 0;
+  background: transparent;
+}
+
 .tl-chip {
   min-width: 64px;
   font-family: var(--mono-font);
