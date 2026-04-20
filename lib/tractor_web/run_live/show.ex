@@ -4,8 +4,10 @@ defmodule TractorWeb.RunLive.Show do
   use Phoenix.LiveView
 
   alias Tractor.{Run, RunBus}
-  alias TractorWeb.{Format, GraphRenderer}
+  alias TractorWeb.{Format, GraphRenderer, RunIndex}
   alias TractorWeb.RunLive.Timeline
+
+  @runs_refresh_ms 5_000
 
   embed_templates("../templates/run_live/*")
 
@@ -25,28 +27,49 @@ defmodule TractorWeb.RunLive.Show do
 
     case Run.info(run_id) do
       {:ok, %{pipeline: pipeline, run_dir: run_dir}} ->
-        if connected?(socket), do: RunBus.subscribe(run_id)
+        if connected?(socket) do
+          RunBus.subscribe(run_id)
+          :timer.send_interval(@runs_refresh_ms, :refresh_runs)
+        end
 
         {:ok, svg} = GraphRenderer.render(pipeline)
         node_states = load_node_states(pipeline, run_dir)
         selected = first_node_id(pipeline)
+        runs = list_runs(run_dir)
 
         {:ok,
          socket
-         |> assign(pipeline: pipeline, run_dir: run_dir, graph_svg: svg, node_states: node_states)
+         |> assign(
+           pipeline: pipeline,
+           run_dir: run_dir,
+           graph_svg: svg,
+           node_states: node_states,
+           runs: runs
+         )
          |> push_graph_node_states(node_states)
          |> push_all_graph_badges(pipeline, run_dir, node_states)
          |> select_node(selected)}
 
       {:error, _reason} ->
-        {:ok, assign(socket, missing?: true)}
+        {:ok, assign(socket, missing?: true, runs: [])}
     end
+  end
+
+  defp list_runs(run_dir) do
+    run_dir |> Path.dirname() |> RunIndex.list()
   end
 
   @impl true
   def render(assigns), do: show(assigns)
 
   @impl true
+  def handle_info(:refresh_runs, socket) do
+    case socket.assigns[:run_dir] do
+      nil -> {:noreply, socket}
+      run_dir -> {:noreply, assign(socket, :runs, list_runs(run_dir))}
+    end
+  end
+
   def handle_info({:run_event, node_id, event}, socket) do
     node_states = update_node_state(socket.assigns.node_states, node_id, event["kind"])
 
@@ -248,32 +271,6 @@ defmodule TractorWeb.RunLive.Show do
     |> List.first()
   end
 
-  defp overall_status(node_states) do
-    states = Map.values(node_states)
-
-    cond do
-      Enum.any?(states, &(&1 == "failed")) -> "failed"
-      Enum.any?(states, &(&1 == "running")) -> "running"
-      states != [] and Enum.all?(states, &(&1 == "succeeded")) -> "succeeded"
-      true -> "pending"
-    end
-  end
-
-  defp elapsed_label(nil), do: "elapsed n/a"
-
-  defp elapsed_label(run_dir) do
-    manifest_path = Path.join(run_dir, "manifest.json")
-
-    with true <- File.exists?(manifest_path),
-         {:ok, manifest} <- manifest_path |> File.read!() |> Jason.decode(),
-         {:ok, started_at, _offset} <- DateTime.from_iso8601(manifest["started_at"]) do
-      finished_at = parse_time(manifest["finished_at"]) || DateTime.utc_now()
-      "elapsed " <> format_elapsed(DateTime.diff(finished_at, started_at, :millisecond))
-    else
-      _other -> "elapsed n/a"
-    end
-  end
-
   defp parse_time(nil), do: nil
 
   defp parse_time(value) do
@@ -282,10 +279,6 @@ defmodule TractorWeb.RunLive.Show do
       _other -> nil
     end
   end
-
-  defp format_elapsed(ms) when ms < 1_000, do: "#{max(ms, 0)}ms"
-  defp format_elapsed(ms) when ms < 60_000, do: "#{div(ms, 1_000)}s"
-  defp format_elapsed(ms), do: "#{div(ms, 60_000)}m#{rem(div(ms, 1_000), 60)}s"
 
   defp timeline_open?(entry), do: not entry.collapsed_by_default?
 
@@ -319,6 +312,17 @@ defmodule TractorWeb.RunLive.Show do
   defp maybe_pill(acc, nil), do: acc
   defp maybe_pill(acc, ""), do: acc
   defp maybe_pill(acc, value), do: [value | acc]
+
+  defp run_started_at(%{started_at: nil}), do: "—"
+
+  defp run_started_at(%{started_at: %DateTime{} = dt}) do
+    dt
+    |> DateTime.shift_zone!("Etc/UTC")
+    |> Calendar.strftime("%Y-%m-%d %H:%M UTC")
+  end
+
+  defp run_duration(entry), do: TractorWeb.RunIndex.duration_label(entry)
+  defp run_status_label(entry), do: TractorWeb.RunIndex.status_label(entry.status)
 
   # Text-ish entry types render as markdown (preserves newlines, lists, code fences).
   # Structured types (tool calls, lifecycle, usage) keep the raw JSON presentation.

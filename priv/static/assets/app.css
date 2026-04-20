@@ -44,23 +44,158 @@ body {
 
 .tractor-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 480px;
-  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr) 480px;
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: var(--surface);
 }
 
-.run-header {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(260px, auto) minmax(0, 1fr) auto;
-  gap: 24px;
-  align-items: center;
-  min-height: 56px;
-  padding: 0 18px;
-  border-bottom: 2px solid var(--divider);
+.runs-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 2px solid var(--divider);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.runs-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid rgba(37, 42, 37, 0.10);
+}
+
+.runs-count {
+  font-family: var(--mono-font, ui-monospace, "JetBrains Mono", Menlo, monospace);
+  font-size: 12px;
+  color: var(--ink-muted, #4a5b49);
+}
+
+.runs-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.runs-row {
+  margin-bottom: 6px;
+  border-radius: 6px;
   background: var(--surface-panel);
+  border: 1px solid rgba(37, 42, 37, 0.10);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.runs-row.is-current {
+  border-color: var(--state-success);
+  box-shadow: 0 0 0 1px var(--state-success) inset;
+}
+
+.runs-row-link {
+  display: block;
+  padding: 10px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.runs-row-link:hover {
+  background: rgba(63, 99, 61, 0.05);
+}
+
+.runs-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.runs-row-pipeline {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runs-row-meta {
+  font-size: 11px;
+  color: var(--ink-muted, #4a5b49);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runs-row-id {
+  font-size: 11px;
+  color: var(--ink-muted, #4a5b49);
+}
+
+.runs-row-sep {
+  margin: 0 6px;
+  opacity: 0.5;
+}
+
+.runs-row-empty {
+  padding: 14px 12px;
+  color: var(--ink-muted, #4a5b49);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Status pills — shared with the run row + any future per-node use. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--mono-font, ui-monospace, "JetBrains Mono", Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.status-pill.status-completed {
+  background: rgba(31, 122, 60, 0.12);
+  border-color: rgba(31, 122, 60, 0.35);
+  color: #1f7a3c;
+}
+
+.status-pill.status-errored {
+  background: rgba(179, 38, 30, 0.12);
+  border-color: rgba(179, 38, 30, 0.35);
+  color: #b3261e;
+}
+
+.status-pill.status-interrupted {
+  background: rgba(198, 147, 0, 0.14);
+  border-color: rgba(198, 147, 0, 0.4);
+  color: #7a5c00;
+}
+
+.status-pill.status-running {
+  background: rgba(43, 95, 232, 0.12);
+  border-color: rgba(43, 95, 232, 0.35);
+  color: #2b5fe8;
+}
+
+.status-pill.status-unknown {
+  background: rgba(154, 154, 154, 0.14);
+  border-color: rgba(154, 154, 154, 0.35);
+  color: var(--ink-muted, #4a5b49);
+}
+
+/* .run-header removed in the 3-column layout; legacy styles preserved below
+   in case the old header comes back as an optional chrome. */
+.run-header {
+  display: none;
 }
 
 .run-header h1 {

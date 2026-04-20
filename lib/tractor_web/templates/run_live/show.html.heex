@@ -1,20 +1,36 @@
 <main class="tractor-shell">
-  <header class="run-header">
-    <div>
-      <p class="eyebrow">Run</p>
-      <h1>{@run_id}</h1>
+  <aside class="runs-panel" aria-label="Runs in this context">
+    <div class="runs-panel-header">
+      <p class="eyebrow">Runs</p>
+      <span class="runs-count">{length(@runs)}</span>
     </div>
-    <div class="run-meta">
-      <span class="meta-label">Pipeline</span>
-      <span class="mono truncate">{@pipeline.path}</span>
-    </div>
-    <div class="run-meta">
-      <span class={"status-pill status-#{overall_status(@node_states)}"}>
-        {overall_status(@node_states)}
-      </span>
-      <span class="mono">{elapsed_label(@run_dir)}</span>
-    </div>
-  </header>
+    <ol class="runs-list">
+      <li
+        :for={entry <- @runs}
+        class={"runs-row #{if entry.run_id == @run_id, do: "is-current", else: ""}"}
+      >
+        <.link navigate={"/runs/#{entry.run_id}"} class="runs-row-link">
+          <div class="runs-row-top">
+            <span class="runs-row-pipeline">{entry.pipeline_name}</span>
+            <span class={"status-pill status-#{entry.status}"}>
+              {run_status_label(entry)}
+            </span>
+          </div>
+          <div class="runs-row-meta mono">
+            <span class="runs-row-id">{entry.run_id}</span>
+          </div>
+          <div class="runs-row-meta mono">
+            <span>{run_started_at(entry)}</span>
+            <span class="runs-row-sep">·</span>
+            <span>{run_duration(entry)}</span>
+          </div>
+        </.link>
+      </li>
+      <li :if={@runs == []} class="runs-row runs-row-empty">
+        <span>no runs yet</span>
+      </li>
+    </ol>
+  </aside>
 
   <section class="graph-surface" aria-label="Pipeline graph">
     <div id="graph" class="graph-svg" phx-hook="GraphBoard" phx-update="ignore">
