@@ -1,0 +1,18 @@
+# Tractor per-project configuration.
+#
+# Precedence for each value (highest first):
+#   1. TRACTOR_ACP_<PROVIDER>_{COMMAND,ARGS,ENV_JSON} env var
+#   2. This file
+#   3. Adapter default (see lib/tractor/agent/*.ex)
+#
+# The file is optional. Delete it and defaults + env vars still work.
+
+[agents.claude]
+command = "claude-code-acp"
+args = []
+
+[agents.codex]
+# codex-acp on PATH is the default; nothing to override here.
+
+[agents.gemini]
+args = ["--experimental-acp"]

@@ -11,4 +11,5 @@ erl_crash.dump
 docs/sprints/drafts/
 /tmp/
 /bin/tractor
-/.tractor/
+/.tractor/*
+!/.tractor/config.toml
