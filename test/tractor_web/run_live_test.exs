@@ -19,6 +19,14 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
+  test "missing runs render an empty state", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/runs/not-a-real-run")
+
+    assert html =~ "Run not found."
+    assert html =~ "The requested run could not be loaded."
+  end
+
+  @tag :tmp_dir
   test "node_started flips DOM class to running", %{conn: conn, run_id: run_id} do
     {:ok, view, _html} = live(conn, "/runs/#{run_id}")
 

@@ -1,4 +1,4 @@
-<main class="tractor-shell">
+<main :if={!@missing?} class="tractor-shell">
   <header class="top-bar" aria-label="Tractor">
     <div class="top-bar-brand">
       <span class="top-bar-icon" aria-hidden="true"></span>
@@ -211,5 +211,23 @@
     <p><span>?</span> Toggle help</p>
     <p><span>Tab</span> Move through timeline</p>
     <p><span>Enter</span> Expand entry</p>
+  </section>
+</main>
+
+<main :if={@missing?} class="tractor-shell">
+  <header class="top-bar" aria-label="Tractor">
+    <div class="top-bar-brand">
+      <span class="top-bar-icon" aria-hidden="true"></span>
+      <span class="top-bar-mark">Tractor</span>
+      <span :if={tractor_version() != ""} class="top-bar-version">{tractor_version()}</span>
+    </div>
+  </header>
+
+  <section class="missing-run-state" aria-label="Missing run">
+    <div class="panel-heading">
+      <p class="eyebrow">Run</p>
+      <h2>Run not found.</h2>
+    </div>
+    <p>The requested run could not be loaded.</p>
   </section>
 </main>

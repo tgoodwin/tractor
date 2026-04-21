@@ -25,6 +25,7 @@ defmodule TractorWeb.RunLive.Show do
         selected_node_id: nil,
         selected_node: nil,
         pending_waits: %{},
+        missing?: false,
         show_help?: false,
         timeline_entries: [],
         latest_plans: %{},
