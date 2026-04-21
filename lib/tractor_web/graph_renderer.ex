@@ -155,7 +155,7 @@ defmodule TractorWeb.GraphRenderer do
 
       attrs = String.replace(attrs, ~s(class="node"), ~s(class="node tractor-node"))
 
-      ~s(<g#{attrs} data-node-id="#{escaped}" data-testid="node-#{escaped}"><title>#{escaped}</title>)
+      ~s(<g#{attrs} data-node-id="#{escaped}" data-testid="node-#{escaped}" role="button" tabindex="0" aria-label="Node #{escaped}"><title>#{escaped}</title>)
     end)
   end
 

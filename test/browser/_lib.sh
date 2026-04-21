@@ -30,11 +30,17 @@ ab_reload() {
 
 ab_click() {
   case "${1:-}" in
-    role | text | label | placeholder | alt | title | testid | first | last | nth)
+    role)
       local locator="$1"
       local value="$2"
       shift 2
       ab find "$locator" "$value" click "$@" >/dev/null
+      ;;
+    text | label | placeholder | alt | title | testid | first | last | nth)
+      local locator="$1"
+      local value="$2"
+      shift 2
+      ab find "$locator" "$value" "$@" click >/dev/null
       ;;
     *)
       ab click "$@" >/dev/null

@@ -24,7 +24,7 @@ click_result="$(ab_dom_click "[data-testid='node-review']")"
 }
 ab_wait_event text "Decision Required"
 
-ab_click ".wait-form-panel .wait-choice-button[phx-value-label='revise']"
+ab_click role button --name "revise" --exact
 ab_wait_event fn "document.querySelector('g.tractor-edge[data-from=\"review\"][data-to=\"draft\"]')?.classList.contains('is-taken')"
 ab_wait_event fn "document.querySelector('g.tractor-node[data-node-id=\"review\"]')?.classList.contains('waiting')"
 

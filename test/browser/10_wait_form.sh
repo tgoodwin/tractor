@@ -74,7 +74,7 @@ run_wait_flow() {
   select_review_gate
   assert_wait_form_static
 
-  ab_click ".wait-form-panel .wait-choice-button[phx-value-label='${label}']"
+  ab_click role button --name "${label}" --exact
 
   ab_wait_event fn "document.querySelector('g.tractor-node[data-node-id=\"review_gate\"]')?.classList.contains('succeeded')"
   ab_wait_event fn "document.querySelector('g.tractor-node[data-node-id=\"${next_node}\"]')?.classList.contains('succeeded')"
@@ -155,7 +155,7 @@ assert_resume_path() {
   select_review_gate
   assert_wait_form_static
 
-  ab_click ".wait-form-panel .wait-choice-button[phx-value-label='approve']"
+  ab_click role button --name "approve" --exact
   ab_wait_event fn "document.querySelector('.run-summary-card .status-pill')?.textContent.includes('completed')"
   assert_node_state "approved" "succeeded"
   assert_node_state "exit" "succeeded"

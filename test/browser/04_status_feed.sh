@@ -20,7 +20,7 @@ click_result="$(ab_dom_click "[data-testid='node-review_gate']")"
   exit 1
 }
 ab_wait_event text "Decision Required"
-ab_click ".wait-form-panel .wait-choice-button[phx-value-label='approve']"
+ab_click role button --name "approve" --exact
 
 ab_wait_event fn "document.querySelector('.run-summary-card .status-pill')?.textContent?.includes('completed')"
 ab_wait_event fn "document.querySelectorAll('.status-feed-row').length >= 2"

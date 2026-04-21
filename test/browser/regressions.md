@@ -14,3 +14,10 @@ Append-only log of real regressions surfaced while landing the SPRINT-0009 brows
 | 2026-04-20 | `test/browser/11_help_overlay.sh` | Pressing `Escape` cleared selection but left the keyboard-help overlay visible. | Global key handler only pushed `clear_selection`; it never toggled the help overlay off on `Escape`. | `6982164` |
 | 2026-04-20 | `test/browser/13_dev_endpoints.sh` | `POST /dev/stop/:run_id` returned `200`, but the run page never flipped to `interrupted`. | Supervisor shutdown terminated the runner process without persisting an interrupted terminal state or emitting `run_finalized`. | `3989561` |
 | 2026-04-20 | `test/browser/14_error_states.sh` | Navigating to an unknown run id rendered a blank LiveView surface. | `missing?: true` was assigned in `RunLive.Show.mount/3`, but the template had no missing-run branch. | `ec22c51` |
+
+## Interaction Audit
+
+- 2026-04-20: Theme toggle is exercised via `role=button` + accessible name (`Toggle dark mode`).
+- 2026-04-20: Wait-form actions are exercised via `role=button` + exact accessible name (`approve`, `reject`, `revise`).
+- 2026-04-20: Timeline disclosure is exercised via `data-testid="timeline-toggle-*"`.
+- 2026-04-20: Graph-node selection keeps `data-testid="node-*"` as the stable address. The SVG `<g>` wrappers now also carry `role="button"` / `aria-label`, but agent-browser still does not actuate them directly, so suites use `ab_dom_click` against the `data-testid` target instead of a CSS-only selector.

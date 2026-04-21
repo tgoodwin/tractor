@@ -327,12 +327,12 @@ Test: `test/browser/14_error_states.sh`.
 
 ### Phase C — Gap-fill and stabilization (~1–2d)
 
-- [ ] Audit: are there interactive elements in §4 that can only be reached by CSS selectors (not ARIA or testid)? List them; fix each. Preference order: ARIA role + name > `aria-label` > `<label for>` > `data-testid`.
+- [x] Audit: are there interactive elements in §4 that can only be reached by CSS selectors (not ARIA or testid)? List them; fix each. Preference order: ARIA role + name > `aria-label` > `<label for>` > `data-testid`.
 - [ ] Flake-hunt: re-run `run-all.sh` three times. Any intermittent failure → investigate race in the suite (missing `wait --load` / `wait --text`), or real event-order bug in the LiveView. Fix the underlying cause; don't insert blind `wait 2000`.
 - [ ] Known-gap decisions from §4:
-  - [ ] `.11` Help overlay trigger: either wire the `?` hotkey in app.js, or add a visible `role=button aria-label="Keyboard help"` in the top bar. Pick one, not both.
-  - [ ] `.12` Resizer persistence: if not implemented, either (a) add localStorage write in `Resizer` hook, or (b) drop the persistence row from the test. Decide.
-  - [ ] `.14` Missing-run state: LiveView branch `missing?: true` renders nothing. Ship a one-sentence empty state `"Run not found."` + link to `/` (but `/` 404s — so link to the most recent run, or omit).
+  - [x] `.11` Help overlay trigger: either wire the `?` hotkey in app.js, or add a visible `role=button aria-label="Keyboard help"` in the top bar. Pick one, not both.
+  - [x] `.12` Resizer persistence: if not implemented, either (a) add localStorage write in `Resizer` hook, or (b) drop the persistence row from the test. Decide.
+  - [x] `.14` Missing-run state: LiveView branch `missing?: true` renders nothing. Ship a one-sentence empty state `"Run not found."` + link to `/` (but `/` 404s — so link to the most recent run, or omit).
 
 ### Phase D — Sign-off
 

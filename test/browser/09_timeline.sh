@@ -97,7 +97,7 @@ response_open="$(ab eval "document.querySelector('#timeline .tl-entry.tl-respons
 ab_wait_event fn "document.querySelector('#timeline .tl-entry.tl-usage .tl-summary')?.textContent.includes('250 tokens')"
 ab_wait_event fn "document.querySelector('#timeline .tl-entry.tl-stderr .tl-summary')?.textContent.includes('fake stderr line one')"
 
-ab_click "#timeline .tl-entry.tl-prompt summary"
+ab_click testid "timeline-toggle-prompt"
 prompt_open="$(ab eval "document.querySelector('#timeline .tl-entry.tl-prompt details')?.hasAttribute('open') ?? false")"
 [[ "$prompt_open" == "true" ]] || {
   printf 'Expected prompt details to toggle open after click\n' >&2
@@ -135,7 +135,7 @@ pending_wait_open="$(ab eval "document.querySelector('#timeline .tl-entry.tl-wai
   exit 1
 }
 
-ab_click ".wait-form-panel .wait-choice-button[phx-value-label='approve']"
+ab_click role button --name "approve" --exact
 ab_wait_event fn "document.querySelector('#timeline .tl-entry.tl-wait_runtime.tl-success') !== null"
 
 ab_wait_event fn "document.querySelector('#timeline .tl-entry.tl-wait_runtime.tl-success')?.textContent.includes('approve via operator')"

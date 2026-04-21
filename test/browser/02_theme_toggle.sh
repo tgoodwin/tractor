@@ -23,7 +23,7 @@ if [[ "$(ab_attr "#theme-toggle" "aria-pressed")" != "false" ]]; then
   exit 1
 fi
 
-ab_click "#theme-toggle"
+ab_click role button --name "Toggle dark mode"
 ab_wait_event fn "document.documentElement.getAttribute('data-theme') === 'dark'"
 
 if [[ "$(ab_attr "#theme-toggle" "aria-pressed")" != "true" ]]; then

@@ -191,7 +191,11 @@
             </div>
           <% else %>
             <details open={timeline_open?(entry)}>
-              <summary tabindex="0">
+              <summary
+                tabindex="0"
+                aria-label={"Toggle #{entry.title} details"}
+                data-testid={"timeline-toggle-#{entry.type}"}
+              >
                 <span class="tl-caret" aria-hidden="true"></span>
                 <span class="tl-chip">{entry.title}</span>
                 <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
