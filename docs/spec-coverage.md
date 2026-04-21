@@ -74,12 +74,12 @@ Specs:
 - [x] Resume rehydrates agenda, context, completed nodes, iteration counts, and provider command metadata. — `lib/tractor/checkpoint.ex`, `lib/tractor/runner.ex`
 - [x] SPRINT-0007 persists `goal_gates_satisfied`, `total_iterations_started`, and `total_cost_usd`. — `lib/tractor/checkpoint.ex`, `lib/tractor/runner.ex`
 - [x] Cost history resumes only from the current `run_dir` checkpoint state; there is no external spend ledger. — `lib/tractor/checkpoint.ex`, `SPRINT-0007`
-- [ ] Automatic supervisor-driven runner restarts from checkpoint are not implemented. — `SPRINT-0007`
+- [x] Automatic supervisor-driven runner restarts from checkpoint are implemented on BEAM boot. — `lib/tractor/resume_boot.ex`, `lib/tractor/application.ex`, `SPRINT-0009`
 
 ## Observer UI
 - [x] Run detail pages render phases, timeline, node statuses, and status-agent output. — `lib/tractor_web/run_live/show.ex`, `lib/tractor_web/run_live/timeline.ex`, `lib/tractor_web/run_live/status_feed.ex`
 - [x] Timeline rendering includes retry, timeout, and usage-event activity from run artifacts. — `lib/tractor_web/run_live/timeline.ex`, `SPRINT-0004`, `SPRINT-0006`
-- [~] SPRINT-0007 adds new runtime states (`goal_gate_failed`, cost budget exhaustion), but the run-show audit is still being finished for dedicated pills / totals. — `SPRINT-0007`
+- [x] Observer run states (`goal_gate_failed`, `interrupted`, wait-form resolution, live cost pills) are exercised end-to-end in the browser harness. — `lib/tractor_web/run_live/show.ex`, `test/browser/07_run_summary.sh`, `test/browser/10_wait_form.sh`, `test/browser/13_dev_endpoints.sh`, `SPRINT-0009`
 - [ ] Observer write controls such as cancel, retry, or live budget overrides are not implemented. — `SPRINT-0007`
 
 ## ACP integration

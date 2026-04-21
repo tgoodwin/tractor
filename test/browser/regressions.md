@@ -14,6 +14,8 @@ Append-only log of real regressions surfaced while landing the SPRINT-0009 brows
 | 2026-04-20 | `test/browser/11_help_overlay.sh` | Pressing `Escape` cleared selection but left the keyboard-help overlay visible. | Global key handler only pushed `clear_selection`; it never toggled the help overlay off on `Escape`. | `6982164` |
 | 2026-04-20 | `test/browser/13_dev_endpoints.sh` | `POST /dev/stop/:run_id` returned `200`, but the run page never flipped to `interrupted`. | Supervisor shutdown terminated the runner process without persisting an interrupted terminal state or emitting `run_finalized`. | `3989561` |
 | 2026-04-20 | `test/browser/14_error_states.sh` | Navigating to an unknown run id rendered a blank LiveView surface. | `missing?: true` was assigned in `RunLive.Show.mount/3`, but the template had no missing-run branch. | `ec22c51` |
+| 2026-04-20 | `test/browser/10_wait_form.sh` | Restarting Phoenix mid-wait brought the page back, but the resumed wait could not advance. | The app never respawned checkpointed running runs on BEAM boot, and the explicit-interrupt fix had incorrectly treated ordinary shutdown as an operator interrupt. | `dc8aee7` |
+| 2026-04-20 | `test/browser/13_dev_endpoints.sh` | `stop-all` intermittently overcounted runs during full-harness execution. | The suite left two earlier `wait.human` runs pending (`05_graph.sh`, invalid-label path in `10_wait_form.sh`) and initially measured `stop-all` before its quick launch had reached a terminal state. | `22cf6b9`, `3f43ade` |
 
 ## Interaction Audit
 

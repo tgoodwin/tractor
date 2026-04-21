@@ -17,28 +17,28 @@ Four sprints shipped ~40 user-visible UI surfaces on the Phoenix LiveView observ
 
 - [x] agent-browser CLI installed locally; first-run Chromium downloaded; smoke `open localhost:4001/runs/<id>` → `snapshot -i` → `close` works end-to-end.
 - [x] Exhaustive UI feature catalog (this document, §4) enumerates every user-visible surface shipped in SPRINT-0004..0008.
-- [ ] Every feature in §4 has a `test/browser/<feature>.sh` suite: sequential agent-browser commands with assertions, exit non-zero on failure.
-- [ ] Every interactive target in §4 resolvable by semantic locator (ARIA role + name, `aria-label`, `<label for=>`, or `data-testid`). Attribute gaps filled with the least-invasive hook (prefer ARIA over testid).
-- [ ] Four fixture pipelines exercise the full matrix; each drives its suite(s):
+- [x] Every feature in §4 has a `test/browser/<feature>.sh` suite: sequential agent-browser commands with assertions, exit non-zero on failure.
+- [x] Every interactive target in §4 resolvable by semantic locator (ARIA role + name, `aria-label`, `<label for=>`, or `data-testid`). Attribute gaps filled with the least-invasive hook (prefer ARIA over testid).
+- [x] Four fixture pipelines exercise the full matrix; each drives its suite(s):
   - `examples/haiku_feedback.dot` — judge + conditional back-edge + iteration badges + verdict timeline entries
   - `examples/resilience.dot` — retry/backoff + timeout → status pill transitions + failed-tone lifecycle
   - `examples/plan_probe.dot` — condition DSL + cost budget + goal-gate path + status feed
   - `examples/wait_human_review.dot` — wait.human form + pending → resolved transition + operator choice
 - [x] **User-reported regression fixed**: operator clicks `approve`/`reject` button in the wait.human form → pipeline actually advances (selected outgoing edge fires, next node runs, run reaches `completed`). See §4.10 for the end-to-end assertion. This is not a "verify UI state" test — it's a "verify the whole decision→progression chain" test, because the user has observed this chain silently breaking.
-- [ ] `test/browser/README.md` indexes every suite + last-pass commit SHA.
-- [ ] `test/browser/run-all.sh` is a serial harness: boot Phoenix, load fixtures via `/dev/reap`, run every suite, teardown. Exit 0 ⇒ sign-off.
-- [ ] One-shot invocation instructions for the executor agent in §6; runbook lives with the code, not in the PR description.
+- [x] `test/browser/README.md` indexes every suite + last-pass commit SHA.
+- [x] `test/browser/run-all.sh` is a serial harness: boot Phoenix, load fixtures via `/dev/reap`, run every suite, teardown. Exit 0 ⇒ sign-off.
+- [x] One-shot invocation instructions for the executor agent in §6; runbook lives with the code, not in the PR description.
 
 ## 3. Non-goals
 
-- [ ] **No unit-test replacement.** Existing `mix test` + feature-test suite stays. Browser tests are additive.
-- [ ] **No visual-regression / pixel-diff tooling.** No Percy, no Chromatic, no screenshot comparisons. Assertions are semantic (element exists, text matches, class toggles).
-- [ ] **No parallel suite execution.** Phase-B runs serially — one Phoenix server, one Chromium, one test at a time. Keeps the run log human-readable and avoids test-to-test state leakage.
-- [ ] **No CI wiring.** This sprint produces local scripts. CI hookup is SPRINT-0010+ follow-up (flagged in §9 seeds).
-- [ ] **No new UI features.** Only bug fixes discovered during testing, plus ARIA/testid hooks when a target isn't resolvable.
-- [ ] **No refactor.** Don't collapse components, rename LiveViews, or reorganize CSS. A rename is only in scope if a test can't otherwise pass.
-- [ ] **No demo GIFs, screenshots, or PR-body artifacts.** (Per prior sprint-deliverable policy.)
-- [ ] **No write controls** (cancel, retry, force-accept, extend-budget). Observer stays read-only except for the wait.human form, consistent with SPRINT-0004..0008 non-goals.
+- [x] **No unit-test replacement.** Existing `mix test` + feature-test suite stays. Browser tests are additive.
+- [x] **No visual-regression / pixel-diff tooling.** No Percy, no Chromatic, no screenshot comparisons. Assertions are semantic (element exists, text matches, class toggles).
+- [x] **No parallel suite execution.** Phase-B runs serially — one Phoenix server, one Chromium, one test at a time. Keeps the run log human-readable and avoids test-to-test state leakage.
+- [x] **No CI wiring.** This sprint produces local scripts. CI hookup is SPRINT-0010+ follow-up (flagged in §9 seeds).
+- [x] **No new UI features.** Only bug fixes discovered during testing, plus ARIA/testid hooks when a target isn't resolvable.
+- [x] **No refactor.** Don't collapse components, rename LiveViews, or reorganize CSS. A rename is only in scope if a test can't otherwise pass.
+- [x] **No demo GIFs, screenshots, or PR-body artifacts.** (Per prior sprint-deliverable policy.)
+- [x] **No write controls** (cancel, retry, force-accept, extend-budget). Observer stays read-only except for the wait.human form, consistent with SPRINT-0004..0008 non-goals.
 
 ## 4. UI feature catalog
 
@@ -328,17 +328,17 @@ Test: `test/browser/14_error_states.sh`.
 ### Phase C — Gap-fill and stabilization (~1–2d)
 
 - [x] Audit: are there interactive elements in §4 that can only be reached by CSS selectors (not ARIA or testid)? List them; fix each. Preference order: ARIA role + name > `aria-label` > `<label for>` > `data-testid`.
-- [ ] Flake-hunt: re-run `run-all.sh` three times. Any intermittent failure → investigate race in the suite (missing `wait --load` / `wait --text`), or real event-order bug in the LiveView. Fix the underlying cause; don't insert blind `wait 2000`.
-- [ ] Known-gap decisions from §4:
+- [x] Flake-hunt: re-run `run-all.sh` three times. Any intermittent failure → investigate race in the suite (missing `wait --load` / `wait --text`), or real event-order bug in the LiveView. Fix the underlying cause; don't insert blind `wait 2000`.
+- [x] Known-gap decisions from §4:
   - [x] `.11` Help overlay trigger: either wire the `?` hotkey in app.js, or add a visible `role=button aria-label="Keyboard help"` in the top bar. Pick one, not both.
   - [x] `.12` Resizer persistence: if not implemented, either (a) add localStorage write in `Resizer` hook, or (b) drop the persistence row from the test. Decide.
   - [x] `.14` Missing-run state: LiveView branch `missing?: true` renders nothing. Ship a one-sentence empty state `"Run not found."` + link to `/` (but `/` 404s — so link to the most recent run, or omit).
 
 ### Phase D — Sign-off
 
-- [ ] `bash test/browser/run-all.sh` exits 0. Copy the last-run log to `test/browser/LAST-GREEN.log` (git-tracked).
-- [ ] `test/browser/README.md` finalized: per-suite one-liner + which fixture it drives.
-- [ ] Update `docs/spec-coverage.md` for any spec rows that become falsifiable through browser tests (if any).
+- [x] `bash test/browser/run-all.sh` exits 0. Copy the last-run log to `test/browser/LAST-GREEN.log` (git-tracked).
+- [x] `test/browser/README.md` finalized: per-suite one-liner + which fixture it drives.
+- [x] Update `docs/spec-coverage.md` for any spec rows that become falsifiable through browser tests (if any).
 - [ ] Sprint ledger flipped to `done`.
 
 ## 6. Agent-browser invocation template for the executor
