@@ -38,3 +38,9 @@ sprints:
     executor: gpt-5.4
     created: "2026-04-21T01:57:28+00:00"
     updated: "2026-04-21T03:50:08+00:00"
+  - id: SPRINT-0009
+    title: Observer UI fixes + polish, verified via agent-browser
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-21T04:55:00+00:00"
+    updated: "2026-04-21T07:43:23+00:00"

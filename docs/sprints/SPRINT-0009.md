@@ -339,7 +339,7 @@ Test: `test/browser/14_error_states.sh`.
 - [x] `bash test/browser/run-all.sh` exits 0. Copy the last-run log to `test/browser/LAST-GREEN.log` (git-tracked).
 - [x] `test/browser/README.md` finalized: per-suite one-liner + which fixture it drives.
 - [x] Update `docs/spec-coverage.md` for any spec rows that become falsifiable through browser tests (if any).
-- [ ] Sprint ledger flipped to `done`.
+- [x] Sprint ledger flipped to `done`.
 
 ## 6. Agent-browser invocation template for the executor
 
