@@ -35,4 +35,11 @@ defmodule TractorWeb.FormatTest do
     assert Format.truncate("abcdef", 3) == "..."
     assert Format.truncate("abcdef", 2) == ".."
   end
+
+  test "usd formats decimal strings and missing values" do
+    assert Format.usd(nil) == "n/a"
+    assert Format.usd("0") == "$0"
+    assert Format.usd("0.0100") == "$0.01"
+    assert Format.usd("12.345600") == "$12.3456"
+  end
 end

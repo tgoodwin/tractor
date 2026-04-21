@@ -1,16 +1,24 @@
-:root {
+:root,
+[data-theme="light"] {
   --surface: #f1f3f1;
   --surface-panel: #fbfcfb;
   --surface-rail: #e8ece8;
+  --surface-muted: #f7f9f7;
   --ink: #181a18;
   --ink-muted: #626862;
-  --divider: #252a25;
+  --divider: rgba(61, 97, 70, 0.16);
+  --border-subtle: rgba(37, 42, 37, 0.16);
+  --border-faint: rgba(37, 42, 37, 0.10);
   --grid-faint: rgba(61, 97, 70, 0.07);
   --grid-strong: rgba(61, 97, 70, 0.16);
   --accent-live: #d97706;
   --state-pending: #8c928c;
+  --state-pending-fill: #edf0ed;
+  --state-running-fill: #fff7ed;
   --state-success: #1f7a3c;
+  --state-success-fill: #e2f3e6;
   --state-failure: #b3261e;
+  --state-failure-fill: #fde7e5;
   --focus: #2b5fe8;
   --tone-prompt: #2b5fe8;
   --tone-thinking: #6b4fb0;
@@ -21,6 +29,36 @@
   --tone-usage: #4a5568;
   --ui-font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono-font: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+[data-theme="dark"] {
+  --surface: #15181a;
+  --surface-panel: #1c2022;
+  --surface-rail: #24282a;
+  --surface-muted: #1f2426;
+  --ink: #e7eae6;
+  --ink-muted: #8b918b;
+  --divider: rgba(140, 180, 150, 0.14);
+  --border-subtle: rgba(230, 235, 228, 0.14);
+  --border-faint: rgba(230, 235, 228, 0.08);
+  --grid-faint: rgba(140, 180, 150, 0.06);
+  --grid-strong: rgba(140, 180, 150, 0.14);
+  --accent-live: #f59e0b;
+  --state-pending: #7a7f7a;
+  --state-pending-fill: #222624;
+  --state-running-fill: #3a2a10;
+  --state-success: #4ade80;
+  --state-success-fill: #1e2f22;
+  --state-failure: #f87171;
+  --state-failure-fill: #2f1e1d;
+  --focus: #60a5fa;
+  --tone-prompt: #60a5fa;
+  --tone-thinking: #c084fc;
+  --tone-tool: #86c68b;
+  --tone-response: #e7eae6;
+  --tone-stderr: #fbbf24;
+  --tone-lifecycle: #8b918b;
+  --tone-usage: #9ca8b5;
 }
 
 * {
@@ -43,67 +81,198 @@ body {
 }
 
 .tractor-shell {
+  --left-width: 320px;
+  --right-width: 480px;
+  position: relative;
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 480px;
-  grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-columns: var(--left-width) minmax(0, 1fr) var(--right-width);
+  grid-template-rows: 56px minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: var(--surface);
+}
+
+/* Single-source-of-truth vertical dividers at the column boundaries.
+   They're absolute-positioned pseudo-elements on the shell so they extend
+   top-to-bottom (through the top bar) regardless of which grid cell
+   they border. 1px wide, theme-aware. */
+.tractor-shell::before,
+.tractor-shell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--divider);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.tractor-shell::before {
+  left: var(--left-width);
+}
+
+.tractor-shell::after {
+  right: var(--right-width);
+}
+
+.resizer {
+  position: absolute;
+  z-index: 10;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.resizer:hover,
+.resizer:active {
+  background: rgba(63, 99, 61, 0.28);
+}
+
+.resizer-right-edge,
+.resizer-left-edge {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+}
+
+.resizer-right-edge {
+  right: 0;
+}
+
+.resizer-left-edge {
+  left: 0;
+}
+
+.resizer-bottom-edge {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  cursor: row-resize;
 }
 
 .top-bar {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 16px;
-  border-bottom: 2px solid var(--divider);
-  background: var(--surface-panel);
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+.theme-toggle-track {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  width: 52px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  width: calc(50% - 1px);
+  border-radius: 999px;
+  background: var(--ink);
+  transition: transform 180ms ease;
+  z-index: 1;
+}
+
+[data-theme="dark"] .theme-toggle-thumb {
+  transform: translateX(100%);
+}
+
+.theme-toggle-slot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  pointer-events: none;
+  transition: color 180ms ease;
+}
+
+[data-theme="light"] .theme-toggle-slot-light,
+[data-theme="dark"] .theme-toggle-slot-dark {
+  color: var(--surface);
 }
 
 .top-bar-brand {
   display: inline-flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 10px;
+}
+
+.top-bar-icon {
+  display: inline-block;
+  width: 28px;
+  height: 22px;
+  background-color: var(--ink);
+  -webkit-mask: url("/assets/tractor-icon.svg") center / contain no-repeat;
+  mask: url("/assets/tractor-icon.svg") center / contain no-repeat;
+  flex-shrink: 0;
 }
 
 .top-bar-mark {
-  font-family: var(--mono-font, ui-monospace, "JetBrains Mono", Menlo, monospace);
-  font-size: 13px;
+  font-family: var(--mono-font);
+  font-size: 32px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
   color: var(--ink);
 }
 
 .top-bar-version {
   font-family: var(--mono-font, ui-monospace, "JetBrains Mono", Menlo, monospace);
   font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(63, 99, 61, 0.10);
   color: var(--ink-muted, #4a5b49);
 }
 
 .runs-panel {
+  position: relative;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-right: 2px solid var(--divider);
   background: var(--surface);
   overflow: hidden;
 }
 
-.phases-panel {
-  flex: 0 0 auto;
+.status-feed-panel {
+  flex: 0 0 34%;
+  min-height: 160px;
+  max-height: 48%;
   display: flex;
   flex-direction: column;
-  border-bottom: 2px solid var(--divider);
-  max-height: 45%;
+  border-bottom: 1px solid var(--divider);
   overflow: hidden;
 }
 
-.phases-list {
+.status-feed {
   list-style: none;
   margin: 0;
   padding: 8px;
@@ -111,7 +280,8 @@ body {
   flex: 1;
 }
 
-.phases-row {
+.status-feed-row,
+.status-feed-empty {
   margin-bottom: 4px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -119,27 +289,34 @@ body {
   border: 1px solid rgba(37, 42, 37, 0.10);
 }
 
-.phases-row-top {
+.status-feed-row-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.phases-row-name {
+.status-feed-node,
+.status-feed-iteration,
+.status-feed-time {
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 
-.phases-row-meta {
-  margin-top: 4px;
-  font-size: 11px;
+.status-feed-time {
+  margin-left: auto;
   color: var(--ink-muted, #4a5b49);
 }
 
-.phases-row-note {
-  margin-left: 8px;
+.status-feed-summary {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.status-feed-empty {
+  color: var(--ink-muted, #4a5b49);
+  font-size: 13px;
 }
 
 .runs-list-panel {
@@ -170,6 +347,11 @@ body {
   padding: 8px;
   overflow-y: auto;
   flex: 1;
+  scrollbar-width: none;
+}
+
+.runs-list::-webkit-scrollbar {
+  display: none;
 }
 
 .runs-row {
@@ -261,6 +443,12 @@ body {
   background: rgba(179, 38, 30, 0.12);
   border-color: rgba(179, 38, 30, 0.35);
   color: #b3261e;
+}
+
+.status-pill.status-goal_gate_failed {
+  background: rgba(191, 97, 0, 0.14);
+  border-color: rgba(191, 97, 0, 0.35);
+  color: #8a4700;
 }
 
 .status-pill.status-interrupted {
@@ -358,7 +546,6 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 2px solid var(--divider);
   background-color: var(--surface);
 }
 
@@ -379,10 +566,11 @@ body {
 }
 
 .node-panel {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 40px 22px 28px;
+  padding: 40px 8px 28px;
   background: var(--surface);
 }
 
@@ -405,6 +593,26 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+.run-summary-card {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.run-summary-note {
+  margin: 0;
+  color: var(--ink-muted, #4a5b49);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.panel-section-heading {
+  margin-top: 20px;
+  padding-top: 16px;
+  margin-bottom: 12px;
+  border-top: 1px solid var(--border-faint);
 }
 
 .pill {
@@ -435,26 +643,63 @@ body {
 }
 
 .tl-entry {
-  border-left: 3px solid var(--tone-lifecycle);
-  border-radius: 8px;
+  border: 1px solid var(--border-faint);
+  border-radius: 6px;
   background: var(--surface-panel);
+  overflow: hidden;
+  transition: border-color 120ms ease;
+}
+
+.tl-entry:hover {
+  border-color: var(--border-subtle);
 }
 
 .tl-entry details {
-  border: 1px solid rgba(37, 42, 37, 0.16);
-  border-left: 0;
-  border-radius: 0 8px 8px 0;
+  border: 0;
   padding: 0;
   background: transparent;
 }
 
 .tl-entry summary {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto minmax(0, 1fr);
   gap: 10px;
   align-items: baseline;
   padding: 10px 12px;
   cursor: pointer;
+  font-family: var(--ui-font);
+  color: var(--ink);
+  list-style: none;
+}
+
+.tl-entry summary::-webkit-details-marker {
+  display: none;
+}
+
+.tl-caret {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink-muted);
+  border-bottom: 1.5px solid var(--ink-muted);
+  transform: rotate(-45deg);
+  transition: transform 180ms ease;
+  justify-self: center;
+  align-self: center;
+  margin-top: -2px;
+}
+
+.tl-entry details[open] .tl-caret {
+  transform: rotate(45deg);
+  margin-top: -4px;
+}
+
+/* Lifecycle entries render without a disclosure — nothing to expand. */
+.tl-static {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
   font-family: var(--ui-font);
   color: var(--ink);
 }
@@ -463,10 +708,10 @@ body {
   margin: 0 12px 12px;
   overflow: auto;
   white-space: pre-wrap;
-  border: 1px solid rgba(37, 42, 37, 0.14);
+  border: 1px solid var(--border-faint);
   border-radius: 8px;
   padding: 10px;
-  background: #f7f9f7;
+  background: var(--surface-muted);
   color: var(--ink);
   font-family: var(--mono-font);
   font-size: 12.5px;
@@ -544,50 +789,51 @@ body {
   white-space: nowrap;
 }
 
-.tl-prompt {
-  border-left-color: var(--tone-prompt);
+/* Tone lives on the type chip instead of a colored left stripe. */
+.tl-prompt .tl-chip {
+  color: var(--tone-prompt);
 }
 
-.tl-thinking {
-  border-left-color: var(--tone-thinking);
+.tl-thinking .tl-chip {
+  color: var(--tone-thinking);
 }
 
-.tl-tool_call,
-.tl-tool_call_update {
-  border-left-color: var(--tone-tool);
+.tl-tool_call .tl-chip,
+.tl-tool_call_update .tl-chip {
+  color: var(--tone-tool);
 }
 
-.tl-response,
-.tl-message {
-  border-left-color: var(--tone-response);
+.tl-response .tl-chip,
+.tl-message .tl-chip {
+  color: var(--tone-response);
 }
 
-.tl-stderr {
-  border-left-color: var(--tone-stderr);
+.tl-stderr .tl-chip {
+  color: var(--tone-stderr);
 }
 
-.tl-lifecycle {
-  border-left-color: var(--tone-lifecycle);
+.tl-lifecycle .tl-chip {
+  color: var(--tone-lifecycle);
 }
 
-.tl-usage {
-  border-left-color: var(--tone-usage);
+.tl-usage .tl-chip {
+  color: var(--tone-usage);
 }
 
 .tl-success {
-  background: #eef8ef;
+  background: rgba(63, 122, 60, 0.08);
 }
 
 .tl-failure {
-  background: #fff0ee;
+  background: rgba(179, 38, 30, 0.09);
 }
 
 .tl-accent {
-  background: #fff8ec;
+  background: rgba(217, 119, 6, 0.08);
 }
 
 .tl-muted {
-  background: #f5f7f5;
+  background: rgba(140, 146, 140, 0.06);
 }
 
 .node-panel h3 {
@@ -605,20 +851,20 @@ pre {
   margin: 0;
   overflow: auto;
   white-space: pre-wrap;
-  border: 1px solid rgba(37, 42, 37, 0.16);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 12px;
-  background: #ffffff;
+  background: var(--surface-panel);
   font-family: var(--mono-font);
   font-size: 12.5px;
   line-height: 1.5;
 }
 
 details {
-  border: 1px solid rgba(37, 42, 37, 0.16);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 10px 12px;
-  background: #ffffff;
+  background: var(--surface-panel);
 }
 
 summary {
@@ -629,11 +875,11 @@ summary {
 }
 
 .tool-call {
-  border: 1px solid rgba(37, 42, 37, 0.16);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
-  background: #ffffff;
+  background: var(--surface-panel);
 }
 
 .tool-call h4 {
@@ -700,48 +946,141 @@ summary {
 
 .tractor-node.pending ellipse,
 .tractor-node.pending polygon,
-.tractor-node.pending path {
-  fill: #edf0ed;
+.tractor-node.pending path,
+.tractor-node.pending polyline {
+  fill: var(--state-pending-fill);
   stroke: var(--state-pending);
 }
 
 .tractor-node.running ellipse,
 .tractor-node.running polygon,
-.tractor-node.running path {
-  fill: #fff7ed;
+.tractor-node.running path,
+.tractor-node.running polyline {
+  fill: var(--state-running-fill);
   stroke: var(--accent-live);
   animation: pulse-node 1.2s ease-in-out infinite;
 }
 
 .tractor-node.succeeded ellipse,
 .tractor-node.succeeded polygon,
-.tractor-node.succeeded path {
-  fill: #e2f3e6;
+.tractor-node.succeeded path,
+.tractor-node.succeeded polyline {
+  fill: var(--state-success-fill);
   stroke: var(--state-success);
 }
 
 .tractor-node.failed ellipse,
 .tractor-node.failed polygon,
-.tractor-node.failed path {
-  fill: #fde7e5;
+.tractor-node.failed path,
+.tractor-node.failed polyline {
+  fill: var(--state-failure-fill);
+  stroke: var(--state-failure);
+}
+
+/* Judge verdict states: accepted is a narrower green, rejected is the
+   failure red. A judge cycles between rejected and accepted as a loop
+   resolves; see lib/tractor_web/run_live/show.ex update_node_state/3. */
+.tractor-node.accepted ellipse,
+.tractor-node.accepted polygon,
+.tractor-node.accepted path,
+.tractor-node.accepted polyline {
+  fill: var(--state-success-fill);
+  stroke: var(--state-success);
+}
+
+/* Wait.human suspension: node is blocked waiting for operator input.
+   Uses the focus-blue palette to read as "interactive / your turn". */
+.tractor-node.waiting ellipse,
+.tractor-node.waiting polygon,
+.tractor-node.waiting path,
+.tractor-node.waiting polyline {
+  fill: rgba(43, 95, 232, 0.12);
+  stroke: var(--focus);
+  stroke-dasharray: 4 3;
+}
+
+.tractor-node.rejected ellipse,
+.tractor-node.rejected polygon,
+.tractor-node.rejected path,
+.tractor-node.rejected polyline {
+  fill: var(--state-failure-fill);
   stroke: var(--state-failure);
 }
 
 .tractor-node.is-selected ellipse,
 .tractor-node.is-selected polygon,
-.tractor-node.is-selected path {
-  stroke: var(--focus);
+.tractor-node.is-selected path,
+.tractor-node.is-selected polyline {
   stroke-width: 3;
+}
+
+/* Corner decorations on Msquare/Mdiamond are polylines; make sure they never
+   carry their own fill (Graphviz defaults to "none" but be explicit). */
+.tractor-node polyline {
+  fill: none;
+}
+
+.tractor-grid-line-minor {
+  stroke: var(--grid-faint);
+}
+
+.tractor-grid-line-major {
+  stroke: var(--grid-strong);
+}
+
+/* Graphviz-rendered node + edge labels follow the theme's ink color.
+   Node labels sit inside the shape, so no halo is needed.
+   Edge labels can be crossed by other arrows — give them a halo. */
+.graph-svg svg g.node text {
+  fill: var(--ink);
+}
+
+.graph-svg svg g.edge text {
+  fill: var(--ink);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Edge arrowheads / lines — Graphviz emits black. Follow ink at a dimmer weight. */
+.graph-svg svg g.edge path,
+.graph-svg svg g.edge polygon {
+  stroke: var(--ink-muted);
+  fill: var(--ink-muted);
+}
+
+.graph-svg svg g.tractor-edge-conditional path,
+.graph-svg svg g.tractor-edge-conditional polygon {
+  stroke-dasharray: 7 4;
+}
+
+.graph-svg svg g.tractor-edge-accept path,
+.graph-svg svg g.tractor-edge-accept polygon {
+  stroke: var(--state-success);
+  fill: var(--state-success);
+}
+
+.graph-svg svg g.tractor-edge-reject path,
+.graph-svg svg g.tractor-edge-reject polygon,
+.graph-svg svg g.tractor-edge-back path,
+.graph-svg svg g.tractor-edge-back polygon {
+  stroke: var(--tone-stderr);
+  fill: var(--tone-stderr);
+}
+
+.graph-svg svg g.tractor-edge.is-taken path,
+.graph-svg svg g.tractor-edge.is-taken polygon {
+  animation: pulse-edge 900ms ease-out;
 }
 
 .tractor-badges {
   display: none;
   pointer-events: none;
   font-family: var(--mono-font);
-  font-size: 10px;
-  fill: var(--ink);
+  font-size: 8.5px;
   paint-order: stroke;
-  stroke: #ffffff;
+  stroke: var(--surface);
   stroke-width: 3px;
   stroke-linejoin: round;
 }
@@ -750,8 +1089,114 @@ summary {
   display: block;
 }
 
+/* Duration text color tracks the node's state (border color). */
+.tractor-node.pending .tractor-badge-duration {
+  fill: var(--state-pending);
+}
+
+.tractor-node.running .tractor-badge-duration {
+  fill: var(--accent-live);
+}
+
+.tractor-node.succeeded .tractor-badge-duration {
+  fill: var(--state-success);
+}
+
+.tractor-node.failed .tractor-badge-duration {
+  fill: var(--state-failure);
+}
+
 .tractor-badge-tokens {
   fill: var(--tone-usage);
+}
+
+.tractor-badge-iterations {
+  fill: var(--tone-lifecycle);
+}
+
+.tractor-badge-cumulative {
+  fill: var(--state-pending);
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+.tl-iteration_header,
+.tl-iteration-header {
+  background: rgba(140, 146, 140, 0.08);
+}
+
+.tl-iteration_header .tl-chip,
+.tl-iteration-header .tl-chip,
+.tl-verdict .tl-chip {
+  color: var(--tone-lifecycle);
+}
+
+.tl-verdict.tl-success .tl-chip,
+.tl-verdict-accept {
+  color: var(--state-success);
+}
+
+.tl-verdict.tl-accent .tl-chip,
+.tl-verdict-reject {
+  color: var(--tone-stderr);
+}
+
+.tractor-plan {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.tractor-plan-item {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(37, 42, 37, 0.10);
+  border-radius: 6px;
+  background: var(--surface-panel);
+  transition: background-color 300ms;
+}
+
+.tractor-plan-item.pending {
+  background: rgba(140, 146, 140, 0.08);
+}
+
+.tractor-plan-item.in_progress {
+  background: rgba(52, 126, 174, 0.12);
+}
+
+.tractor-plan-item.completed {
+  background: rgba(55, 139, 88, 0.14);
+}
+
+.tractor-plan-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state-pending);
+}
+
+.tractor-plan-item.in_progress .tractor-plan-status {
+  background: var(--accent-live);
+}
+
+.tractor-plan-item.completed .tractor-plan-status {
+  background: var(--state-success);
+}
+
+.tractor-plan-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tractor-plan-priority {
+  color: var(--ink-muted, #4a5b49);
+  font-size: 11px;
 }
 
 @keyframes pulse-node {
@@ -762,6 +1207,18 @@ summary {
 
   50% {
     stroke-width: 3;
+  }
+}
+
+@keyframes pulse-edge {
+  0% {
+    stroke-width: 4;
+    opacity: 1;
+  }
+
+  100% {
+    stroke-width: 1.5;
+    opacity: 0.72;
   }
 }
 

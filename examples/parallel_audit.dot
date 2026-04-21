@@ -7,30 +7,35 @@ digraph {
   claude_audit [
     shape=box,
     llm_provider=claude,
+    llm_model="Opus 4.7",
     prompt="Audit this tiny Elixir function for correctness: def add(a, b), do: a + b"
   ]
 
   codex_audit [
     shape=box,
     llm_provider=codex,
+    llm_model="GPT 5.4",
     prompt="Audit this tiny Elixir function for maintainability: def add(a, b), do: a + b"
   ]
 
   gemini_audit [
     shape=box,
     llm_provider=gemini,
+    llm_model="Gemini 3",
     prompt="Audit this tiny Elixir function for edge cases: def add(a, b), do: a + b"
   ]
 
   consolidate [
     shape=tripleoctagon,
     llm_provider=claude,
+    llm_model="Opus 4.7",
     prompt="Consolidate these audit notes:\n{{branch_responses}}"
   ]
 
   finalize [
     shape=box,
     llm_provider=claude,
+    llm_model="Opus 4.7",
     prompt="Phrase a short recommendation based on this consolidation:\n{{consolidate}}"
   ]
 

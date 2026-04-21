@@ -1,0 +1,73 @@
+digraph {
+  graph [
+    goal="Low-budget haiku loop that should halt on total cost before the full loop completes",
+    status_agent=claude,
+    max_total_cost_usd="0.01"
+  ]
+
+  start [shape=Mdiamond]
+
+  ask_claude [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-opus-4-7",
+    timeout="10m",
+    retries=1,
+    max_iterations=5,
+    prompt="Plan and then write a one-line haiku about a tractor at dawn. Previous critique (if any): {{codex_review.last_critique}}"
+  ]
+
+  codex_review [
+    shape=hexagon,
+    type=judge,
+    judge_mode=stub,
+    reject_probability=0.5,
+    accept_critique="imagery lands; continue",
+    reject_critique="tighten the opening image and retry once",
+    max_iterations=5
+  ]
+
+  ask_codex [
+    shape=box,
+    llm_provider=codex,
+    llm_model="gpt-5",
+    max_iterations=5,
+    prompt="Write a one-line haiku that continues this thought: {{ask_claude.last}}. Previous critique (if any): {{gemini_review.last_critique}}"
+  ]
+
+  gemini_review [
+    shape=hexagon,
+    type=judge,
+    judge_mode=stub,
+    reject_probability=0.5,
+    accept_critique="meter and continuity check out",
+    reject_critique="retry with a calmer final image",
+    max_iterations=5
+  ]
+
+  ask_gemini [
+    shape=box,
+    llm_provider=gemini,
+    llm_model="gemini-3-pro",
+    prompt="Write a one-line haiku that calmly concludes this sequence: {{ask_codex.last}}"
+  ]
+
+  summarize [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-sonnet-4-6",
+    prompt="Combine these three haikus into a short titled sequence.\n\n1. {{ask_claude.last}}\n2. {{ask_codex.last}}\n3. {{ask_gemini.last}}"
+  ]
+
+  exit [shape=Msquare]
+
+  start -> ask_claude
+  ask_claude -> codex_review
+  codex_review -> ask_claude [condition="reject"]
+  codex_review -> ask_codex [condition="accept"]
+  ask_codex -> gemini_review
+  gemini_review -> ask_codex [condition="reject"]
+  gemini_review -> ask_gemini [condition="accept"]
+  ask_gemini -> summarize
+  summarize -> exit
+}

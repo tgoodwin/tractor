@@ -6,7 +6,7 @@ defmodule Tractor.DotFixtureTest do
   @fixture_dir Path.expand("../fixtures/dot", __DIR__)
 
   @invalid_fixtures %{
-    "cyclic.dot" => :cycle,
+    "cyclic.dot" => :unconditional_cycle,
     "no_start.dot" => :start_cardinality,
     "two_starts.dot" => :start_cardinality,
     "no_exit.dot" => :exit_cardinality,
@@ -26,6 +26,21 @@ defmodule Tractor.DotFixtureTest do
   test "valid fixtures parse and validate" do
     for fixture <- ["valid_linear.dot", "valid_three_agents.dot", "valid_parallel_audit.dot"] do
       assert {:ok, pipeline} = DotParser.parse_file(fixture_path(fixture))
+      assert :ok = Validator.validate(pipeline)
+    end
+  end
+
+  test "example pipelines parse and validate" do
+    for example <- [
+          "examples/haiku_feedback.dot",
+          "examples/haiku_feedback_budget.dot",
+          "examples/recovery.dot",
+          "examples/resilience.dot",
+          "examples/parallel_audit.dot",
+          "examples/three_agents.dot",
+          "examples/plan_probe.dot"
+        ] do
+      assert {:ok, pipeline} = DotParser.parse_file(example)
       assert :ok = Validator.validate(pipeline)
     end
   end

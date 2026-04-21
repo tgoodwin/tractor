@@ -37,6 +37,7 @@ defmodule Tractor.MixProject do
       {:phoenix_html, "~> 4.1"},
       {:phoenix_pubsub, "~> 2.1"},
       {:bandit, "~> 1.5"},
+      {:decimal, "~> 2.3"},
       {:earmark, "~> 1.4"},
       {:toml, "~> 0.7"},
       {:lazy_html, ">= 0.1.0", only: :test},

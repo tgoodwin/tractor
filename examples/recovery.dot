@@ -1,0 +1,93 @@
+digraph {
+  graph [
+    goal="Demonstrate primary recovery, fallback recovery, and goal-gate terminal failure",
+    retries=1,
+    retry_base_ms=250,
+    retry_jitter=false
+  ]
+
+  start [shape=Mdiamond]
+
+  primary_step [
+    shape=box,
+    llm_provider=codex,
+    llm_model="gpt-5-mini",
+    retry_target=primary_recovery,
+    prompt="Return the single word repaired."
+  ]
+
+  primary_recovery [
+    shape=box,
+    llm_provider=codex,
+    llm_model="gpt-5-mini",
+    prompt="Recover the prior step and return the single word repaired."
+  ]
+
+  fallback_step [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-sonnet-4-6",
+    retry_target=fallback_primary,
+    fallback_retry_target=fallback_secondary,
+    prompt="Return the single word rerouted."
+  ]
+
+  fallback_primary [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-haiku-4-5",
+    prompt="Primary recovery target. Return the single word rerouted."
+  ]
+
+  fallback_secondary [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-haiku-4-5",
+    prompt="Fallback recovery target. Return the single word rerouted."
+  ]
+
+  critical_gate [
+    shape=box,
+    llm_provider=gemini,
+    llm_model="gemini-3-pro",
+    retries=1,
+    retry_target=gate_primary,
+    fallback_retry_target=gate_fallback,
+    goal_gate=true,
+    prompt="Return the single word shipped."
+  ]
+
+  gate_primary [
+    shape=box,
+    llm_provider=gemini,
+    llm_model="gemini-3-flash",
+    prompt="Primary goal-gate recovery target. Return the single word shipped."
+  ]
+
+  gate_fallback [
+    shape=box,
+    llm_provider=gemini,
+    llm_model="gemini-3-flash-lite",
+    prompt="Fallback goal-gate recovery target. Return the single word shipped."
+  ]
+
+  exit [shape=Msquare]
+
+  start -> primary_step
+  start -> primary_recovery [condition="context.__routed_from__ = \"primary_step\""]
+  start -> fallback_primary [condition="context.__routed_from__ = \"fallback_step\""]
+  start -> fallback_secondary [condition="context.__routed_from__ = \"fallback_step\""]
+  start -> gate_primary [condition="context.__routed_from__ = \"critical_gate\""]
+  start -> gate_fallback [condition="context.__routed_from__ = \"critical_gate\""]
+
+  primary_step -> fallback_step
+  primary_recovery -> fallback_step
+
+  fallback_step -> critical_gate
+  fallback_primary -> critical_gate
+  fallback_secondary -> critical_gate
+
+  critical_gate -> exit
+  gate_primary -> exit
+  gate_fallback -> exit
+}

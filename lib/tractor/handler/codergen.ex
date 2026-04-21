@@ -5,9 +5,10 @@ defmodule Tractor.Handler.Codergen do
 
   @behaviour Tractor.Handler
 
+  alias Tractor.Context.Template
   alias Tractor.Node
 
-  @default_timeout 300_000
+  @default_timeout 600_000
 
   @provider_modules %{
     "claude" => Tractor.Agent.Claude,
@@ -16,12 +17,15 @@ defmodule Tractor.Handler.Codergen do
   }
 
   @impl Tractor.Handler
+  def default_timeout_ms, do: @default_timeout
+
+  @impl Tractor.Handler
   def run(%Node{} = node, context, run_dir) do
     agent_client = Application.get_env(:tractor, :agent_client, Tractor.ACP.Session)
     adapter = Map.fetch!(@provider_modules, node.llm_provider)
     {command, args, env} = adapter.command([])
-    prompt = interpolate(node.prompt || "", context)
-    timeout = node.timeout || @default_timeout
+    prompt = Template.render(node.prompt || "", context)
+    timeout = node.timeout || default_timeout_ms()
 
     node_dir = Path.join(run_dir, node.id)
     File.mkdir_p!(node_dir)
@@ -29,7 +33,17 @@ defmodule Tractor.Handler.Codergen do
     stderr_log = Path.join(node_dir, "stderr.log")
 
     event_sink = fn %{kind: kind, data: data} ->
-      Tractor.RunEvents.emit(Path.basename(run_dir), node.id, kind, data)
+      event_kind = if kind == :usage, do: :token_usage, else: kind
+      payload = maybe_put_iteration(data, context)
+
+      Tractor.RunEvents.emit(
+        Path.basename(run_dir),
+        node.id,
+        event_kind,
+        payload
+      )
+
+      maybe_send_runtime_usage(context, node, payload, event_kind)
     end
 
     with {:ok, session} <-
@@ -42,6 +56,7 @@ defmodule Tractor.Handler.Codergen do
         {:ok, turn} ->
           :ok = agent_client.stop(session)
           response = response_text(turn)
+          maybe_send_turn_usage(context, node, turn)
 
           {:ok, response,
            %{
@@ -63,28 +78,58 @@ defmodule Tractor.Handler.Codergen do
     end
   end
 
-  defp interpolate(prompt, context) do
-    Enum.reduce(context, prompt, fn {node_id, output}, prompt ->
-      if is_binary(output) do
-        String.replace(prompt, "{{#{node_id}}}", output)
-      else
-        prompt
-      end
-    end)
-  end
-
   defp response_text(%Tractor.ACP.Turn{response_text: response}), do: response
   defp response_text(response) when is_binary(response), do: response
 
+  defp maybe_put_iteration(data, %{"__iteration__" => iteration}) do
+    Map.put(data || %{}, "iteration", iteration)
+  end
+
+  defp maybe_put_iteration(data, _context), do: data
+
   defp status(node, %Tractor.ACP.Turn{token_usage: nil}) do
-    %{"status" => "ok", "provider" => node.llm_provider}
+    %{"status" => "ok", "provider" => node.llm_provider, "model" => node.llm_model}
   end
 
   defp status(node, %Tractor.ACP.Turn{token_usage: token_usage}) do
-    %{"status" => "ok", "provider" => node.llm_provider, "token_usage" => token_usage}
+    %{
+      "status" => "ok",
+      "provider" => node.llm_provider,
+      "model" => node.llm_model,
+      "token_usage" => token_usage
+    }
   end
 
   defp status(node, _response) do
-    %{"status" => "ok", "provider" => node.llm_provider}
+    %{"status" => "ok", "provider" => node.llm_provider, "model" => node.llm_model}
   end
+
+  defp maybe_send_turn_usage(context, node, %Tractor.ACP.Turn{token_usage: token_usage})
+       when is_map(token_usage) do
+    maybe_send_runtime_usage(context, node, token_usage, :token_usage)
+  end
+
+  defp maybe_send_turn_usage(_context, _node, _turn), do: :ok
+
+  defp maybe_send_runtime_usage(context, node, usage, :token_usage) when is_map(usage) do
+    case context["__runner_pid__"] do
+      runner_pid when is_pid(runner_pid) ->
+        send(runner_pid, {
+          :token_usage_snapshot,
+          %{
+            node_id: node.id,
+            iteration: context["__iteration__"],
+            attempt: context["__attempt__"],
+            provider: node.llm_provider,
+            model: node.llm_model,
+            usage: usage
+          }
+        })
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp maybe_send_runtime_usage(_context, _node, _usage, _kind), do: :ok
 end

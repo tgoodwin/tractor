@@ -3,6 +3,8 @@ defmodule TractorWeb.Format do
   Small display formatting helpers for the observer UI.
   """
 
+  alias Decimal, as: D
+
   @spec duration_ms(non_neg_integer() | nil) :: String.t()
   def duration_ms(nil), do: "n/a"
   def duration_ms(ms) when ms < 1_000, do: "#{max(ms, 0)}ms"
@@ -41,6 +43,20 @@ defmodule TractorWeb.Format do
   def truncate(_text, max_length) when max_length <= 0, do: ""
   def truncate(_text, max_length) when max_length <= 3, do: binary_part("...", 0, max_length)
   def truncate(text, max_length), do: binary_part(text, 0, max_length - 3) <> "..."
+
+  @spec usd(String.t() | number() | nil) :: String.t()
+  def usd(nil), do: "n/a"
+  def usd(value) when value in ["", "n/a"], do: "n/a"
+  def usd(%D{} = value), do: "$" <> D.to_string(D.normalize(value), :normal)
+  def usd(value) when is_integer(value), do: value |> D.new() |> usd()
+  def usd(value) when is_float(value), do: value |> D.from_float() |> usd()
+
+  def usd(value) when is_binary(value) do
+    case D.parse(value) do
+      {decimal, ""} -> usd(decimal)
+      _other -> "$" <> value
+    end
+  end
 
   defp compact_scaled(value, divisor, suffix) do
     value
