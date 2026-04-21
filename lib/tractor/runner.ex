@@ -267,6 +267,17 @@ defmodule Tractor.Runner do
     {:noreply, state}
   end
 
+  @impl true
+  def terminate(reason, %{result: nil} = state) do
+    if interrupted_shutdown?(reason) do
+      finalize_interrupted(state)
+    end
+
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
   defp via(run_id), do: {:via, Registry, {Tractor.RunRegistry, run_id}}
 
   # credo:disable-for-next-line Credo.Check.Design.TagTODO
@@ -788,11 +799,27 @@ defmodule Tractor.Runner do
     complete(state, {:error, {:goal_gate_failed, node_id}})
   end
 
+  defp finalize_interrupted(state) do
+    RunStore.finalize(state.store, %{
+      status: "interrupted",
+      provider_commands: state.provider_commands,
+      total_cost_usd: Decimal.to_string(state.total_cost_usd)
+    })
+
+    RunEvents.emit(state.store.run_id, "_run", :run_interrupted, %{"status" => "interrupted"})
+    RunEvents.emit(state.store.run_id, "_run", :run_finalized, %{"status" => "interrupted"})
+    Tractor.StatusAgent.stop_run(state.store.run_id)
+  end
+
   defp complete(state, result) do
     Enum.each(state.waiters, &GenServer.reply(&1, result))
     Process.send_after(self(), :shutdown_after_completion, 5_000)
     %{state | result: result, waiters: []}
   end
+
+  defp interrupted_shutdown?(:shutdown), do: true
+  defp interrupted_shutdown?({:shutdown, _reason}), do: true
+  defp interrupted_shutdown?(_reason), do: false
 
   defp enqueue_next(state, node_id, routing_outcome) do
     case next_edge(state.pipeline, node_id, routing_outcome, state.context) do

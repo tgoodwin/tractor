@@ -387,4 +387,91 @@ defmodule Tractor.ToolRunTest do
 
     assert Enum.any?(events, &(&1["kind"] == "node_timeout"))
   end
+
+  @tag :tmp_dir
+  test "supervisor shutdown finalizes an active run as interrupted", %{tmp_dir: tmp_dir} do
+    pipeline = %Pipeline{
+      nodes:
+        Map.new(
+          [
+            %Node{id: "start", type: "start"},
+            %Node{
+              id: "tool",
+              type: "tool",
+              attrs: %{"command" => ["sh", "-c", "sleep 5; printf never"]}
+            },
+            %Node{id: "exit", type: "exit"}
+          ],
+          &{&1.id, &1}
+        ),
+      edges: [%Edge{from: "start", to: "tool"}, %Edge{from: "tool", to: "exit"}]
+    }
+
+    assert {:ok, run_id} = Run.start(pipeline, runs_dir: tmp_dir, run_id: "tool-interrupted")
+    [{pid, _value}] = Registry.lookup(Tractor.RunRegistry, run_id)
+    wait_for_node_status(tmp_dir, run_id, "tool", "running")
+
+    ref = Process.monitor(pid)
+    assert :ok = DynamicSupervisor.terminate_child(Tractor.RunSup, pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :shutdown}, 2_000
+
+    assert wait_for_run_status(tmp_dir, run_id) == "interrupted"
+
+    run_events =
+      tmp_dir
+      |> Path.join("tool-interrupted/_run/events.jsonl")
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+
+    assert Enum.any?(run_events, &(&1["kind"] == "run_interrupted"))
+
+    assert Enum.any?(
+             run_events,
+             &(&1["kind"] == "run_finalized" and get_in(&1, ["data", "status"]) == "interrupted")
+           )
+  end
+
+  defp wait_for_node_status(tmp_dir, run_id, node_id, expected_status, attempts \\ 100)
+
+  defp wait_for_node_status(_tmp_dir, run_id, node_id, expected_status, 0) do
+    flunk("expected #{node_id} in #{run_id} to reach #{expected_status}")
+  end
+
+  defp wait_for_node_status(tmp_dir, run_id, node_id, expected_status, attempts) do
+    status_path = Path.join([tmp_dir, run_id, node_id, "status.json"])
+
+    current_status =
+      if File.exists?(status_path) do
+        status_path |> File.read!() |> Jason.decode!() |> Map.get("status")
+      end
+
+    if current_status == expected_status do
+      :ok
+    else
+      Process.sleep(20)
+      wait_for_node_status(tmp_dir, run_id, node_id, expected_status, attempts - 1)
+    end
+  end
+
+  defp wait_for_run_status(tmp_dir, run_id, attempts \\ 100)
+
+  defp wait_for_run_status(_tmp_dir, run_id, 0) do
+    flunk("expected #{run_id} to finalize")
+  end
+
+  defp wait_for_run_status(tmp_dir, run_id, attempts) do
+    status_path = Path.join([tmp_dir, run_id, "status.json"])
+
+    current_status =
+      if File.exists?(status_path) do
+        status_path |> File.read!() |> Jason.decode!() |> Map.get("status")
+      end
+
+    if current_status in [nil, "running"] do
+      Process.sleep(20)
+      wait_for_run_status(tmp_dir, run_id, attempts - 1)
+    else
+      current_status
+    end
+  end
 end
