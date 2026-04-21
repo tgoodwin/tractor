@@ -165,12 +165,14 @@ tractor_server_start() {
 
   (
     cd "$TRACTOR_ROOT"
-    PORT="$TRACTOR_BROWSER_PORT" mix phx.server >"$TRACTOR_BROWSER_SERVER_LOG" 2>&1
+    exec env PORT="$TRACTOR_BROWSER_PORT" mix phx.server >"$TRACTOR_BROWSER_SERVER_LOG" 2>&1
   ) &
 
-  local pid=$!
-  printf '%s\n' "$pid" >"$TRACTOR_BROWSER_SERVER_PID_FILE"
   wait_for_http "$TRACTOR_BROWSER_HEALTH_URL"
+
+  local pid
+  pid="$(lsof -tiTCP:"$TRACTOR_BROWSER_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+  printf '%s\n' "$pid" >"$TRACTOR_BROWSER_SERVER_PID_FILE"
 }
 
 tractor_server_stop() {
