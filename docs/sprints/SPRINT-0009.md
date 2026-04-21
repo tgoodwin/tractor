@@ -317,13 +317,13 @@ Test: `test/browser/14_error_states.sh`.
 
 ### Phase B — Feature coverage pass (~3–5d)
 
-- [ ] Walk §4 top-to-bottom. For each row:
+- [x] Walk §4 top-to-bottom. For each row:
   1. Author the agent-browser script.
   2. Run it. If it can't locate the target: add the minimal ARIA / testid attribute to the HEEx template.
   3. If it locates but assertion fails: the bug is real. Fix it. Add a fix commit referencing the failing suite (e.g. `fix(observer): wait form error clears on resolve (test/browser/10_wait_form.sh)`).
   4. Re-run the suite until green. Move on.
-- [ ] Where a feature requires a specific pipeline state (e.g. status-agent off vs. claude), write the fixture inline into the test script or add a small example DOT under `test/browser/fixtures/`.
-- [ ] Log every regression in a `test/browser/regressions.md` append-only log with {date, test file, symptom, root cause, fix commit}. This becomes the sprint's quality artifact — not a PR body.
+- [x] Where a feature requires a specific pipeline state (e.g. status-agent off vs. claude), write the fixture inline into the test script or add a small example DOT under `test/browser/fixtures/`.
+- [x] Log every regression in a `test/browser/regressions.md` append-only log with {date, test file, symptom, root cause, fix commit}. This becomes the sprint's quality artifact — not a PR body.
 
 ### Phase C — Gap-fill and stabilization (~1–2d)
 
