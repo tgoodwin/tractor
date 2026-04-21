@@ -1,0 +1,17 @@
+digraph {
+  graph [goal="Probe the selected node header"]
+
+  start [shape=Mdiamond]
+
+  modelled [
+    shape=box,
+    llm_provider=claude,
+    llm_model="Opus 4.7",
+    reasoning_effort="high",
+    prompt="Return the single word header."
+  ]
+
+  exit [shape=Msquare]
+
+  start -> modelled -> exit
+}
