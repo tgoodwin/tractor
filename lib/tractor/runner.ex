@@ -1313,9 +1313,9 @@ defmodule Tractor.Runner do
   end
 
   defp resolve_waiting_node(state, node_id, label, source) do
-    case Map.get(state.waiting, node_id) do
+    case waiting_entry(state, node_id) do
       nil ->
-        {:ok, state}
+        {:error, :wait_not_pending}
 
       %{default_edge: nil} when source == :timeout ->
         {:error, :missing_default_edge}
@@ -1338,6 +1338,24 @@ defmodule Tractor.Runner do
 
           {:ok, handle_handler_result(handler_result, entry, state)}
         end
+    end
+  end
+
+  defp waiting_entry(state, node_id) do
+    case Map.get(state.waiting, node_id) do
+      nil -> waiting_entry_from_checkpoint(state, node_id)
+      entry -> entry
+    end
+  end
+
+  defp waiting_entry_from_checkpoint(state, node_id) do
+    with {:ok, checkpoint} <- Checkpoint.read(state.store.run_dir),
+         entry when is_map(entry) <- get_in(checkpoint, ["waiting", node_id]) do
+      entry
+      |> normalize_waiting_entry()
+      |> Map.put(:started_at_ms, resumed_started_at_ms(entry["started_at"]))
+    else
+      _other -> nil
     end
   end
 

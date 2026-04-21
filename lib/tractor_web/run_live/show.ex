@@ -200,6 +200,9 @@ defmodule TractorWeb.RunLive.Show do
                "Invalid choice. Expected one of: #{Enum.join(labels, ", ")}"
              )}
 
+          {:error, :wait_not_pending} ->
+            {:noreply, assign(socket, :wait_form_error, "Decision is no longer pending.")}
+
           {:error, reason} ->
             {:noreply,
              assign(socket, :wait_form_error, "Could not submit choice: #{inspect(reason)}")}

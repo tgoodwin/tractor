@@ -24,7 +24,7 @@ Four sprints shipped ~40 user-visible UI surfaces on the Phoenix LiveView observ
   - `examples/resilience.dot` — retry/backoff + timeout → status pill transitions + failed-tone lifecycle
   - `examples/plan_probe.dot` — condition DSL + cost budget + goal-gate path + status feed
   - `examples/wait_human_review.dot` — wait.human form + pending → resolved transition + operator choice
-- [ ] **User-reported regression fixed**: operator clicks `approve`/`reject` button in the wait.human form → pipeline actually advances (selected outgoing edge fires, next node runs, run reaches `completed`). See §4.10 for the end-to-end assertion. This is not a "verify UI state" test — it's a "verify the whole decision→progression chain" test, because the user has observed this chain silently breaking.
+- [x] **User-reported regression fixed**: operator clicks `approve`/`reject` button in the wait.human form → pipeline actually advances (selected outgoing edge fires, next node runs, run reaches `completed`). See §4.10 for the end-to-end assertion. This is not a "verify UI state" test — it's a "verify the whole decision→progression chain" test, because the user has observed this chain silently breaking.
 - [ ] `test/browser/README.md` indexes every suite + last-pass commit SHA.
 - [ ] `test/browser/run-all.sh` is a serial harness: boot Phoenix, load fixtures via `/dev/reap`, run every suite, teardown. Exit 0 ⇒ sign-off.
 - [ ] One-shot invocation instructions for the executor agent in §6; runbook lives with the code, not in the PR description.

@@ -29,6 +29,9 @@ defmodule Tractor.WaitHumanRunTest do
     assert resolved["label"] == "approve"
     assert resolved["source"] == "operator"
 
+    assert {:error, :wait_not_pending} =
+             Run.submit_wait_choice(run_id, "gate", "approve")
+
     assert {:ok, result} = Run.await(run_id, 2_000)
     assert result.context["approved"]["stdout"] == "approved"
     assert result.context["gate"]["resolved_label"] == "approve"
@@ -42,6 +45,33 @@ defmodule Tractor.WaitHumanRunTest do
       |> Jason.decode!()
 
     assert wait_artifact["outgoing_labels"] == ["approve", "reject"]
+  end
+
+  @tag :tmp_dir
+  test "operator resolution rehydrates a pending wait from checkpoint when runner state is stale",
+       %{tmp_dir: tmp_dir} do
+    run_id = "wait-human-rehydrate"
+
+    assert {:ok, ^run_id} = Run.start(wait_pipeline(), runs_dir: tmp_dir, run_id: run_id)
+
+    waiting = wait_for_waiting(run_id, "gate")
+
+    if is_reference(waiting.timeout_ref) do
+      Process.cancel_timer(waiting.timeout_ref)
+    end
+
+    pid = runner_pid(run_id)
+
+    :sys.replace_state(pid, fn state ->
+      %{state | waiting: %{}, wait_timers: %{}}
+    end)
+
+    assert :ok = Run.submit_wait_choice(run_id, "gate", "approve")
+
+    assert {:ok, result} = Run.await(run_id, 2_000)
+    assert result.context["approved"]["stdout"] == "approved"
+    assert result.context["gate"]["resolved_label"] == "approve"
+    assert result.context["gate"]["resolution_source"] == "operator"
   end
 
   @tag :tmp_dir
