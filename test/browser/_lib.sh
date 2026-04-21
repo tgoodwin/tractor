@@ -141,13 +141,22 @@ wait_for_http() {
 tractor_export_fake_acp_env() {
   export TRACTOR_ACP_CLAUDE_COMMAND="${TRACTOR_ACP_CLAUDE_COMMAND:-$(command -v elixir)}"
   export TRACTOR_ACP_CLAUDE_ARGS="${TRACTOR_ACP_CLAUDE_ARGS:-[\"--erl\",\"-kernel logger_level emergency\",\"-pa\",\"$TRACTOR_ROOT/_build/dev/lib/jason/ebin\",\"$TRACTOR_ROOT/test/support/fake_acp_agent.exs\"]}"
-  export TRACTOR_ACP_CLAUDE_ENV_JSON="${TRACTOR_ACP_CLAUDE_ENV_JSON:-{\"TRACTOR_FAKE_ACP_MODE\":\"plan\",\"FAKE_ACP_EVENTS\":\"full\"}}"
   export TRACTOR_ACP_CODEX_COMMAND="${TRACTOR_ACP_CODEX_COMMAND:-$(command -v elixir)}"
   export TRACTOR_ACP_CODEX_ARGS="${TRACTOR_ACP_CODEX_ARGS:-[\"--erl\",\"-kernel logger_level emergency\",\"-pa\",\"$TRACTOR_ROOT/_build/dev/lib/jason/ebin\",\"$TRACTOR_ROOT/test/support/fake_acp_agent.exs\"]}"
-  export TRACTOR_ACP_CODEX_ENV_JSON="${TRACTOR_ACP_CODEX_ENV_JSON:-{\"FAKE_ACP_EVENTS\":\"full\"}}"
   export TRACTOR_ACP_GEMINI_COMMAND="${TRACTOR_ACP_GEMINI_COMMAND:-$(command -v elixir)}"
   export TRACTOR_ACP_GEMINI_ARGS="${TRACTOR_ACP_GEMINI_ARGS:-[\"--erl\",\"-kernel logger_level emergency\",\"-pa\",\"$TRACTOR_ROOT/_build/dev/lib/jason/ebin\",\"$TRACTOR_ROOT/test/support/fake_acp_agent.exs\"]}"
-  export TRACTOR_ACP_GEMINI_ENV_JSON="${TRACTOR_ACP_GEMINI_ENV_JSON:-{\"FAKE_ACP_EVENTS\":\"full\"}}"
+
+  if [[ -z "${TRACTOR_ACP_CLAUDE_ENV_JSON+x}" ]]; then
+    export TRACTOR_ACP_CLAUDE_ENV_JSON='{"TRACTOR_FAKE_ACP_MODE":"plan","FAKE_ACP_EVENTS":"full"}'
+  fi
+
+  if [[ -z "${TRACTOR_ACP_CODEX_ENV_JSON+x}" ]]; then
+    export TRACTOR_ACP_CODEX_ENV_JSON='{"FAKE_ACP_EVENTS":"full"}'
+  fi
+
+  if [[ -z "${TRACTOR_ACP_GEMINI_ENV_JSON+x}" ]]; then
+    export TRACTOR_ACP_GEMINI_ENV_JSON='{"FAKE_ACP_EVENTS":"full"}'
+  fi
 }
 
 tractor_server_start() {
@@ -169,7 +178,9 @@ tractor_server_stop() {
 
   if [[ -f "$TRACTOR_BROWSER_SERVER_PID_FILE" ]]; then
     pid="$(cat "$TRACTOR_BROWSER_SERVER_PID_FILE")"
-  else
+  fi
+
+  if [[ -z "$pid" ]] || ! kill -0 "$pid" >/dev/null 2>&1; then
     pid="$(lsof -tiTCP:"$TRACTOR_BROWSER_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
   fi
 
