@@ -12,17 +12,15 @@ export TRACTOR_DATA_DIR
 export TRACTOR_BROWSER_PORT="${TRACTOR_BROWSER_PORT:-4001}"
 export TRACTOR_BASE_URL="http://127.0.0.1:${TRACTOR_BROWSER_PORT}"
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-tractor-browser-run-all}"
-
-SERVER_LOG="$LOG_DIR/phoenix.log"
+export TRACTOR_BROWSER_LOG_DIR="$LOG_DIR"
+export TRACTOR_BROWSER_SERVER_PID_FILE="$LOG_DIR/phoenix.pid"
+export TRACTOR_BROWSER_SERVER_LOG="$LOG_DIR/phoenix.log"
+export TRACTOR_BROWSER_HEALTH_URL="${TRACTOR_BASE_URL}/runs/browser-health"
 
 cleanup() {
   local exit_code=$?
 
-  if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
-    kill -TERM "$SERVER_PID" >/dev/null 2>&1 || true
-    wait "$SERVER_PID" >/dev/null 2>&1 || true
-  fi
-
+  tractor_server_stop
   AGENT_BROWSER_SESSION="$TRACTOR_AB_SESSION" agent-browser close >/dev/null 2>&1 || true
   exit "$exit_code"
 }
@@ -32,13 +30,7 @@ trap cleanup EXIT
 rm -rf "$TRACTOR_DATA_DIR"
 mkdir -p "$TRACTOR_DATA_DIR"
 
-(
-  cd "$ROOT"
-  PORT="$TRACTOR_BROWSER_PORT" mix phx.server >"$SERVER_LOG" 2>&1
-) &
-SERVER_PID=$!
-
-wait_for_http "$TRACTOR_BASE_URL/nope"
+tractor_server_start
 
 mapfile -t suites < <(
   find "$ROOT/test/browser" -maxdepth 1 -type f -name '*.sh' \

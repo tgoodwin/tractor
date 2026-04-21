@@ -14,3 +14,4 @@ docs/sprints/drafts/
 /bin/tractor
 /.tractor/*
 !/.tractor/config.toml
+test/browser/logs/

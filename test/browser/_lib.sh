@@ -5,6 +5,10 @@ TRACTOR_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TRACTOR_BROWSER_PORT="${TRACTOR_BROWSER_PORT:-4001}"
 TRACTOR_BASE_URL="${TRACTOR_BASE_URL:-http://127.0.0.1:${TRACTOR_BROWSER_PORT}}"
 TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-tractor-browser-${PPID:-$$}}"
+TRACTOR_BROWSER_LOG_DIR="${TRACTOR_BROWSER_LOG_DIR:-$TRACTOR_ROOT/test/browser/logs}"
+TRACTOR_BROWSER_SERVER_PID_FILE="${TRACTOR_BROWSER_SERVER_PID_FILE:-$TRACTOR_BROWSER_LOG_DIR/phoenix.pid}"
+TRACTOR_BROWSER_SERVER_LOG="${TRACTOR_BROWSER_SERVER_LOG:-$TRACTOR_BROWSER_LOG_DIR/phoenix.log}"
+TRACTOR_BROWSER_HEALTH_URL="${TRACTOR_BROWSER_HEALTH_URL:-$TRACTOR_BASE_URL/runs/browser-health}"
 
 ab() {
   AGENT_BROWSER_SESSION="$TRACTOR_AB_SESSION" agent-browser "$@"
@@ -132,4 +136,53 @@ wait_for_http() {
 
   printf 'Timed out waiting for %s\n' "$url" >&2
   return 1
+}
+
+tractor_export_fake_acp_env() {
+  export TRACTOR_ACP_CLAUDE_COMMAND="${TRACTOR_ACP_CLAUDE_COMMAND:-$(command -v elixir)}"
+  export TRACTOR_ACP_CLAUDE_ARGS="${TRACTOR_ACP_CLAUDE_ARGS:-[\"--erl\",\"-kernel logger_level emergency\",\"-pa\",\"$TRACTOR_ROOT/_build/dev/lib/jason/ebin\",\"$TRACTOR_ROOT/test/support/fake_acp_agent.exs\"]}"
+  export TRACTOR_ACP_CLAUDE_ENV_JSON="${TRACTOR_ACP_CLAUDE_ENV_JSON:-{\"TRACTOR_FAKE_ACP_MODE\":\"plan\",\"FAKE_ACP_EVENTS\":\"full\"}}"
+  export TRACTOR_ACP_CODEX_COMMAND="${TRACTOR_ACP_CODEX_COMMAND:-$(command -v elixir)}"
+  export TRACTOR_ACP_CODEX_ARGS="${TRACTOR_ACP_CODEX_ARGS:-[\"--erl\",\"-kernel logger_level emergency\",\"-pa\",\"$TRACTOR_ROOT/_build/dev/lib/jason/ebin\",\"$TRACTOR_ROOT/test/support/fake_acp_agent.exs\"]}"
+  export TRACTOR_ACP_CODEX_ENV_JSON="${TRACTOR_ACP_CODEX_ENV_JSON:-{\"FAKE_ACP_EVENTS\":\"full\"}}"
+  export TRACTOR_ACP_GEMINI_COMMAND="${TRACTOR_ACP_GEMINI_COMMAND:-$(command -v elixir)}"
+  export TRACTOR_ACP_GEMINI_ARGS="${TRACTOR_ACP_GEMINI_ARGS:-[\"--erl\",\"-kernel logger_level emergency\",\"-pa\",\"$TRACTOR_ROOT/_build/dev/lib/jason/ebin\",\"$TRACTOR_ROOT/test/support/fake_acp_agent.exs\"]}"
+  export TRACTOR_ACP_GEMINI_ENV_JSON="${TRACTOR_ACP_GEMINI_ENV_JSON:-{\"FAKE_ACP_EVENTS\":\"full\"}}"
+}
+
+tractor_server_start() {
+  mkdir -p "$TRACTOR_BROWSER_LOG_DIR"
+  tractor_export_fake_acp_env
+
+  (
+    cd "$TRACTOR_ROOT"
+    PORT="$TRACTOR_BROWSER_PORT" mix phx.server >"$TRACTOR_BROWSER_SERVER_LOG" 2>&1
+  ) &
+
+  local pid=$!
+  printf '%s\n' "$pid" >"$TRACTOR_BROWSER_SERVER_PID_FILE"
+  wait_for_http "$TRACTOR_BROWSER_HEALTH_URL"
+}
+
+tractor_server_stop() {
+  local pid=""
+
+  if [[ -f "$TRACTOR_BROWSER_SERVER_PID_FILE" ]]; then
+    pid="$(cat "$TRACTOR_BROWSER_SERVER_PID_FILE")"
+  else
+    pid="$(lsof -tiTCP:"$TRACTOR_BROWSER_PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+  fi
+
+  if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+    wait "$pid" >/dev/null 2>&1 || true
+  fi
+
+  if [[ -f "$TRACTOR_BROWSER_SERVER_PID_FILE" ]]; then
+    python3 - <<'PY' "$TRACTOR_BROWSER_SERVER_PID_FILE"
+from pathlib import Path
+import sys
+Path(sys.argv[1]).unlink(missing_ok=True)
+PY
+  fi
 }
