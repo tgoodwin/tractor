@@ -1,8 +1,25 @@
 defmodule TractorWeb.ServerTest do
   use ExUnit.Case, async: false
 
-  test "normal reap does not open the default Phoenix listener" do
-    assert {:error, _reason} = :gen_tcp.connect({127, 0, 0, 1}, 4000, [], 100)
+  @tag :tmp_dir
+  test "normal reap does not start an observer server", %{tmp_dir: tmp_dir} do
+    dot = Path.join(tmp_dir, "minimal.dot")
+
+    File.write!(dot, """
+    digraph {
+      start [shape=Mdiamond]
+      exit [shape=Msquare]
+      start -> exit
+    }
+    """)
+
+    before_children = DynamicSupervisor.which_children(Tractor.WebSup)
+
+    assert {0, _stdout, _stderr} =
+             Tractor.CLI.run(["reap", dot, "--runs-dir", tmp_dir, "--timeout", "5s"])
+
+    after_children = DynamicSupervisor.which_children(Tractor.WebSup)
+    assert after_children == before_children
   end
 
   test "server config binds only to loopback" do

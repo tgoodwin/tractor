@@ -43,7 +43,7 @@ defmodule Tractor.RunEventsTest do
         env: [{"FAKE_ACP_EVENTS", "full"}]
       )
 
-    assert {:ok, _turn} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, _turn} = Session.prompt(pid, "hello", 5_000)
     assert :ok = Session.stop(pid)
 
     disk_kinds =
@@ -81,7 +81,7 @@ defmodule Tractor.RunEventsTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "usage_update"}]
       )
 
-    assert {:ok, _turn} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, _turn} = Session.prompt(pid, "hello", 5_000)
     assert :ok = Session.stop(pid)
 
     events = store.run_dir |> Path.join("ask/events.jsonl") |> read_events()

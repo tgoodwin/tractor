@@ -15,5 +15,6 @@ defmodule Tractor.DiagnosticTest do
     assert diagnostic.node_id == "ask"
     assert diagnostic.edge == {"ask", "exit"}
     assert diagnostic.path == "workflow.dot"
+    assert diagnostic.severity == :error
   end
 end

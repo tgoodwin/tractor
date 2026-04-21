@@ -7,7 +7,7 @@ defmodule Tractor.CLI do
 
   alias Tractor.{DotParser, Run, Validator}
 
-  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n"
+  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n"
 
   @spec main([String.t()]) :: no_return()
   def main(args) do
@@ -33,6 +33,10 @@ defmodule Tractor.CLI do
   end
 
   @spec run([String.t()]) :: {non_neg_integer(), String.t(), String.t()}
+  def run(["reap", "--resume"]) do
+    resume_once([resume: :latest], 300_000)
+  end
+
   def run(["reap" | args]) do
     {opts, positional, invalid} =
       OptionParser.parse(args,
@@ -42,12 +46,14 @@ defmodule Tractor.CLI do
           timeout: :string,
           serve: :boolean,
           port: :integer,
-          no_open: :boolean
+          no_open: :boolean,
+          resume: :string
         ],
         aliases: []
       )
 
-    with :ok <- validate_options(invalid, positional),
+    with :ok <- validate_options(invalid, positional, opts),
+         {:resume, false} <- {:resume, is_binary(opts[:resume])},
          [path] <- positional,
          :ok <- ensure_file(path),
          :ok <- progress("parse: #{path}"),
@@ -72,15 +78,37 @@ defmodule Tractor.CLI do
       {:missing_file, path} -> {3, "", "DOT file not found: #{path}\n"}
       {:error, diagnostics} when is_list(diagnostics) -> {10, "", format_diagnostics(diagnostics)}
       {:error, reason} -> {20, "", "agent runtime failure: #{inspect(reason)}\n"}
+      {:resume, true} -> resume_once(opts, timeout_ms!(opts[:timeout]))
       _other -> {2, "", @usage}
+    end
+  end
+
+  def run(["validate", path]) do
+    with :ok <- ensure_file(path),
+         {:ok, pipeline} <- DotParser.parse_file(path),
+         warnings <- Validator.warnings(pipeline),
+         :ok <- Validator.validate(pipeline) do
+      warning_text = format_diagnostics(warnings)
+      {0, "validate: ok\n", warning_text}
+    else
+      {:missing_file, path} -> {3, "", "DOT file not found: #{path}\n"}
+      {:error, diagnostics} when is_list(diagnostics) -> {10, "", format_diagnostics(diagnostics)}
+      {:error, reason} -> {20, "", "validation failure: #{inspect(reason)}\n"}
     end
   end
 
   def run(_args), do: {2, "", @usage}
 
-  defp validate_options([], [_path]), do: :ok
-  defp validate_options(invalid, _positional) when invalid != [], do: {:usage, @usage}
-  defp validate_options(_invalid, _positional), do: {:usage, @usage}
+  defp validate_options([], [], opts) do
+    if is_binary(Keyword.get(opts, :resume)), do: :ok, else: {:usage, @usage}
+  end
+
+  defp validate_options([], [_path], opts) do
+    if is_nil(Keyword.get(opts, :resume)), do: :ok, else: {:usage, @usage}
+  end
+
+  defp validate_options(invalid, _positional, _opts) when invalid != [], do: {:usage, @usage}
+  defp validate_options(_invalid, _positional, _opts), do: {:usage, @usage}
 
   defp ensure_file(path) do
     if File.regular?(path), do: :ok, else: {:missing_file, path}
@@ -104,6 +132,57 @@ defmodule Tractor.CLI do
     else
       {:error, reason} -> {20, "", "agent runtime failure: #{inspect(reason)}\n"}
     end
+  end
+
+  defp resume_once(opts, timeout) do
+    run_dir = resolve_resume_dir(opts[:resume], opts)
+
+    with {:ok, run_id} <- Run.resume(run_dir, run_opts(opts)),
+         :ok <- progress("resume: #{run_id}"),
+         {:ok, result} <- Run.await(run_id, timeout) do
+      {0, result.run_dir <> "\n", ""}
+    else
+      {:error, :unsupported_checkpoint} ->
+        {20, "", "resume failed: unsupported checkpoint schema\n"}
+
+      {:error, :pipeline_changed} ->
+        {20, "", "resume failed: pipeline graph changed since checkpoint\n"}
+
+      {:error, :node_ids_changed} ->
+        {20, "", "resume failed: node IDs changed since checkpoint\n"}
+
+      {:error, reason} ->
+        {20, "", "resume failed: #{inspect(reason)}\n"}
+    end
+  end
+
+  defp resolve_resume_dir(value, opts) do
+    if value == :latest do
+      newest_run_dir(opts)
+    else
+      do_resolve_resume_dir(value, opts)
+    end
+  end
+
+  defp do_resolve_resume_dir(value, opts) do
+    expanded = Path.expand(value)
+
+    if File.dir?(expanded) do
+      expanded
+    else
+      runs_dir = opts[:runs_dir] || Path.join(Tractor.Paths.data_dir(), "runs")
+      Path.join(runs_dir, value)
+    end
+  end
+
+  defp newest_run_dir(opts) do
+    runs_dir = opts[:runs_dir] || Path.join(Tractor.Paths.data_dir(), "runs")
+
+    runs_dir
+    |> Path.join("*")
+    |> Path.wildcard()
+    |> Enum.filter(&File.dir?/1)
+    |> Enum.max_by(&File.stat!(&1).mtime, fn -> Path.join(runs_dir, "__missing__") end)
   end
 
   defp serve_reap(pipeline, opts, _timeout) do
@@ -205,9 +284,17 @@ defmodule Tractor.CLI do
     end
   end
 
+  defp timeout_ms!(value) do
+    case timeout_ms(value) do
+      {:ok, timeout} -> timeout
+      _other -> 300_000
+    end
+  end
+
   defp format_diagnostics(diagnostics) do
     Enum.map_join(diagnostics, "", fn diagnostic ->
-      "#{diagnostic.code}: #{diagnostic.message}\n"
+      prefix = if diagnostic.severity == :warning, do: "warning ", else: ""
+      "#{prefix}#{diagnostic.code}: #{diagnostic.message}\n"
     end)
   end
 end
