@@ -1125,10 +1125,23 @@ defmodule Tractor.Runner do
     status
     |> maybe_put_status_meta("iteration", entry[:iteration])
     |> maybe_put_status_meta("max_iterations", entry[:max_iterations])
+    |> maybe_put_status_meta("started_at", entry[:started_at])
+    |> maybe_put_finished_at()
   end
 
   defp maybe_put_status_meta(status, _key, nil), do: status
+  defp maybe_put_status_meta(status, key, _value) when is_map_key(status, key), do: status
   defp maybe_put_status_meta(status, key, value), do: Map.put(status, key, value)
+
+  defp maybe_put_finished_at(status) do
+    case Map.get(status, "status") do
+      value when value in ["running", "retrying", "waiting", "pending"] ->
+        status
+
+      _other ->
+        maybe_put_status_meta(status, "finished_at", DateTime.utc_now() |> DateTime.to_iso8601())
+    end
+  end
 
   defp put_cost_status(status, state, node_id) do
     status

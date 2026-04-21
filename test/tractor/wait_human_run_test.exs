@@ -229,6 +229,39 @@ defmodule Tractor.WaitHumanRunTest do
     assert node_event?(tmp_dir, run_id, "exit", "node_succeeded")
   end
 
+  @tag :tmp_dir
+  test "looped tool iterations persist timing metadata for cumulative graph badges", %{tmp_dir: tmp_dir} do
+    run_id = "wait-human-loop-badges"
+    RunBus.subscribe(run_id)
+
+    assert {:ok, ^run_id} = Run.start(loop_badge_pipeline(run_id), runs_dir: tmp_dir, run_id: run_id)
+    assert_receive {:run_event, "review", %{"kind" => "wait_human_pending"}}, 1_000
+
+    assert :ok = Run.submit_wait_choice(run_id, "review", "revise")
+    assert_receive {:run_event, "review", %{"kind" => "wait_human_pending"}}, 1_000
+
+    run_dir = Path.join(tmp_dir, run_id)
+
+    first_iteration =
+      run_dir
+      |> Path.join("draft/iterations/1/status.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    second_iteration =
+      run_dir
+      |> Path.join("draft/iterations/2/status.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert is_binary(first_iteration["started_at"])
+    assert is_binary(first_iteration["finished_at"])
+    assert is_binary(second_iteration["started_at"])
+    assert is_binary(second_iteration["finished_at"])
+    assert :ok = Run.submit_wait_choice(run_id, "review", "approve")
+    assert {:ok, _result} = Run.await(run_id, 2_000)
+  end
+
   defp wait_pipeline(opts \\ []) do
     run_id = Keyword.get(opts, :run_id, "wait-human")
     wait_attrs = Keyword.get(opts, :wait_attrs, %{})
@@ -340,6 +373,42 @@ defmodule Tractor.WaitHumanRunTest do
     assert {:ok, pipeline} = DotParser.parse_file(path)
     assert :ok = Validator.validate(pipeline)
     pipeline
+  end
+
+  defp loop_badge_pipeline(run_id) do
+    %Pipeline{
+      path: "#{run_id}.dot",
+      nodes:
+        Map.new(
+          [
+            %Node{id: "start", type: "start"},
+            %Node{
+              id: "draft",
+              type: "tool",
+              attrs: %{"command" => ["sh", "-c", "sleep 0.01; printf draft"]}
+            },
+            %Node{
+              id: "review",
+              type: "wait.human",
+              attrs: %{"wait_prompt" => "Review the draft. Pick approve, revise, or reject."}
+            },
+            %Node{id: "exit", type: "exit"}
+          ],
+          &{&1.id, &1}
+        ),
+      edges: [
+        %Edge{from: "start", to: "draft"},
+        %Edge{from: "draft", to: "review"},
+        %Edge{from: "review", to: "exit", label: "approve"},
+        %Edge{
+          from: "review",
+          to: "draft",
+          label: "revise",
+          attrs: %{"condition" => "preferred_label=revise", "label" => "revise"}
+        },
+        %Edge{from: "review", to: "exit", label: "reject"}
+      ]
+    }
   end
 
   defp runner_pid(run_id) do

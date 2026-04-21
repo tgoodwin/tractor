@@ -224,6 +224,55 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
+  test "mount includes cumulative graph badges for looped nodes", %{
+    conn: conn,
+    run_id: run_id,
+    run_dir: run_dir
+  } do
+    assert {:ok, _result} = Run.await(run_id, 1_000)
+
+    node_dir = Path.join(run_dir, "start")
+    File.mkdir_p!(Path.join(node_dir, "iterations/1"))
+    File.mkdir_p!(Path.join(node_dir, "iterations/2"))
+
+    File.write!(
+      Path.join(node_dir, "status.json"),
+      Jason.encode!(%{
+        "status" => "ok",
+        "started_at" => "2026-04-19T10:00:01Z",
+        "finished_at" => "2026-04-19T10:00:02Z",
+        "iteration" => 2
+      })
+    )
+
+    File.write!(
+      Path.join(node_dir, "iterations/1/status.json"),
+      Jason.encode!(%{
+        "started_at" => "2026-04-19T10:00:00Z",
+        "finished_at" => "2026-04-19T10:00:00.300000Z"
+      })
+    )
+
+    File.write!(
+      Path.join(node_dir, "iterations/2/status.json"),
+      Jason.encode!(%{
+        "started_at" => "2026-04-19T10:00:01Z",
+        "finished_at" => "2026-04-19T10:00:01.600000Z"
+      })
+    )
+
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+
+    assert_push_event(view, "graph:badges", %{
+      node_id: "start",
+      state: "succeeded",
+      duration: "1s",
+      iterations: "×2",
+      cumulative: "900ms"
+    })
+  end
+
+  @tag :tmp_dir
   test "goal gate failed runs show a dedicated pill and total cost", %{
     conn: conn,
     run_id: run_id,

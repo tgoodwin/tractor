@@ -439,8 +439,7 @@ defmodule TractorWeb.RunLive.Show do
 
     if is_integer(iteration) and iteration > 1 do
       total =
-        run_dir
-        |> Path.join([node_id, "iterations"])
+        Path.join([run_dir, node_id, "iterations"])
         |> File.ls()
         |> case do
           {:ok, names} -> names
