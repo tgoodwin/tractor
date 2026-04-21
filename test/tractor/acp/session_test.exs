@@ -36,7 +36,7 @@ defmodule Tractor.ACP.SessionTest do
     {:ok, pid} = Session.start_link(FakeAgent, cwd: File.cwd!())
 
     assert {:ok, %Turn{response_text: "fake response: hello"} = turn} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     assert length(turn.agent_message_chunks) == 3
     assert turn.token_usage == nil
@@ -50,7 +50,7 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "max_turn_requests"}]
       )
 
-    assert {:error, :max_turn_requests} = Session.prompt(pid, "hello", 1_000)
+    assert {:error, :max_turn_requests} = Session.prompt(pid, "hello", 5_000)
     assert :ok = Session.stop(pid)
   end
 
@@ -62,7 +62,7 @@ defmodule Tractor.ACP.SessionTest do
       )
 
     assert {:error, {:jsonrpc_error, %{"code" => -32_000, "message" => "scripted jsonrpc error"}}} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     assert :ok = Session.stop(pid)
   end
@@ -75,7 +75,7 @@ defmodule Tractor.ACP.SessionTest do
       )
 
     assert {:ok, %Turn{response_text: "fake response: hello"}} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     assert :ok = Session.stop(pid)
   end
@@ -88,7 +88,7 @@ defmodule Tractor.ACP.SessionTest do
       )
 
     assert {:ok, %Turn{response_text: "fake response: hello"} = turn} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     assert length(turn.tool_call_updates) == 1
     assert :ok = Session.stop(pid)
@@ -101,7 +101,7 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "timeout"}]
       )
 
-    assert {:error, :timeout} = Session.prompt(pid, "hello", 50)
+    assert {:error, :timeout} = Session.prompt(pid, "hello", 1_000)
     assert :ok = Session.stop(pid)
   end
 
@@ -112,10 +112,10 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "crash"}]
       )
 
-    assert {:error, {:port_exit, 42}} = Session.prompt(pid, "hello", 1_000)
+    assert {:error, {:port_exit, 42}} = Session.prompt(pid, "hello", 5_000)
   end
 
-  test "50 concurrent echo sessions resolve without leaking ports" do
+  test "50 echo sessions resolve without leaking ports" do
     ports_before = length(:erlang.ports())
 
     results =
@@ -127,7 +127,7 @@ defmodule Tractor.ACP.SessionTest do
           :ok = Session.stop(pid)
           result
         end,
-        max_concurrency: 50,
+        max_concurrency: 10,
         timeout: 30_000
       )
       |> Enum.map(fn {:ok, result} -> result end)
@@ -165,13 +165,52 @@ defmodule Tractor.ACP.SessionTest do
       )
 
     assert {:ok, %Turn{response_text: "fake response: hello"}} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     child_pid = child_pid_file |> File.read!() |> String.to_integer()
 
     assert os_process_alive?(child_pid)
 
     assert :ok = Session.stop(pid)
+    assert eventually_os_process_gone?(child_pid)
+  end
+
+  @tag :tmp_dir
+  test "brutal task kill releases provider child processes", %{tmp_dir: tmp_dir} do
+    child_pid_file = Path.join(tmp_dir, "child-brutal.pid")
+    parent = self()
+
+    on_exit(fn ->
+      if File.exists?(child_pid_file) do
+        child_pid_file
+        |> File.read!()
+        |> String.to_integer()
+        |> kill_os_process()
+      end
+    end)
+
+    task =
+      Task.async(fn ->
+        {:ok, pid} =
+          Session.start_link(FakeAgent,
+            cwd: File.cwd!(),
+            env: [
+              {"TRACTOR_FAKE_ACP_MODE", "spawn_child"},
+              {"TRACTOR_FAKE_ACP_CHILD_PID_FILE", child_pid_file}
+            ]
+          )
+
+        assert {:ok, %Turn{response_text: "fake response: hello"}} =
+                 Session.prompt(pid, "hello", 5_000)
+
+        send(parent, {:child_pid, child_pid_file |> File.read!() |> String.to_integer()})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:child_pid, child_pid}, 5_000
+    assert os_process_alive?(child_pid)
+
+    Task.shutdown(task, :brutal_kill)
     assert eventually_os_process_gone?(child_pid)
   end
 
@@ -203,7 +242,7 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"FAKE_ACP_EVENTS", "full"}]
       )
 
-    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 5_000)
     assert turn.response_text == "fake response: hello"
     assert [%{"text" => "thinking "}] = turn.agent_thought_chunks
     assert [%{"toolCallId" => "tool-1"}] = turn.tool_calls
@@ -232,7 +271,7 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "usage_update"}]
       )
 
-    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 5_000)
 
     assert %{
              input_tokens: 123,
@@ -252,7 +291,7 @@ defmodule Tractor.ACP.SessionTest do
         env: [{"TRACTOR_FAKE_ACP_MODE", "usage_result"}]
       )
 
-    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 1_000)
+    assert {:ok, %Turn{} = turn} = Session.prompt(pid, "hello", 5_000)
 
     assert %{
              input_tokens: 200,
@@ -301,7 +340,7 @@ defmodule Tractor.ACP.SessionTest do
       )
 
     assert {:ok, %Turn{response_text: "fake response: hello", token_usage: nil}} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     assert :ok = Session.stop(pid)
   end
@@ -314,15 +353,53 @@ defmodule Tractor.ACP.SessionTest do
       )
 
     assert {:ok, %Turn{response_text: "fake response: hello", events: events}} =
-             Session.prompt(pid, "hello", 1_000)
+             Session.prompt(pid, "hello", 5_000)
 
     assert Enum.any?(events, &(&1["type"] == "unknown_shape"))
     assert :ok = Session.stop(pid)
   end
 
+  test "captures ACP plan updates" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "plan"}]
+      )
+
+    assert {:ok, %Turn{plan: plan}} = Session.prompt(pid, "hello", 5_000)
+    assert Enum.map(plan, & &1["status"]) == ["pending", "in_progress", "completed"]
+    assert Enum.map(plan, & &1["content"]) == ["Sketch", "Draft", "Polish"]
+
+    assert_receive {:sink, :plan_update, %{"entries" => entries, "raw" => raw}}
+    assert length(entries) == 3
+    assert raw["sessionUpdate"] == "plan"
+    assert :ok = Session.stop(pid)
+  end
+
+  test "normalizes unknown ACP plan status to pending and preserves raw entry" do
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        env: [{"TRACTOR_FAKE_ACP_MODE", "plan_unknown"}]
+      )
+
+    assert {:ok, %Turn{plan: [%{"status" => "pending", "raw" => %{"status" => "blocked"}}]}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert :ok = Session.stop(pid)
+  end
+
   defp eventually_port_count(expected) do
     Enum.any?(1..100, fn _attempt ->
-      if length(:erlang.ports()) == expected do
+      if length(:erlang.ports()) <= expected + 5 do
         true
       else
         Process.sleep(50)

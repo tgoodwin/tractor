@@ -1,0 +1,20 @@
+digraph {
+  graph [goal="Demonstrate node timeout + retry resilience", retries=2, retry_base_ms=250, retry_jitter=false]
+
+  start [shape=Mdiamond]
+
+  // Realistic budget for a real Codex turn. retries=2 is the protection
+  // budget — if the ACP session hiccups or a provider 529 fires, the runner
+  // classifies it transient and retries up to twice with 250ms exponential
+  // backoff before giving up.
+  flaky_step [
+    shape=box,
+    llm_provider=codex,
+    timeout="45s",
+    prompt="Return the single word: recovered"
+  ]
+
+  exit [shape=Msquare]
+
+  start -> flaky_step -> exit
+}

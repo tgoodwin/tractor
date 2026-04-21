@@ -13,6 +13,18 @@ defmodule TractorWeb.Router do
     plug(:put_secure_browser_headers)
   end
 
+  pipeline :api do
+    plug(:accepts, ["json"])
+  end
+
+  scope "/dev", TractorWeb do
+    pipe_through(:api)
+
+    post("/reap", DevController, :reap)
+    post("/stop/:run_id", DevController, :stop)
+    post("/stop-all", DevController, :stop_all)
+  end
+
   scope "/", TractorWeb do
     pipe_through(:browser)
 

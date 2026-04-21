@@ -1,0 +1,25 @@
+digraph {
+  graph [goal="Probe whether Claude emits an ACP plan for a multi-step task"]
+
+  start [shape=Mdiamond]
+
+  ask_claude [
+    shape=box,
+    llm_provider=claude,
+    timeout="20m",
+    prompt="Use TodoWrite to plan 2-3 steps, then complete them: (1) list the files under lib/tractor/ (no recursion), (2) pick any 3 files and read the first 20 lines of each, (3) summarize each file in one sentence. Mark each TodoWrite item complete as you finish. Keep the whole task under 3 minutes of work."
+  ]
+
+  inspect_probe [
+    shape=box,
+    llm_provider=codex,
+    prompt="Inspect the prior result only if the probe stayed healthy and either the score stayed high or the error context mentions a timeout."
+  ]
+
+  exit [shape=Msquare]
+
+  start -> ask_claude
+  ask_claude -> inspect_probe [condition="!(outcome=fail) && (context.score >= 0.8 || context.error contains \"timeout\")"]
+  ask_claude -> exit
+  inspect_probe -> exit
+}

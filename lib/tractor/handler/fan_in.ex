@@ -6,10 +6,15 @@ defmodule Tractor.Handler.FanIn do
   @behaviour Tractor.Handler
 
   alias Tractor.ACP.Turn
+  alias Tractor.Context.Template
   alias Tractor.Handler.Codergen
   alias Tractor.Node
 
   @status_rank %{"success" => 3, "partial_success" => 2, "failed" => 1}
+  @default_timeout 120_000
+
+  @impl Tractor.Handler
+  def default_timeout_ms, do: @default_timeout
 
   @impl Tractor.Handler
   def run(%Node{} = node, context, run_dir) do
@@ -64,7 +69,11 @@ defmodule Tractor.Handler.FanIn do
       |> Kernel.||(summary)
       |> render_branch_prompt(results, summary)
 
-    Codergen.run(%{node | prompt: prompt}, context, run_dir)
+    Codergen.run(
+      %{node | prompt: prompt, timeout: node.timeout || default_timeout_ms()},
+      context,
+      run_dir
+    )
     |> case do
       {:ok, response, updates} ->
         {:ok, response, merge_fan_in_updates(updates, response, best)}
@@ -75,10 +84,12 @@ defmodule Tractor.Handler.FanIn do
   end
 
   defp render_branch_prompt(prompt, results, summary) do
-    Enum.reduce(results, String.replace(prompt, "{{branch_responses}}", summary), fn result,
-                                                                                     prompt ->
-      String.replace(prompt, "{{branch:#{result["branch_id"]}}}", inspect(result["outcome"]))
-    end)
+    branch_context =
+      Map.new(results, fn result ->
+        {"branch:#{result["branch_id"]}", inspect(result["outcome"])}
+      end)
+
+    Template.render(prompt, Map.put(branch_context, "branch_responses", summary))
   end
 
   defp fan_in_updates(summary, best) do

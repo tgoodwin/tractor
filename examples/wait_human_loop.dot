@@ -1,0 +1,25 @@
+digraph {
+  graph [goal="Claude drafts a haiku, operator approves/revises/rejects in a loop"]
+
+  start [shape=Mdiamond]
+
+  draft [
+    shape=box,
+    llm_provider=claude,
+    max_iterations=3,
+    prompt="Write a one-line haiku about spring. If a prior draft exists, make this one clearly different: {{draft.last}}"
+  ]
+
+  review [
+    shape=hexagon,
+    wait_prompt="Review the draft. Pick approve, revise, or reject."
+  ]
+
+  exit [shape=Msquare]
+
+  start -> draft
+  draft -> review
+  review -> exit [label="approve"]
+  review -> draft [condition="preferred_label=revise", label="revise"]
+  review -> exit [label="reject"]
+}

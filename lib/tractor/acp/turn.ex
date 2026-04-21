@@ -9,7 +9,8 @@ defmodule Tractor.ACP.Turn do
             tool_calls: [],
             tool_call_updates: [],
             token_usage: nil,
-            events: []
+            events: [],
+            plan: []
 
   @type token_usage :: %{
           optional(:input_tokens) => non_neg_integer(),
@@ -25,6 +26,7 @@ defmodule Tractor.ACP.Turn do
           tool_calls: [map()],
           tool_call_updates: [map()],
           token_usage: token_usage() | nil,
-          events: [map()]
+          events: [map()],
+          plan: [map()]
         }
 end

@@ -1,0 +1,22 @@
+digraph {
+  graph [goal="Debug: claude then wait.human, no loop"]
+
+  start [shape=Mdiamond]
+
+  draft [
+    shape=box,
+    llm_provider=claude,
+    prompt="Write a one-line haiku about coffee."
+  ]
+
+  review [
+    shape=hexagon,
+    wait_prompt="approve or reject?"
+  ]
+
+  exit [shape=Msquare]
+
+  start -> draft -> review
+  review -> exit [label="approve"]
+  review -> exit [label="reject"]
+}

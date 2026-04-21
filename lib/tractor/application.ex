@@ -11,8 +11,11 @@ defmodule Tractor.Application do
       [
         {Registry, keys: :unique, name: Tractor.RunRegistry},
         {Registry, keys: :unique, name: Tractor.AgentRegistry},
+        {Registry, keys: :unique, name: Tractor.StatusAgentRegistry},
         {Task.Supervisor, name: Tractor.HandlerTasks},
+        {Task.Supervisor, name: Tractor.StatusAgentTasks},
         {DynamicSupervisor, strategy: :one_for_one, name: Tractor.ACP.SessionSup},
+        {DynamicSupervisor, strategy: :one_for_one, name: Tractor.StatusAgentSup},
         {DynamicSupervisor, strategy: :one_for_one, name: Tractor.RunSup},
         {Phoenix.PubSub, name: Tractor.PubSub},
         Tractor.RunEvents,

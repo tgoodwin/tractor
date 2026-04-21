@@ -29,6 +29,12 @@ defmodule TractorWeb.Endpoint do
     only: ~w(assets favicon.ico)
   )
 
+  plug(Plug.Parsers,
+    parsers: [:urlencoded, :multipart, :json],
+    pass: ["*/*"],
+    json_decoder: Jason
+  )
+
   plug(Plug.Session, @session_options)
   plug(TractorWeb.Router)
 end

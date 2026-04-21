@@ -1,0 +1,40 @@
+sprints:
+  - id: SPRINT-0001
+    title: validator — DOT subset + diagnostics
+    status: done
+    created: "2026-04-20T01:33:50+00:00"
+    updated: "2026-04-20T01:33:50+00:00"
+  - id: SPRINT-0002
+    title: parallel fan-out / fan-in
+    status: done
+    created: "2026-04-20T01:33:50+00:00"
+    updated: "2026-04-20T01:33:50+00:00"
+  - id: SPRINT-0004
+    title: Phoenix UI + agent browser
+    status: done
+    created: "2026-04-20T01:33:50+00:00"
+    updated: "2026-04-20T01:33:50+00:00"
+  - id: SPRINT-0005
+    title: feedback loops / conditional back-edges
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-20T01:35:00+00:00"
+    updated: "2026-04-21T02:39:16+00:00"
+  - id: SPRINT-0006
+    title: fault tolerance, run budgets, observer intelligence
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-20T15:58:17+00:00"
+    updated: "2026-04-20T17:02:58+00:00"
+  - id: SPRINT-0007
+    title: routing, gates, conditions, cost budget, spec-coverage
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-21T00:51:18+00:00"
+    updated: "2026-04-21T02:21:24+00:00"
+  - id: SPRINT-0008
+    title: "handler family: tool, wait.human, conditional"
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-21T01:57:28+00:00"
+    updated: "2026-04-21T03:50:08+00:00"

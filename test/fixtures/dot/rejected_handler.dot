@@ -1,7 +1,7 @@
 digraph {
   start [shape=Mdiamond]
-  wait [type="wait.human"]
+  loop [type="stack.manager_loop"]
   exit [shape=Msquare]
 
-  start -> wait -> exit
+  start -> loop -> exit
 }

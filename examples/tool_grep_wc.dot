@@ -1,0 +1,18 @@
+digraph {
+  graph [goal="Run grep then wc over the Tractor source tree"]
+
+  start [shape=Mdiamond]
+  grep [
+    shape=parallelogram,
+    cwd="/Users/tgoodwin/projects/tractor",
+    command=["grep","-rn","defmodule","lib/tractor"]
+  ]
+  count [
+    shape=parallelogram,
+    command=["wc","-l"],
+    stdin="{{grep.stdout}}"
+  ]
+  exit [shape=Msquare]
+
+  start -> grep -> count -> exit
+}

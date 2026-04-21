@@ -109,6 +109,24 @@ defmodule Tractor.FakeACPAgent do
     handle_prompt(message, %{state | mode: "ok"})
   end
 
+  defp handle_prompt(message, %{mode: "plan"} = state) do
+    send_plan(state.session_id, [
+      %{"content" => "Sketch", "priority" => "high", "status" => "pending"},
+      %{"content" => "Draft", "priority" => "medium", "status" => "in_progress"},
+      %{"content" => "Polish", "priority" => "low", "status" => "completed"}
+    ])
+
+    handle_prompt(message, %{state | mode: "ok"})
+  end
+
+  defp handle_prompt(message, %{mode: "plan_unknown"} = state) do
+    send_plan(state.session_id, [
+      %{"content" => "Mystery", "priority" => nil, "status" => "blocked"}
+    ])
+
+    handle_prompt(message, %{state | mode: "ok"})
+  end
+
   defp handle_prompt(message, state) do
     prompt_text =
       message
@@ -208,6 +226,16 @@ defmodule Tractor.FakeACPAgent do
       "update" => %{
         "sessionUpdate" => "agent_message_chunk",
         "content" => %{"type" => "text", "text" => text}
+      }
+    })
+  end
+
+  defp send_plan(session_id, entries) do
+    notify("session/update", %{
+      "sessionId" => session_id,
+      "update" => %{
+        "sessionUpdate" => "plan",
+        "entries" => entries
       }
     })
   end

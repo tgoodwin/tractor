@@ -7,6 +7,8 @@ defmodule Tractor.ACP.Session do
 
   @behaviour Tractor.AgentClient
 
+  require Logger
+
   alias Tractor.ACP.Turn
 
   @default_timeout 300_000
@@ -335,6 +337,12 @@ defmodule Tractor.ACP.Session do
         emit_event(state, :tool_call_update, update_data)
         %{state | turn: %{turn | tool_call_updates: turn.tool_call_updates ++ [update_data]}}
 
+      "plan" ->
+        turn = state.turn
+        plan = extract_plan(update)
+        emit_event(state, :plan_update, plan)
+        %{state | turn: %{turn | plan: plan["entries"]}}
+
       _other ->
         state
     end
@@ -399,6 +407,40 @@ defmodule Tractor.ACP.Session do
       "raw" => update
     }
   end
+
+  defp extract_plan(update) do
+    entries =
+      update
+      |> Map.get("entries", [])
+      |> Enum.map(&normalize_plan_entry/1)
+
+    %{"entries" => entries, "raw" => update}
+  end
+
+  defp normalize_plan_entry(entry) when is_map(entry) do
+    raw_status = Map.get(entry, "status", "pending")
+    status = normalize_plan_status(raw_status)
+
+    if status != raw_status do
+      Logger.warning("unknown ACP plan status #{inspect(raw_status)}; rendering as pending")
+    end
+
+    %{
+      "content" => to_string(Map.get(entry, "content", "")),
+      "priority" => Map.get(entry, "priority"),
+      "status" => status,
+      "raw" => entry
+    }
+  end
+
+  defp normalize_plan_entry(entry) do
+    %{"content" => to_string(entry), "priority" => nil, "status" => "pending", "raw" => entry}
+  end
+
+  defp normalize_plan_status(status) when status in ["pending", "in_progress", "completed"],
+    do: status
+
+  defp normalize_plan_status(_status), do: "pending"
 
   defp first_present(primary, secondary, keys) do
     Enum.find_value(keys, fn key -> Map.get(primary, key) || Map.get(secondary, key) end)

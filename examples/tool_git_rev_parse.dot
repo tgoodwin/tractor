@@ -1,0 +1,13 @@
+digraph {
+  graph [goal="Capture the current git HEAD into pipeline context"]
+
+  start [shape=Mdiamond]
+  head [
+    shape=parallelogram,
+    cwd="/Users/tgoodwin/projects/tractor",
+    command=["git","rev-parse","HEAD"]
+  ]
+  exit [shape=Msquare]
+
+  start -> head -> exit
+}
