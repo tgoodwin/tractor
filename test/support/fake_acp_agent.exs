@@ -134,6 +134,11 @@ defmodule Tractor.FakeACPAgent do
     handle_prompt(message, %{state | mode: "ok"})
   end
 
+  defp handle_prompt(message, %{mode: "timeline_rich"} = state) do
+    IO.write(:stderr, "fake stderr line one\nfake stderr line two\n")
+    handle_prompt(message, %{state | mode: "usage_result", event_mode: "full"})
+  end
+
   defp handle_prompt(message, %{mode: "plan_unknown"} = state) do
     send_plan(state.session_id, [
       %{"content" => "Mystery", "priority" => nil, "status" => "blocked"}

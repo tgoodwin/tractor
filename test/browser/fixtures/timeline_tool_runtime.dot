@@ -1,0 +1,15 @@
+digraph {
+  graph [goal="Probe tool runtime timeline rows"]
+
+  start [shape=Mdiamond]
+
+  shell [
+    shape=parallelogram,
+    max_output_bytes=16,
+    command=["sh","-c","printf 'abcdefghijklmnopqrstuvwxyz'"]
+  ]
+
+  exit [shape=Msquare]
+
+  start -> shell -> exit
+}

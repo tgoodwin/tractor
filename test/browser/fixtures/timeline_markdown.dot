@@ -1,0 +1,16 @@
+digraph {
+  graph [goal="Probe timeline markdown rendering"]
+
+  start [shape=Mdiamond]
+
+  narrator [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-opus-4-7",
+    prompt="Write a short checklist:\n- alpha\n- beta\n\nThen show this code fence:\n```elixir\nIO.puts(\"tractor\")\n```"
+  ]
+
+  exit [shape=Msquare]
+
+  start -> narrator -> exit
+}
