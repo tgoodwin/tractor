@@ -124,6 +124,20 @@ defmodule TractorWeb.RunLive.TimelineTest do
     assert updated.body["updates"] == [%{"toolCallId" => "tc_1", "status" => "done"}]
   end
 
+  test "insert renders token_usage runtime events as usage rows" do
+    event =
+      event(
+        1,
+        "token_usage",
+        %{"input_tokens" => 200, "output_tokens" => 50, "total_tokens" => 250},
+        "2026-04-19T10:00:00Z"
+      )
+
+    assert {0, entry} = Timeline.insert([], event)
+    assert entry.type == :usage
+    assert entry.summary == "250 tokens"
+  end
+
   test "insert renders runtime tool events distinctly" do
     invoked =
       event(

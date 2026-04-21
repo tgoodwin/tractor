@@ -224,7 +224,8 @@ defmodule TractorWeb.RunLive.Timeline do
     }
   end
 
-  defp event_entry(%{"kind" => "usage", "data" => data} = event) do
+  defp event_entry(%{"kind" => kind, "data" => data} = event)
+       when kind in ["usage", "token_usage"] do
     total = data["total_tokens"] || data[:total_tokens]
 
     %{
