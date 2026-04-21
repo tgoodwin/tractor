@@ -1,0 +1,15 @@
+digraph {
+  graph [goal="Probe run-summary goal-gate failure"]
+
+  start [shape=Mdiamond]
+
+  tool_gate [
+    shape=parallelogram,
+    goal_gate=true,
+    command=["nonexistent-binary-tractor-xyz"]
+  ]
+
+  exit [shape=Msquare]
+
+  start -> tool_gate -> exit
+}

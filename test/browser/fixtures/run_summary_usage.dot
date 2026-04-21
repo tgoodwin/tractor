@@ -1,0 +1,21 @@
+digraph {
+  graph [goal="Probe live run-summary cost updates"]
+
+  start [shape=Mdiamond]
+
+  warmup [
+    shape=parallelogram,
+    command=["sh","-c","sleep 1; printf warmed"]
+  ]
+
+  priced_step [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-opus-4-7",
+    prompt="Return the single word priced."
+  ]
+
+  exit [shape=Msquare]
+
+  start -> warmup -> priced_step -> exit
+}
