@@ -1,0 +1,16 @@
+digraph {
+  graph [goal="Probe plan replacement semantics"]
+
+  start [shape=Mdiamond]
+
+  planner [
+    shape=box,
+    llm_provider=claude,
+    llm_model="claude-opus-4-7",
+    prompt="Plan 2-3 steps, then complete them."
+  ]
+
+  exit [shape=Msquare]
+
+  start -> planner -> exit
+}

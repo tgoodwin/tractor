@@ -119,6 +119,21 @@ defmodule Tractor.FakeACPAgent do
     handle_prompt(message, %{state | mode: "ok"})
   end
 
+  defp handle_prompt(message, %{mode: "plan_replace"} = state) do
+    send_plan(state.session_id, [
+      %{"content" => "Sketch", "priority" => "high", "status" => "pending"},
+      %{"content" => "Draft", "priority" => "medium", "status" => "in_progress"},
+      %{"content" => "Polish", "priority" => "low", "status" => "completed"}
+    ])
+
+    send_plan(state.session_id, [
+      %{"content" => "Ship", "priority" => "high", "status" => "in_progress"},
+      %{"content" => "Verify", "priority" => nil, "status" => "completed"}
+    ])
+
+    handle_prompt(message, %{state | mode: "ok"})
+  end
+
   defp handle_prompt(message, %{mode: "plan_unknown"} = state) do
     send_plan(state.session_id, [
       %{"content" => "Mystery", "priority" => nil, "status" => "blocked"}
