@@ -115,6 +115,9 @@ assert_invalid_label() {
   ab_assert_text ".wait-form-error" "Invalid choice. Expected one of: approve, reject"
   assert_node_state "review_gate" "waiting"
   ab_assert_visible ".wait-form-panel[aria-label='Human decision required']"
+
+  ab_click role button --name "approve" --exact
+  ab_wait_event fn "document.querySelector('.run-summary-card .status-pill')?.textContent.includes('completed')"
 }
 
 assert_timeout_path() {

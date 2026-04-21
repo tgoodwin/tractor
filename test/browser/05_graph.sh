@@ -39,3 +39,6 @@ cumulative_badge="$(ab get text "g.tractor-node[data-node-id='draft'] .tractor-b
   printf 'Expected cumulative badge after loop, got: %s\n' "$cumulative_badge" >&2
   exit 1
 }
+
+ab_click role button --name "reject" --exact
+ab_wait_event fn "document.querySelector('.run-summary-card .status-pill')?.textContent.includes('completed')"
