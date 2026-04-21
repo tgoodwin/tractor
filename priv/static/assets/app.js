@@ -75,6 +75,9 @@ const GraphBoard = {
 
   handleKeydown(event) {
     if (event.key === "Escape") {
+      if (document.querySelector(".help-overlay")) {
+        this.pushEvent("toggle_help", {});
+      }
       this.pushEvent("clear_selection", {});
       return;
     }
