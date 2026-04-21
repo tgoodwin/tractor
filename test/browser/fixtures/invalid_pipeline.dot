@@ -1,0 +1,7 @@
+digraph {
+  start [shape=Mdiamond]
+  bad [shape=box, llm_provider=bogus, prompt="invalid"]
+  exit [shape=Msquare]
+
+  start -> bad -> exit
+}

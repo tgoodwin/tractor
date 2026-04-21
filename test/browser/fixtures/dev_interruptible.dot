@@ -1,0 +1,14 @@
+digraph {
+  graph [goal="Probe dev stop endpoints"]
+
+  start [shape=Mdiamond]
+
+  sleeper [
+    shape=parallelogram,
+    command=["sh","-c","sleep 30; printf done"]
+  ]
+
+  exit [shape=Msquare]
+
+  start -> sleeper -> exit
+}
