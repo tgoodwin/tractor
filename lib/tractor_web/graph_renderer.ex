@@ -5,23 +5,12 @@ defmodule TractorWeb.GraphRenderer do
 
   alias Phoenix.HTML.Safe
 
-  @cache :tractor_graph_svg_cache
-
   @spec render(Tractor.Pipeline.t()) :: {:ok, String.t()} | {:error, term()}
   def render(%Tractor.Pipeline{} = pipeline) do
-    ensure_cache()
-
-    case :ets.lookup(@cache, pipeline.path) do
-      [{_path, svg}] ->
-        {:ok, svg}
-
-      [] ->
-        with {:ok, svg} <- dot_to_svg(pipeline) do
-          svg = inject_node_attrs(svg)
-          svg = inject_edge_attrs(svg, pipeline)
-          :ets.insert(@cache, {pipeline.path, svg})
-          {:ok, svg}
-        end
+    with {:ok, svg} <- dot_to_svg(pipeline) do
+      svg = inject_node_attrs(svg)
+      svg = inject_edge_attrs(svg, pipeline)
+      {:ok, svg}
     end
   end
 
@@ -166,7 +155,7 @@ defmodule TractorWeb.GraphRenderer do
 
       attrs = String.replace(attrs, ~s(class="node"), ~s(class="node tractor-node"))
 
-      ~s(<g#{attrs} data-node-id="#{escaped}"><title>#{escaped}</title>)
+      ~s(<g#{attrs} data-node-id="#{escaped}" data-testid="node-#{escaped}"><title>#{escaped}</title>)
     end)
   end
 
@@ -193,7 +182,7 @@ defmodule TractorWeb.GraphRenderer do
     Regex.replace(~r/<g([^>]*class="edge"[^>]*)>\s*<title>([^<]+)<\/title>/, svg, fn all,
                                                                                      attrs,
                                                                                      title ->
-      case Map.fetch(edge_meta, title) do
+      case Map.fetch(edge_meta, decode_edge_title(title)) do
         {:ok, meta} ->
           attrs =
             attrs
@@ -215,6 +204,13 @@ defmodule TractorWeb.GraphRenderer do
 
   defp maybe_class(classes, true, class), do: [class | classes]
   defp maybe_class(classes, _condition, _class), do: classes
+
+  defp decode_edge_title(title) do
+    title
+    |> String.replace("&#45;", "-")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&lt;", "<")
+  end
 
   defp condition?(edge), do: edge_condition(edge) != ""
 
@@ -246,13 +242,6 @@ defmodule TractorWeb.GraphRenderer do
       |> MapSet.new(&{&1.from, &1.to})
     after
       :digraph.delete(graph)
-    end
-  end
-
-  defp ensure_cache do
-    case :ets.whereis(@cache) do
-      :undefined -> :ets.new(@cache, [:named_table, :public, read_concurrency: true])
-      _tid -> :ok
     end
   end
 end

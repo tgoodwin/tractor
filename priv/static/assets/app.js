@@ -251,10 +251,8 @@ const ThemeToggle = {
 
   updateAria() {
     const current = this.currentTheme();
-    this.el.setAttribute(
-      "aria-label",
-      current === "dark" ? "Switch to light mode" : "Switch to dark mode"
-    );
+    this.el.setAttribute("aria-label", "Toggle dark mode");
+    this.el.setAttribute("title", current === "dark" ? "Theme: dark" : "Theme: light");
     this.el.setAttribute("aria-pressed", current === "dark" ? "true" : "false");
   }
 };
