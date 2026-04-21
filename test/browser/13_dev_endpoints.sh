@@ -23,6 +23,7 @@ launch_path="$(json_field "$launch_response" "path")"
 
 ab_open "$launch_url"
 ab_assert_visible ".top-bar"
+ab_wait_event fn "document.querySelector('.run-summary-card .status-pill')?.textContent.includes('completed')"
 
 missing_body="$(curl -sS -o /tmp/tractor-dev-missing.json -w '%{http_code}' -X POST "${TRACTOR_BASE_URL}/dev/reap?path=examples/nonexistent.dot")"
 [[ "$missing_body" == "404" ]] || {
