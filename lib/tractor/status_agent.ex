@@ -23,7 +23,9 @@ defmodule Tractor.StatusAgent do
             queue: :queue.new(),
             queue_size: 0,
             current: nil,
-            seq: 0
+            seq: 0,
+            stop_requested?: false,
+            stop_timer_ref: nil
 
   @spec start_run(String.t(), Path.t(), String.t()) :: :ok | {:error, term()}
   def start_run(_run_id, _run_dir, "off"), do: :ok
@@ -96,6 +98,10 @@ defmodule Tractor.StatusAgent do
   end
 
   @impl true
+  def handle_cast({:observe, _payload}, %{stop_requested?: true} = state) do
+    {:noreply, state}
+  end
+
   def handle_cast({:observe, payload}, state) do
     state
     |> enqueue(payload)
@@ -104,24 +110,31 @@ defmodule Tractor.StatusAgent do
   end
 
   def handle_cast(:stop_run, state) do
-    if state.current do
-      Task.shutdown(state.current.task, @stop_grace)
-    end
-
-    RunEvents.emit(state.run_id, "_run", :status_agent_stopped, %{})
-    {:stop, :normal, state}
+    state
+    |> request_stop()
+    |> maybe_finish_stop()
   end
 
   @impl true
   def handle_info({ref, _result}, %{current: %{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     cancel_observation_timer(state.current)
-    {:noreply, %{state | current: nil} |> process_next()}
+    state =
+      state
+      |> clear_current()
+      |> process_next()
+
+    maybe_finish_stop(state)
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{current: %{ref: ref}} = state) do
     cancel_observation_timer(state.current)
-    {:noreply, %{state | current: nil} |> process_next()}
+    state =
+      state
+      |> clear_current()
+      |> process_next()
+
+    maybe_finish_stop(state)
   end
 
   def handle_info(
@@ -136,7 +149,21 @@ defmodule Tractor.StatusAgent do
       "reason" => "timeout"
     })
 
-    {:noreply, %{state | current: nil} |> process_next()}
+    state =
+      state
+      |> clear_current()
+      |> process_next()
+
+    maybe_finish_stop(state)
+  end
+
+  def handle_info(:force_stop, %{stop_requested?: true} = state) do
+    if state.current do
+      Task.shutdown(state.current.task, :brutal_kill)
+    end
+
+    emit_stopped(state)
+    {:stop, :normal, %{state | stop_timer_ref: nil}}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -288,10 +315,44 @@ defmodule Tractor.StatusAgent do
   defp response_text(%Tractor.ACP.Turn{response_text: response}), do: response
   defp response_text(response) when is_binary(response), do: response
 
+  defp request_stop(%{stop_requested?: true} = state), do: state
+
+  defp request_stop(state) do
+    timer_ref =
+      if is_reference(state.stop_timer_ref) do
+        state.stop_timer_ref
+      else
+        Process.send_after(self(), :force_stop, @stop_grace)
+      end
+
+    %{state | stop_requested?: true, stop_timer_ref: timer_ref}
+  end
+
+  defp maybe_finish_stop(%{stop_requested?: true, current: nil, queue_size: 0} = state) do
+    cancel_stop_timer(state.stop_timer_ref)
+    emit_stopped(state)
+    {:stop, :normal, %{state | stop_timer_ref: nil}}
+  end
+
+  defp maybe_finish_stop(state), do: {:noreply, state}
+
+  defp clear_current(state), do: %{state | current: nil}
+
+  defp emit_stopped(state) do
+    RunEvents.emit(state.run_id, "_run", :status_agent_stopped, %{})
+  end
+
   defp cancel_observation_timer(%{timer_ref: timer_ref}) when is_reference(timer_ref) do
     Process.cancel_timer(timer_ref)
     :ok
   end
 
   defp cancel_observation_timer(_current), do: :ok
+
+  defp cancel_stop_timer(timer_ref) when is_reference(timer_ref) do
+    Process.cancel_timer(timer_ref)
+    :ok
+  end
+
+  defp cancel_stop_timer(_timer_ref), do: :ok
 end

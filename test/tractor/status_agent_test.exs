@@ -71,6 +71,44 @@ defmodule Tractor.StatusAgentTest do
     StatusAgent.stop_run(run_id)
   end
 
+  @tag :tmp_dir
+  test "stop_run drains an in-flight observation before shutdown", %{tmp_dir: tmp_dir} do
+    run_id = "status-drain"
+    run_dir = Path.join(tmp_dir, run_id)
+    File.mkdir_p!(run_dir)
+    Tractor.RunEvents.register_run(run_id, run_dir)
+    parent = self()
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Claude, _opts ->
+      send(parent, :status_agent_started)
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, _prompt, 30_000 ->
+      send(parent, {:status_agent_prompted, self()})
+
+      receive do
+        :release_status_agent -> {:ok, %Tractor.ACP.Turn{response_text: "final summary"}}
+      end
+    end)
+
+    expect(Tractor.AgentClientMock, :stop, fn _pid -> :ok end)
+
+    assert :ok = StatusAgent.start_run(run_id, run_dir, "claude")
+    StatusAgent.observe(run_id, payload("one"))
+    assert_receive :status_agent_started, 1_000
+    assert_receive {:status_agent_prompted, task_pid}, 1_000
+
+    StatusAgent.stop_run(run_id)
+    send(task_pid, :release_status_agent)
+
+    assert [%{"data" => %{"summary" => "final summary"}}] =
+             eventually_events(run_dir, "status_update")
+
+    assert [%{"kind" => "status_agent_stopped"}] =
+             eventually_events(run_dir, "status_agent_stopped")
+  end
+
   defp payload(node_id) do
     %{
       node_id: node_id,
