@@ -412,8 +412,8 @@ defmodule Tractor.ToolRunTest do
     wait_for_node_status(tmp_dir, run_id, "tool", "running")
 
     ref = Process.monitor(pid)
-    assert :ok = DynamicSupervisor.terminate_child(Tractor.RunSup, pid)
-    assert_receive {:DOWN, ^ref, :process, ^pid, :shutdown}, 2_000
+    assert :ok = GenServer.stop(pid, {:shutdown, :interrupt}, 1_000)
+    assert_receive {:DOWN, ^ref, :process, ^pid, {:shutdown, :interrupt}}, 2_000
 
     assert wait_for_run_status(tmp_dir, run_id) == "interrupted"
 

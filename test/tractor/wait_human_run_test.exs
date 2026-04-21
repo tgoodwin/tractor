@@ -1,7 +1,7 @@
 defmodule Tractor.WaitHumanRunTest do
   use ExUnit.Case, async: false
 
-  alias Tractor.{Checkpoint, DotParser, Edge, Node, Pipeline, Run, RunBus, Validator}
+  alias Tractor.{Checkpoint, DotParser, Edge, Node, Pipeline, ResumeBoot, Run, RunBus, Validator}
 
   @tag :tmp_dir
   test "wait.human suspends, rejects stale labels, and resumes through the normal success path",
@@ -134,6 +134,29 @@ defmodule Tractor.WaitHumanRunTest do
   end
 
   @tag :tmp_dir
+  test "resume boot respawns a pending wait from a running checkpoint", %{tmp_dir: tmp_dir} do
+    run_id = "wait-human-resume-boot"
+
+    dot_path = write_wait_resume_dot(tmp_dir, run_id)
+    assert {:ok, pipeline} = DotParser.parse_file(dot_path)
+    assert :ok = Validator.validate(pipeline)
+
+    assert {:ok, ^run_id} = Run.start(pipeline, runs_dir: tmp_dir, run_id: run_id)
+    assert wait_for_waiting(run_id, "gate").attempt == 1
+
+    pid = runner_pid(run_id)
+    :ok = GenServer.stop(pid, :shutdown, 1_000)
+    wait_for_runner_exit(run_id)
+
+    assert ResumeBoot.resume_inflight_runs(tmp_dir) == 1
+    assert wait_for_waiting(run_id, "gate").attempt == 2
+
+    assert :ok = Run.submit_wait_choice(run_id, "gate", "approve")
+    assert {:ok, result} = Run.await(run_id, 2_000)
+    assert result.context["approved"]["stdout"] == "approved"
+  end
+
+  @tag :tmp_dir
   test "stale wait timeout messages are ignored after operator resolution", %{tmp_dir: tmp_dir} do
     run_id = "wait-human-stale-timeout"
 
@@ -260,11 +283,15 @@ defmodule Tractor.WaitHumanRunTest do
   end
 
   @tag :tmp_dir
-  test "looped tool iterations persist timing metadata for cumulative graph badges", %{tmp_dir: tmp_dir} do
+  test "looped tool iterations persist timing metadata for cumulative graph badges", %{
+    tmp_dir: tmp_dir
+  } do
     run_id = "wait-human-loop-badges"
     RunBus.subscribe(run_id)
 
-    assert {:ok, ^run_id} = Run.start(loop_badge_pipeline(run_id), runs_dir: tmp_dir, run_id: run_id)
+    assert {:ok, ^run_id} =
+             Run.start(loop_badge_pipeline(run_id), runs_dir: tmp_dir, run_id: run_id)
+
     assert_receive {:run_event, "review", %{"kind" => "wait_human_pending"}}, 1_000
 
     assert :ok = Run.submit_wait_choice(run_id, "review", "revise")

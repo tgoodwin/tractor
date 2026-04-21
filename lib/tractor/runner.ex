@@ -817,8 +817,8 @@ defmodule Tractor.Runner do
     %{state | result: result, waiters: []}
   end
 
-  defp interrupted_shutdown?(:shutdown), do: true
-  defp interrupted_shutdown?({:shutdown, _reason}), do: true
+  defp interrupted_shutdown?({:shutdown, :interrupt}), do: true
+  defp interrupted_shutdown?({:shutdown, {:interrupt, _reason}}), do: true
   defp interrupted_shutdown?(_reason), do: false
 
   defp enqueue_next(state, node_id, routing_outcome) do

@@ -20,7 +20,7 @@ defmodule Tractor.Application do
         {Phoenix.PubSub, name: Tractor.PubSub},
         Tractor.RunEvents,
         {DynamicSupervisor, strategy: :one_for_one, name: Tractor.WebSup}
-      ] ++ maybe_endpoint_child()
+      ] ++ maybe_resume_boot_child() ++ maybe_endpoint_child()
 
     opts = [strategy: :one_for_one, name: Tractor.Supervisor]
     Supervisor.start_link(children, opts)
@@ -34,6 +34,14 @@ defmodule Tractor.Application do
     cond do
       escript?() -> []
       Application.get_env(:tractor, TractorWeb.Endpoint)[:server] -> [TractorWeb.Endpoint]
+      true -> []
+    end
+  end
+
+  defp maybe_resume_boot_child do
+    cond do
+      escript?() -> []
+      Application.get_env(:tractor, TractorWeb.Endpoint)[:server] -> [Tractor.ResumeBoot]
       true -> []
     end
   end

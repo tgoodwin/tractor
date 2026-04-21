@@ -41,7 +41,7 @@ defmodule TractorWeb.DevController do
   def stop(conn, %{"run_id" => run_id}) do
     case Registry.lookup(Tractor.RunRegistry, run_id) do
       [{pid, _}] ->
-        :ok = DynamicSupervisor.terminate_child(Tractor.RunSup, pid)
+        :ok = GenServer.stop(pid, {:shutdown, :interrupt}, 5_000)
         json(conn, %{stopped: run_id})
 
       [] ->
@@ -50,16 +50,28 @@ defmodule TractorWeb.DevController do
   end
 
   def stop_all(conn, _params) do
-    children = DynamicSupervisor.which_children(Tractor.RunSup)
+    children =
+      Tractor.RunSup
+      |> DynamicSupervisor.which_children()
+      |> Enum.filter(fn {_id, pid, _type, _mods} -> active_runner?(pid) end)
 
     Enum.each(children, fn {_id, pid, _type, _mods} ->
-      DynamicSupervisor.terminate_child(Tractor.RunSup, pid)
+      GenServer.stop(pid, {:shutdown, :interrupt}, 5_000)
     end)
 
     json(conn, %{stopped: length(children)})
   end
 
   defp ensure_file(path), do: if(File.regular?(path), do: :ok, else: {:missing_file, path})
+
+  defp active_runner?(pid) do
+    case :sys.get_state(pid) do
+      %{result: nil} -> true
+      _ -> false
+    end
+  catch
+    :exit, _reason -> false
+  end
 
   defp base_url(conn) do
     "#{conn.scheme}://#{conn.host}:#{conn.port}"
