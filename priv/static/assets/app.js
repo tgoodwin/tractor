@@ -265,9 +265,12 @@ const Resizer = {
     this.panel = this.el.dataset.panel; // "left" or "right"
     this.shell = document.querySelector(".tractor-shell");
     this.varName = this.panel === "left" ? "--left-width" : "--right-width";
+    this.storageKey =
+      this.panel === "left" ? "tractor-left-panel-width" : "tractor-right-panel-width";
     this.onDown = this.onDown.bind(this);
     this.onMove = this.onMove.bind(this);
     this.onUp = this.onUp.bind(this);
+    this.restoreWidth();
     this.el.addEventListener("mousedown", this.onDown);
   },
 
@@ -295,10 +298,28 @@ const Resizer = {
   },
 
   onUp() {
+    this.persistWidth();
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
     document.removeEventListener("mousemove", this.onMove);
     document.removeEventListener("mouseup", this.onUp);
+  },
+
+  restoreWidth() {
+    try {
+      const stored = parseInt(localStorage.getItem(this.storageKey), 10);
+      if (!Number.isFinite(stored)) return;
+      const next = Math.max(240, Math.min(720, stored));
+      this.shell.style.setProperty(this.varName, next + "px");
+    } catch (_) {}
+  },
+
+  persistWidth() {
+    try {
+      const value = parseInt(getComputedStyle(this.shell).getPropertyValue(this.varName), 10);
+      if (!Number.isFinite(value)) return;
+      localStorage.setItem(this.storageKey, value.toString());
+    } catch (_) {}
   }
 };
 
