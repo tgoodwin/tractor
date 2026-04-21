@@ -4,6 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
+    <script>
+      // Apply stored theme before CSS loads to avoid a flash of the wrong
+      // palette on first paint.
+      (function () {
+        try {
+          var stored = localStorage.getItem("tractor-theme");
+          var pref = stored || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", pref);
+        } catch (_) {}
+      })();
+    </script>
     <link phx-track-static rel="stylesheet" href="/assets/app.css" />
     <script defer phx-track-static src="/assets/vendor/svg-pan-zoom.min.js">
     </script>
