@@ -45,12 +45,12 @@ tractor_server_stop
 tractor_server_start
 restore_needed=1
 
-run_id="$(tractor_reap "test/browser/fixtures/plan_replace.dot")"
+run_id="$(tractor_reap "examples/plan_probe.dot")"
 ab_open "${TRACTOR_BASE_URL}/runs/${run_id}"
 
-click_result="$(ab_dom_click "[data-testid='node-planner']")"
+click_result="$(ab_dom_click "[data-testid='node-ask_claude']")"
 [[ "$click_result" == '"ok"' ]] || {
-  printf 'Expected planner node click to succeed, got: %s\n' "$click_result" >&2
+  printf 'Expected ask_claude node click to succeed, got: %s\n' "$click_result" >&2
   exit 1
 }
 

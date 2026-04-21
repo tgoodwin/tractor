@@ -31,7 +31,7 @@ meta_line="$(ab eval "document.querySelectorAll('.runs-row.is-current .runs-row-
 }
 
 initial_count="$(ab get text ".runs-count")"
-next_run_id="$(tractor_reap "examples/wait_human_review.dot")"
+next_run_id="$(tractor_reap "examples/resilience.dot")"
 
 ab_wait_event fn "Array.from(document.querySelectorAll('.runs-row-link')).some((link) => link.getAttribute('href') === '/runs/${next_run_id}')"
 
