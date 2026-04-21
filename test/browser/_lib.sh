@@ -38,37 +38,28 @@ ab_click() {
   esac
 }
 
+ab_dom_click() {
+  local selector="$1"
+  local escaped_selector="${selector//\\/\\\\}"
+  escaped_selector="${escaped_selector//\'/\\\'}"
+
+  ab eval "(function() {
+    const el = document.querySelector('${escaped_selector}');
+    if (!el) return 'missing';
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return 'ok';
+  })()"
+}
+
 ab_assert_visible() {
-  case "${1:-}" in
-    role | text | label | placeholder | alt | title | testid | first | last | nth)
-      local locator="$1"
-      local value="$2"
-      shift 2
-      ab find "$locator" "$value" text "$@" >/dev/null
-      ;;
-    *)
-      ab is visible "$1" >/dev/null
-      ;;
-  esac
+  ab is visible "$1" >/dev/null
 }
 
 ab_assert_text() {
+  local selector="$1"
+  local expected="$2"
   local actual
-
-  case "${1:-}" in
-    role | text | label | placeholder | alt | title | testid | first | last | nth)
-      local locator="$1"
-      local value="$2"
-      local expected="$3"
-      shift 3
-      actual="$(ab find "$locator" "$value" text "$@")"
-      ;;
-    *)
-      local selector="$1"
-      local expected="$2"
-      actual="$(ab get text "$selector")"
-      ;;
-  esac
+  actual="$(ab get text "$selector")"
 
   if [[ "$actual" != *"$expected"* ]]; then
     printf 'Expected text containing %q, got: %s\n' "$expected" "$actual" >&2
@@ -76,11 +67,24 @@ ab_assert_text() {
   fi
 }
 
+ab_attr() {
+  local selector="$1"
+  local attr_name="$2"
+  local escaped_selector="${selector//\\/\\\\}"
+  escaped_selector="${escaped_selector//\'/\\\'}"
+  local escaped_attr="${attr_name//\\/\\\\}"
+  escaped_attr="${escaped_attr//\'/\\\'}"
+
+  local value
+  value="$(ab eval "document.querySelector('${escaped_selector}')?.getAttribute('${escaped_attr}') ?? ''")"
+  ruby -rjson -e 'print JSON.parse(STDIN.read)' <<<"$value"
+}
+
 ab_assert_class() {
   local selector="$1"
   local expected_class="$2"
   local classes
-  classes="$(ab get attr class "$selector")"
+  classes="$(ab_attr "$selector" "class")"
 
   if [[ " $classes " != *" $expected_class "* ]]; then
     printf 'Expected class %q on %s, got: %s\n' "$expected_class" "$selector" "$classes" >&2
