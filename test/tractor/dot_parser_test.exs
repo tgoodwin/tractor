@@ -31,8 +31,33 @@ defmodule Tractor.DotParserTest do
 
     assert [
              %Tractor.Edge{from: "start", to: "ask", weight: 2.5},
-             %Tractor.Edge{from: "ask", to: "exit", label: "done", weight: 1.0}
+             %Tractor.Edge{from: "ask", to: "exit", label: "done", weight: 0.0}
            ] = pipeline.edges
+  end
+
+  @tag :tmp_dir
+  test "parses and preserves edge conditions", %{tmp_dir: tmp_dir} do
+    path =
+      dot_file(tmp_dir, "conditional.dot", """
+      digraph {
+        start [shape=Mdiamond]
+        judge [type=judge]
+        exit [shape=Msquare]
+        retry [shape=box, llm_provider=codex]
+
+        start -> judge
+        judge -> exit [condition="accept"]
+        judge -> retry [condition="reject", label="retry"]
+      }
+      """)
+
+    assert {:ok, pipeline} = DotParser.parse_file(path)
+
+    assert %Tractor.Edge{condition: "accept", attrs: %{"condition" => "accept"}} =
+             Enum.find(pipeline.edges, &(&1.to == "exit"))
+
+    assert %Tractor.Edge{condition: "reject", label: "retry"} =
+             Enum.find(pipeline.edges, &(&1.to == "retry"))
   end
 
   @tag :tmp_dir
@@ -97,6 +122,36 @@ defmodule Tractor.DotParserTest do
     assert Tractor.Node.join_policy(pipeline.nodes["audit"]) == "wait_all"
     assert Tractor.Node.max_parallel(pipeline.nodes["audit"]) == 2
     assert pipeline.nodes["join"].type == "parallel.fan_in"
+  end
+
+  @tag :tmp_dir
+  test "maps sprint-0008 handler shapes and preserves structured tool attrs", %{tmp_dir: tmp_dir} do
+    path =
+      dot_file(tmp_dir, "handlers.dot", """
+      digraph {
+        start [shape=Mdiamond]
+        route [shape=diamond]
+        wait [shape=hexagon, wait_timeout="30s", default_edge=skip]
+        tool [shape=parallelogram, command=["grep","-r","foo","."], env={"LC_ALL":"C"}]
+        skip [shape=box, llm_provider=codex]
+        exit [shape=Msquare]
+
+        start -> route
+        route -> wait [label=hold]
+        route -> tool [label=run]
+        wait -> skip [label=skip]
+        tool -> exit
+        skip -> exit
+      }
+      """)
+
+    assert {:ok, pipeline} = DotParser.parse_file(path)
+
+    assert pipeline.nodes["route"].type == "conditional"
+    assert pipeline.nodes["wait"].type == "wait.human"
+    assert pipeline.nodes["tool"].type == "tool"
+    assert pipeline.nodes["tool"].attrs["command"] == ["grep", "-r", "foo", "."]
+    assert pipeline.nodes["tool"].attrs["env"] == %{"LC_ALL" => "C"}
   end
 
   @tag :tmp_dir

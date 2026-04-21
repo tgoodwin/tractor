@@ -10,7 +10,7 @@ defmodule Tractor.Pipeline do
           goal: String.t() | nil,
           strict?: boolean(),
           graph_type: :digraph | :graph | nil,
-          graph_attrs: %{String.t() => String.t()},
+          graph_attrs: %{String.t() => Node.attr_value()},
           nodes: %{String.t() => Node.t()},
           edges: [Edge.t()],
           parallel_blocks: %{String.t() => Tractor.Pipeline.ParallelBlock.t()}

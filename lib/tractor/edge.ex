@@ -7,13 +7,15 @@ defmodule Tractor.Edge do
           from: String.t(),
           to: String.t(),
           label: String.t() | nil,
+          condition: String.t() | nil,
           weight: float(),
-          attrs: %{String.t() => String.t()}
+          attrs: %{String.t() => Tractor.Node.attr_value()}
         }
 
   defstruct from: nil,
             to: nil,
             label: nil,
-            weight: 1.0,
+            condition: nil,
+            weight: 0.0,
             attrs: %{}
 end

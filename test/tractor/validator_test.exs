@@ -2,6 +2,7 @@ defmodule Tractor.ValidatorTest do
   use ExUnit.Case, async: true
 
   alias Tractor.{Edge, Node, Pipeline, Validator}
+  alias Tractor.Pipeline.ParallelBlock
 
   test "accepts a linear start to codergen to exit pipeline" do
     assert :ok =
@@ -39,7 +40,7 @@ defmodule Tractor.ValidatorTest do
         ],
         edges: [edge("start", "ask"), edge("ask", "start")]
       ),
-      [:cycle, :unreachable_exit]
+      [:unconditional_cycle, :unreachable_exit]
     )
 
     assert_codes(
@@ -48,6 +49,50 @@ defmodule Tractor.ValidatorTest do
         edges: [edge("start", "missing")]
       ),
       [:unknown_edge_endpoint]
+    )
+  end
+
+  test "allows conditional retry cycles but rejects unconditional subcycles" do
+    assert :ok =
+             Validator.validate(
+               pipeline(
+                 nodes: [
+                   node("start", "start"),
+                   node("ask", "codergen",
+                     llm_provider: "gemini",
+                     attrs: %{"max_iterations" => "3"}
+                   ),
+                   node("judge", "judge", attrs: %{"judge_mode" => "stub"}),
+                   node("exit", "exit")
+                 ],
+                 edges: [
+                   edge("start", "ask"),
+                   edge("ask", "judge"),
+                   edge("judge", "ask", condition: "reject"),
+                   edge("judge", "exit", condition: "accept")
+                 ]
+               )
+             )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("a", "codergen", llm_provider: "gemini"),
+          node("b", "codergen", llm_provider: "gemini"),
+          node("c", "codergen", llm_provider: "gemini"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "a"),
+          edge("a", "b"),
+          edge("b", "a"),
+          edge("b", "c", condition: "accept"),
+          edge("c", "a", condition: "reject"),
+          edge("c", "exit")
+        ]
+      ),
+      [:unconditional_cycle]
     )
   end
 
@@ -85,7 +130,9 @@ defmodule Tractor.ValidatorTest do
 
   test "rejects unsupported handlers and attrs" do
     assert_codes(
-      pipeline(nodes: [node("start", "start"), node("wait", "wait.human"), node("exit", "exit")]),
+      pipeline(
+        nodes: [node("start", "start"), node("loop", "stack.manager_loop"), node("exit", "exit")]
+      ),
       [:unsupported_handler]
     )
 
@@ -97,10 +144,301 @@ defmodule Tractor.ValidatorTest do
           node("ask", "codergen", llm_provider: "codex"),
           node("exit", "exit")
         ],
-        edges: [edge("start", "ask", attrs: %{"condition" => "ok"}), edge("ask", "exit")]
+        edges: [edge("start", "ask", attrs: %{"fidelity" => "high"}), edge("ask", "exit")]
       ),
       [:unsupported_graph_attr, :unsupported_edge_attr]
     )
+  end
+
+  test "accepts conditional, tool, and wait.human handlers with valid attrs" do
+    assert :ok =
+             Validator.validate(
+               pipeline(
+                 nodes: [
+                   node("start", "start"),
+                   node("route", "conditional"),
+                   node("tool", "tool", attrs: %{"command" => ["echo", "ok"]}),
+                   node("wait", "wait.human",
+                     attrs: %{"wait_timeout" => "30s", "default_edge" => "skip"}
+                   ),
+                   node("skip", "codergen", llm_provider: "codex"),
+                   node("exit", "exit")
+                 ],
+                 edges: [
+                   edge("start", "route"),
+                   edge("route", "tool", attrs: %{"label" => "run"}),
+                   edge("route", "wait", attrs: %{"label" => "hold"}),
+                   edge("tool", "exit"),
+                   edge("wait", "skip", attrs: %{"label" => "skip"}),
+                   edge("skip", "exit")
+                 ]
+               )
+             )
+  end
+
+  test "validates tool handler attrs" do
+    base_nodes = [node("start", "start"), node("tool", "tool"), node("exit", "exit")]
+    base_edges = [edge("start", "tool"), edge("tool", "exit")]
+
+    for attrs <- [
+          %{},
+          %{"command" => "grep -r foo ."},
+          %{"command" => []},
+          %{"command" => [1, 2, 3]}
+        ] do
+      assert_codes(pipeline(nodes: put_attrs(base_nodes, "tool", attrs), edges: base_edges), [
+        :invalid_tool_command
+      ])
+    end
+
+    assert_codes(
+      pipeline(
+        nodes: put_attrs(base_nodes, "tool", %{"command" => ["echo"], "env" => %{"K" => 1}}),
+        edges: base_edges
+      ),
+      [:invalid_tool_env]
+    )
+
+    for invalid <- ["0", "100000001", "abc"] do
+      assert_codes(
+        pipeline(
+          nodes:
+            put_attrs(base_nodes, "tool", %{
+              "command" => ["echo"],
+              "max_output_bytes" => invalid
+            }),
+          edges: base_edges
+        ),
+        [:invalid_max_output_bytes]
+      )
+    end
+  end
+
+  test "validates wait.human attrs and warnings" do
+    assert_codes(
+      pipeline(nodes: [node("start", "start"), node("wait", "wait.human"), node("exit", "exit")]),
+      [:wait_human_without_outgoing]
+    )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("wait", "wait.human", attrs: %{"wait_timeout" => "30s"}),
+          node("skip", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "wait"),
+          edge("wait", "skip", attrs: %{"label" => "skip"}),
+          edge("skip", "exit")
+        ]
+      ),
+      [:wait_without_default]
+    )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("wait", "wait.human",
+            attrs: %{"wait_timeout" => "30s", "default_edge" => "missing"}
+          ),
+          node("skip", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "wait"),
+          edge("wait", "skip", attrs: %{"label" => "skip"}),
+          edge("skip", "exit")
+        ]
+      ),
+      [:invalid_default_edge]
+    )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("wait", "wait.human",
+            attrs: %{"wait_timeout" => "later", "default_edge" => "skip"}
+          ),
+          node("skip", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "wait"),
+          edge("wait", "skip", attrs: %{"label" => "skip"}),
+          edge("skip", "exit")
+        ]
+      ),
+      [:invalid_wait_timeout]
+    )
+
+    pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("wait", "wait.human"),
+          node("skip", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "wait"),
+          edge("wait", "skip", attrs: %{"label" => "skip"}),
+          edge("skip", "exit")
+        ]
+      )
+
+    assert_warning_codes(pipeline, [:wait_human_no_timeout])
+  end
+
+  test "validates judge outgoing edge conditions" do
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("judge", "judge", attrs: %{"judge_mode" => "stub"}),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "judge"),
+          edge("judge", "exit", condition: "accept")
+        ]
+      ),
+      [:judge_edge_cardinality]
+    )
+
+    assert :ok =
+             Validator.validate(
+               pipeline(
+                 nodes: [
+                   node("start", "start"),
+                   node("judge", "judge",
+                     attrs: %{"judge_mode" => "stub", "allow_partial" => "true"}
+                   ),
+                   node("partial", "codergen", llm_provider: "codex"),
+                   node("exit", "exit"),
+                   node("retry", "codergen", llm_provider: "codex")
+                 ],
+                 edges: [
+                   edge("start", "judge"),
+                   edge("judge", "exit", condition: "accept"),
+                   edge("judge", "retry", condition: "reject"),
+                   edge("judge", "partial", condition: "partial_success"),
+                   edge("partial", "exit"),
+                   edge("retry", "exit")
+                 ]
+               )
+             )
+  end
+
+  test "validates non-judge conditional coverage" do
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("route", "codergen", llm_provider: "codex"),
+          node("exit", "exit"),
+          node("retry", "codergen", llm_provider: "codex")
+        ],
+        edges: [
+          edge("start", "route"),
+          edge("route", "exit", condition: "accept"),
+          edge("route", "retry", condition: "maybe")
+        ]
+      ),
+      [:incomplete_condition_coverage]
+    )
+  end
+
+  test "validates max_iterations bounds" do
+    assert_codes(
+      pipeline(
+        nodes: [node("start", "start", attrs: %{"max_iterations" => "0"}), node("exit", "exit")]
+      ),
+      [:invalid_max_iterations]
+    )
+  end
+
+  test "validates retry, timeout, budget, and status-agent attrs" do
+    base_nodes = [
+      node("start", "start"),
+      node("ask", "codergen", llm_provider: "codex"),
+      node("exit", "exit")
+    ]
+
+    base_edges = [edge("start", "ask"), edge("ask", "exit")]
+
+    for {attrs, code} <- [
+          {%{"retries" => "-1"}, :invalid_retry_config},
+          {%{"retries" => "11"}, :invalid_retry_config},
+          {%{"retry_backoff" => "wobble"}, :invalid_retry_config},
+          {%{"retry_base_ms" => "0"}, :invalid_retry_config},
+          {%{"max_total_iterations" => "0"}, :invalid_budget},
+          {%{"max_wall_clock" => "foo"}, :invalid_budget},
+          {%{"max_wall_clock" => "48h"}, :invalid_budget},
+          {%{"status_agent" => "gpt4"}, :invalid_status_agent},
+          {%{"status_agent_prompt" => "custom"}, :unsupported_attr},
+          {%{"max_retries" => "3"}, :unsupported_attr},
+          {%{"default_max_retries" => "3"}, :unsupported_attr}
+        ] do
+      assert_codes(
+        pipeline(graph_attrs: attrs, nodes: base_nodes, edges: base_edges),
+        [code]
+      )
+    end
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen",
+            llm_provider: "codex",
+            attrs: %{"timeout" => "500ms"},
+            timeout: 500
+          ),
+          node("exit", "exit")
+        ],
+        edges: base_edges
+      ),
+      [:invalid_timeout]
+    )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen",
+            llm_provider: "codex",
+            attrs: %{"timeout" => "5x"}
+          ),
+          node("exit", "exit")
+        ],
+        edges: base_edges
+      ),
+      [:invalid_timeout]
+    )
+
+    for invalid_budget <- ["0", "1001", "abc"] do
+      assert_codes(
+        pipeline(
+          graph_attrs: %{"max_total_cost_usd" => invalid_budget},
+          nodes: base_nodes,
+          edges: base_edges
+        ),
+        [:invalid_budget]
+      )
+    end
+
+    assert :ok =
+             Validator.validate(
+               pipeline(
+                 graph_attrs: %{"max_total_cost_usd" => "0.5"},
+                 nodes: base_nodes,
+                 edges: base_edges
+               )
+             )
   end
 
   test "rejects undirected and strict graphs" do
@@ -115,9 +453,146 @@ defmodule Tractor.ValidatorTest do
     )
   end
 
+  test "validates retry target references" do
+    base_nodes = [
+      node("start", "start"),
+      node("ask", "codergen", llm_provider: "codex"),
+      node("recover", "codergen", llm_provider: "codex"),
+      node("exit", "exit")
+    ]
+
+    base_edges = [edge("start", "ask"), edge("ask", "exit"), edge("recover", "exit")]
+
+    for attrs <- [
+          %{"retry_target" => "missing"},
+          %{"retry_target" => "ask"},
+          %{"retry_target" => "start"},
+          %{"retry_target" => "exit"},
+          %{"retry_target" => "recover", "fallback_retry_target" => "recover"}
+        ] do
+      assert_codes(
+        pipeline(
+          nodes: put_attrs(base_nodes, "ask", attrs),
+          edges: base_edges
+        ),
+        [:invalid_retry_target]
+      )
+    end
+  end
+
+  test "warns for unreachable retry targets and goal/partial soft validations" do
+    retry_warning_pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen", llm_provider: "codex", attrs: %{"retry_target" => "recover"}),
+          node("recover", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "ask"), edge("ask", "exit"), edge("recover", "exit")]
+      )
+
+    assert_warning_codes(retry_warning_pipeline, [:unreachable_retry_target])
+
+    goal_gate_pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("gate", "codergen", llm_provider: "codex", attrs: %{"goal_gate" => "true"}),
+          node("skip", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "gate"),
+          edge("start", "skip"),
+          edge("gate", "exit"),
+          edge("skip", "exit")
+        ]
+      )
+
+    assert_warning_codes(goal_gate_pipeline, [:goal_gate_bypass])
+
+    allow_partial_pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("judgeable", "codergen",
+            llm_provider: "codex",
+            attrs: %{"allow_partial" => "true"}
+          ),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "judgeable"), edge("judgeable", "exit")]
+      )
+
+    assert_warning_codes(allow_partial_pipeline, [:allow_partial_without_judge])
+  end
+
+  test "rejects invalid goal gate, allow_partial, and numeric non-context conditions" do
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen",
+            llm_provider: "codex",
+            attrs: %{"goal_gate" => "maybe", "allow_partial" => "sometimes"}
+          ),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "ask"), edge("ask", "exit")]
+      ),
+      [:invalid_goal_gate, :invalid_allow_partial]
+    )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "ask", condition: "outcome >= 3"), edge("ask", "exit")]
+      ),
+      [:invalid_condition]
+    )
+  end
+
+  test "rejects retry targets inside parallel brackets" do
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen", llm_provider: "codex", attrs: %{"retry_target" => "branch"}),
+          node("branch", "codergen", llm_provider: "codex"),
+          node("join", "parallel.fan_in"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "ask"),
+          edge("ask", "exit"),
+          edge("branch", "join"),
+          edge("join", "exit")
+        ],
+        parallel_blocks: %{
+          "parallel" => %ParallelBlock{
+            parallel_node_id: "parallel",
+            branches: ["branch"],
+            fan_in_id: "join"
+          }
+        }
+      ),
+      [:invalid_retry_target]
+    )
+  end
+
   defp assert_codes(pipeline, expected_codes) do
     assert {:error, diagnostics} = Validator.validate(pipeline)
     assert expected_codes -- Enum.map(diagnostics, & &1.code) == []
+  end
+
+  defp assert_warning_codes(pipeline, expected_codes) do
+    warnings = Validator.warnings(pipeline)
+    assert expected_codes -- Enum.map(warnings, & &1.code) == []
   end
 
   defp pipeline(opts) do
@@ -131,7 +606,8 @@ defmodule Tractor.ValidatorTest do
       strict?: Keyword.get(opts, :strict?, false),
       graph_attrs: Keyword.get(opts, :graph_attrs, %{}),
       nodes: nodes,
-      edges: Keyword.get(opts, :edges, [])
+      edges: Keyword.get(opts, :edges, []),
+      parallel_blocks: Keyword.get(opts, :parallel_blocks, %{})
     }
   end
 
@@ -142,11 +618,22 @@ defmodule Tractor.ValidatorTest do
       id: id,
       type: type,
       llm_provider: Keyword.get(opts, :llm_provider),
+      timeout: Keyword.get(opts, :timeout),
       attrs: attrs
     }
   end
 
   defp edge(from, to, opts \\ []) do
-    %Edge{from: from, to: to, attrs: Keyword.get(opts, :attrs, %{})}
+    attrs = Keyword.get(opts, :attrs, %{})
+    condition = Keyword.get(opts, :condition)
+    attrs = if condition, do: Map.put(attrs, "condition", condition), else: attrs
+    %Edge{from: from, to: to, condition: condition, attrs: attrs}
+  end
+
+  defp put_attrs(nodes, node_id, attrs) do
+    Enum.map(nodes, fn
+      %Node{id: ^node_id} = node -> %{node | attrs: attrs}
+      node -> node
+    end)
   end
 end

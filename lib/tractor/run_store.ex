@@ -27,14 +27,33 @@ defmodule Tractor.RunStore do
       "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "tractor_version" => tractor_version(),
       "status" => "running",
-      "provider_commands" => []
+      "provider_commands" => [],
+      "total_cost_usd" => "0"
     }
 
     store = %__MODULE__{run_id: manifest["run_id"], run_dir: run_dir, manifest: manifest}
     write_manifest(store, manifest)
+    write_run_status(store, manifest)
     Tractor.RunEvents.register_run(store.run_id, store.run_dir)
 
     {:ok, store}
+  end
+
+  @spec resume(Path.t()) :: {:ok, t()} | {:error, term()}
+  def resume(run_dir) do
+    manifest_path = Path.join(run_dir, "manifest.json")
+
+    with {:ok, raw} <- File.read(manifest_path),
+         {:ok, manifest} <- Jason.decode(raw) do
+      store = %__MODULE__{
+        run_id: manifest["run_id"] || Path.basename(run_dir),
+        run_dir: run_dir,
+        manifest: manifest
+      }
+
+      Tractor.RunEvents.register_run(store.run_id, store.run_dir)
+      {:ok, store}
+    end
   end
 
   @spec write_node(t(), String.t(), map()) :: :ok
@@ -42,6 +61,20 @@ defmodule Tractor.RunStore do
     node_dir = Path.join(store.run_dir, node_id)
     File.mkdir_p!(node_dir)
 
+    write_artifact_files(node_dir, artifact)
+
+    case Map.get(artifact, :iteration) do
+      iteration when is_integer(iteration) and iteration > 0 ->
+        iteration_dir = Path.join([node_dir, "iterations", Integer.to_string(iteration)])
+        File.mkdir_p!(iteration_dir)
+        write_artifact_files(iteration_dir, artifact)
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp write_artifact_files(node_dir, artifact) do
     if Map.has_key?(artifact, :prompt) do
       Paths.atomic_write!(Path.join(node_dir, "prompt.md"), artifact.prompt || "")
     end
@@ -62,12 +95,19 @@ defmodule Tractor.RunStore do
     write_status(store, node_id, %{"status" => "pending"})
   end
 
-  @spec mark_node_running(t(), String.t(), DateTime.t() | String.t()) :: :ok
-  def mark_node_running(%__MODULE__{} = store, node_id, started_at) do
-    write_status(store, node_id, %{
-      "status" => "running",
-      "started_at" => timestamp(started_at)
-    })
+  @spec mark_node_running(t(), String.t(), DateTime.t() | String.t(), map()) :: :ok
+  def mark_node_running(%__MODULE__{} = store, node_id, started_at, meta \\ %{}) do
+    write_status(
+      store,
+      node_id,
+      Map.merge(
+        %{
+          "status" => "running",
+          "started_at" => timestamp(started_at)
+        },
+        meta
+      )
+    )
   end
 
   @spec mark_node_succeeded(t(), String.t(), map()) :: :ok
@@ -88,6 +128,21 @@ defmodule Tractor.RunStore do
     })
   end
 
+  @spec mark_node_waiting(t(), String.t(), map()) :: :ok
+  def mark_node_waiting(%__MODULE__{} = store, node_id, meta \\ %{}) do
+    write_status(
+      store,
+      node_id,
+      Map.merge(
+        %{
+          "status" => "waiting",
+          "waiting_since" => timestamp(DateTime.utc_now())
+        },
+        meta
+      )
+    )
+  end
+
   @spec finalize(t(), map()) :: :ok
   def finalize(%__MODULE__{} = store, attrs) do
     manifest =
@@ -95,14 +150,21 @@ defmodule Tractor.RunStore do
       |> Map.merge(%{
         "finished_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
         "status" => Map.fetch!(attrs, :status),
-        "provider_commands" => redact_provider_commands(Map.get(attrs, :provider_commands, []))
+        "provider_commands" => redact_provider_commands(Map.get(attrs, :provider_commands, [])),
+        "total_cost_usd" =>
+          Map.get(attrs, :total_cost_usd, store.manifest["total_cost_usd"] || "0")
       })
 
     write_manifest(store, manifest)
+    write_run_status(store, manifest)
   end
 
   defp write_manifest(store, manifest) do
     Paths.atomic_write!(Path.join(store.run_dir, "manifest.json"), encode_json!(manifest))
+  end
+
+  defp write_run_status(store, manifest) do
+    Paths.atomic_write!(Path.join(store.run_dir, "status.json"), encode_json!(manifest))
   end
 
   defp write_status(store, node_id, status) do

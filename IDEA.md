@@ -5,6 +5,16 @@ I will call it Tractor (a play on attractor).
 
 Tractor will support claude, codex, and gemini models. its powered by pipeline definitions, which are DOT graphs. there will also be a web UI to illustrate progress. it should also be fault tolerant. if the pipeline crashes (or a given agent node crashes) it should be able to pick up where it left off.
 
+Current sprint status: Tractor now has per-node transient retries, hard node
+timeouts, checkpoint-persisted wall-clock and iteration budgets, an async status
+agent feed, and ACP plan checklist rendering in the observer. SPRINT-0007 adds
+declaring-node recovery routing (`retry_target` / `fallback_retry_target`),
+goal gates, centralized partial-success adjudication, richer condition syntax,
+and a checkpointed total-cost budget with provider pricing. SPRINT-0008 adds
+`conditional`, `tool`, and `wait.human` handler families, including literal-argv
+tool execution, checkpointed human-in-the-loop waits, and observer-side wait
+resolution controls.
+
 id like to use yaks: https://github.com/mattwynne/yaks for internal state tracking / todo stuff. yaks can also serve as a mechanism for a pipeline to track things it uncovered during its work that need more investigation but are out of scope for the current pipeline run. it can serve as a collection surface for "findings" that can inform a future pipeline.
 
 id like to use the agentclientprotocol to faciliate communicating with agents from Tractor's elixir orchestration layer. https://github.com/agentclientprotocol/agent-client-protocol

@@ -3,13 +3,16 @@ defmodule Tractor.DotParser do
   Parses Graphviz DOT into Tractor-owned pipeline structs.
   """
 
-  alias Tractor.{Diagnostic, Edge, Node, Pipeline}
+  alias Tractor.{Diagnostic, Duration, Edge, Node, Pipeline}
   alias Tractor.Pipeline.ParallelBlock
 
   @shape_types %{
     "Mdiamond" => "start",
     "Msquare" => "exit",
     "box" => "codergen",
+    "diamond" => "conditional",
+    "hexagon" => "wait.human",
+    "parallelogram" => "tool",
     "component" => "parallel",
     "tripleoctagon" => "parallel.fan_in"
   }
@@ -20,7 +23,7 @@ defmodule Tractor.DotParser do
   @spec parse_file(Path.t()) :: {:ok, Pipeline.t()} | {:error, [Diagnostic.t()]}
   def parse_file(path) do
     with {:ok, contents} <- File.read(path),
-         {:ok, graph} <- Dotx.decode(contents),
+         {:ok, graph} <- Dotx.decode(preprocess_structured_literals(contents)),
          {:ok, pipeline} <- normalize_graph(graph, path) do
       {:ok, pipeline}
     else
@@ -76,10 +79,32 @@ defmodule Tractor.DotParser do
          llm_provider: attrs["llm_provider"],
          llm_model: attrs["llm_model"],
          timeout: timeout,
+         retries: parse_integer_attr(attrs["retries"]),
+         retry_backoff: attrs["retry_backoff"],
+         retry_base_ms: parse_integer_attr(attrs["retry_base_ms"]),
+         retry_cap_ms: parse_integer_attr(attrs["retry_cap_ms"]),
+         retry_jitter: parse_boolean_attr(attrs["retry_jitter"]),
+         retry_target: attrs["retry_target"],
+         fallback_retry_target: attrs["fallback_retry_target"],
+         goal_gate: parse_boolean_attr(attrs["goal_gate"]),
+         allow_partial: parse_boolean_attr(attrs["allow_partial"]),
          attrs: attrs
        }}
     end
   end
+
+  defp parse_integer_attr(nil), do: nil
+
+  defp parse_integer_attr(value) do
+    case Integer.parse(value) do
+      {integer, ""} -> integer
+      _other -> nil
+    end
+  end
+
+  defp parse_boolean_attr("true"), do: true
+  defp parse_boolean_attr("false"), do: false
+  defp parse_boolean_attr(_value), do: nil
 
   # DOT attribute values are literal; authors write `\n` expecting a newline.
   # Translate common escapes so prompts can be multi-line without DOT gymnastics.
@@ -117,6 +142,7 @@ defmodule Tractor.DotParser do
          from: normalize_node_id(from.id),
          to: normalize_node_id(to.id),
          label: attrs["label"],
+         condition: attrs["condition"],
          weight: weight,
          attrs: attrs
        }}
@@ -140,7 +166,10 @@ defmodule Tractor.DotParser do
   end
 
   defp normalize_attrs(attrs) do
-    Map.new(attrs, fn {key, value} -> {normalize_value(key), normalize_value(value)} end)
+    Map.new(attrs, fn {key, value} ->
+      key = normalize_value(key)
+      {key, normalize_attr_value(key, value)}
+    end)
   end
 
   defp normalize_node_id([id]), do: normalize_value(id)
@@ -150,31 +179,37 @@ defmodule Tractor.DotParser do
   defp normalize_value(value) when is_binary(value), do: value
   defp normalize_value(value), do: to_string(value)
 
+  defp normalize_attr_value(key, value) when key in ["command", "env"] do
+    value
+    |> normalize_value()
+    |> decode_structured_attr()
+  end
+
+  defp normalize_attr_value(_key, value), do: normalize_value(value)
+
+  defp decode_structured_attr(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, decoded} -> decoded
+      {:error, _reason} -> value
+    end
+  end
+
+  defp decode_structured_attr(value), do: normalize_value(value)
+
   defp parse_timeout(nil, _node_id), do: {:ok, nil}
 
   defp parse_timeout(value, node_id) do
-    case parse_duration(value) do
+    case Duration.parse(value) do
       {:ok, timeout} ->
         {:ok, timeout}
 
-      :error ->
+      {:error, :invalid_duration} ->
         {:error,
          diagnostic(:invalid_timeout, "invalid timeout #{inspect(value)}", node_id: node_id)}
     end
   end
 
-  defp parse_duration(value) do
-    case Regex.run(~r/^(\d+)(ms|s|m|h)?$/, String.trim(value)) do
-      [_, amount, nil] -> {:ok, String.to_integer(amount)}
-      [_, amount, "ms"] -> {:ok, String.to_integer(amount)}
-      [_, amount, "s"] -> {:ok, String.to_integer(amount) * 1_000}
-      [_, amount, "m"] -> {:ok, String.to_integer(amount) * 60_000}
-      [_, amount, "h"] -> {:ok, String.to_integer(amount) * 3_600_000}
-      _other -> :error
-    end
-  end
-
-  defp parse_weight(nil, _from, _to), do: {:ok, 1.0}
+  defp parse_weight(nil, _from, _to), do: {:ok, 0.0}
 
   defp parse_weight(value, from, to) do
     case Float.parse(value) do
@@ -196,6 +231,146 @@ defmodule Tractor.DotParser do
       path: Keyword.get(opts, :path)
     }
   end
+
+  defp preprocess_structured_literals(contents) do
+    do_preprocess_structured_literals(contents, [], :normal, false)
+    |> IO.iodata_to_binary()
+  end
+
+  defp do_preprocess_structured_literals(<<>>, acc, _mode, _prev_word?), do: Enum.reverse(acc)
+
+  defp do_preprocess_structured_literals(<<"\"", rest::binary>>, acc, :normal, _prev_word?) do
+    do_preprocess_structured_literals(rest, ["\"" | acc], :string, false)
+  end
+
+  defp do_preprocess_structured_literals(binary, acc, :string, _prev_word?) do
+    <<char::utf8, rest::binary>> = binary
+    next_mode = if char == ?", do: :normal, else: :string
+    do_preprocess_structured_literals(rest, [<<char::utf8>> | acc], next_mode, false)
+  end
+
+  defp do_preprocess_structured_literals(binary, acc, :normal, false) do
+    case take_structured_attr(binary) do
+      {:ok, rewritten, rest} ->
+        do_preprocess_structured_literals(rest, [rewritten | acc], :normal, false)
+
+      :error ->
+        <<char::utf8, rest::binary>> = binary
+
+        do_preprocess_structured_literals(
+          rest,
+          [<<char::utf8>> | acc],
+          :normal,
+          word_char?(char)
+        )
+    end
+  end
+
+  defp do_preprocess_structured_literals(<<char::utf8, rest::binary>>, acc, :normal, _prev_word?) do
+    do_preprocess_structured_literals(rest, [<<char::utf8>> | acc], :normal, word_char?(char))
+  end
+
+  defp take_structured_attr(binary) do
+    with {attr, rest} <- attr_name(binary),
+         {whitespace_before_equals, <<"=", rest::binary>>} <- take_leading_whitespace(rest),
+         {whitespace_after_equals, rest} <- take_leading_whitespace(rest),
+         <<open::utf8, _::binary>> = literal <- rest,
+         true <- open in [?[, ?{],
+         {:ok, structured_literal, remaining} <- take_balanced_literal(literal) do
+      escaped_literal = escape_dot_string(structured_literal)
+
+      {:ok,
+       [
+         attr,
+         whitespace_before_equals,
+         "=",
+         whitespace_after_equals,
+         "\"",
+         escaped_literal,
+         "\""
+       ], remaining}
+    else
+      _other -> :error
+    end
+  end
+
+  defp attr_name(<<"command", rest::binary>>) do
+    if attr_terminator?(rest), do: {"command", rest}, else: nil
+  end
+
+  defp attr_name(<<"env", rest::binary>>) do
+    if attr_terminator?(rest), do: {"env", rest}, else: nil
+  end
+
+  defp attr_name(_binary), do: nil
+
+  defp attr_terminator?(<<char::utf8, _::binary>>) do
+    String.trim(<<char::utf8>>) == "" or char == ?=
+  end
+
+  defp attr_terminator?(<<>>), do: true
+
+  defp take_leading_whitespace(binary), do: take_leading_whitespace(binary, "")
+
+  defp take_leading_whitespace(<<char::utf8, rest::binary>>, acc)
+       when char in [?\s, ?\t, ?\n, ?\r] do
+    take_leading_whitespace(rest, acc <> <<char::utf8>>)
+  end
+
+  defp take_leading_whitespace(binary, acc), do: {acc, binary}
+
+  defp take_balanced_literal(<<open::utf8, rest::binary>>) when open in [?[, ?{] do
+    closing = if open == ?[, do: ?], else: ?}
+    do_take_balanced_literal(rest, [<<open::utf8>>], [closing], false, false)
+  end
+
+  defp do_take_balanced_literal(<<>>, _acc, _stack, _in_string?, _escaped?), do: :error
+
+  defp do_take_balanced_literal(<<char::utf8, rest::binary>>, acc, stack, true, true) do
+    do_take_balanced_literal(rest, [<<char::utf8>> | acc], stack, true, false)
+  end
+
+  defp do_take_balanced_literal(<<"\\", rest::binary>>, acc, stack, true, false) do
+    do_take_balanced_literal(rest, ["\\" | acc], stack, true, true)
+  end
+
+  defp do_take_balanced_literal(<<"\"", rest::binary>>, acc, stack, in_string?, false) do
+    do_take_balanced_literal(rest, ["\"" | acc], stack, not in_string?, false)
+  end
+
+  defp do_take_balanced_literal(<<"[", rest::binary>>, acc, stack, false, false) do
+    do_take_balanced_literal(rest, ["[" | acc], [?] | stack], false, false)
+  end
+
+  defp do_take_balanced_literal(<<"{", rest::binary>>, acc, stack, false, false) do
+    do_take_balanced_literal(rest, ["{" | acc], [?} | stack], false, false)
+  end
+
+  defp do_take_balanced_literal(<<char::utf8, rest::binary>>, acc, [char], false, false) do
+    {:ok, acc |> Enum.reverse([<<char::utf8>>]) |> IO.iodata_to_binary(), rest}
+  end
+
+  defp do_take_balanced_literal(<<char::utf8, rest::binary>>, acc, [char | stack], false, false) do
+    do_take_balanced_literal(rest, [<<char::utf8>> | acc], stack, false, false)
+  end
+
+  defp do_take_balanced_literal(<<char::utf8, rest::binary>>, acc, stack, in_string?, escaped?) do
+    do_take_balanced_literal(rest, [<<char::utf8>> | acc], stack, in_string?, escaped?)
+  end
+
+  defp escape_dot_string(value) do
+    value
+    |> String.replace("\\", "\\\\")
+    |> String.replace("\"", "\\\"")
+    |> String.replace("\n", "\\n")
+    |> String.replace("\r", "\\r")
+  end
+
+  defp word_char?(char) when char in ?a..?z, do: true
+  defp word_char?(char) when char in ?A..?Z, do: true
+  defp word_char?(char) when char in ?0..?9, do: true
+  defp word_char?(?_), do: true
+  defp word_char?(_char), do: false
 
   defp discover_parallel_blocks(nodes, edges) do
     nodes

@@ -18,7 +18,11 @@ defmodule TractorWeb.RunLive.Timeline do
             | :response
             | :stderr
             | :lifecycle
-            | :usage,
+            | :usage
+            | :iteration_header
+            | :verdict
+            | :tool_runtime
+            | :wait_runtime,
           title: String.t(),
           summary: String.t(),
           body: binary() | map(),
@@ -26,13 +30,14 @@ defmodule TractorWeb.RunLive.Timeline do
           tone: :neutral | :accent | :success | :failure | :muted
         }
 
-  @spec from_disk(Path.t(), String.t()) :: [entry()]
-  def from_disk(run_dir, node_id) do
+  @spec from_disk(Path.t(), String.t(), keyword()) :: [entry()]
+  def from_disk(run_dir, node_id, opts \\ []) do
     node_dir = Path.join(run_dir, node_id)
     events = read_events(node_dir)
+    static_prompt = Keyword.get(opts, :static_prompt)
 
     []
-    |> maybe_add_prompt(node_dir, events)
+    |> maybe_add_prompt(node_dir, events, static_prompt)
     |> add_event_entries(events)
     |> maybe_add_response(node_dir, events)
     |> maybe_add_stderr(node_dir)
@@ -52,27 +57,37 @@ defmodule TractorWeb.RunLive.Timeline do
     end
   end
 
-  defp maybe_add_prompt(entries, node_dir, events) do
-    case read_text(node_dir, "prompt.md") do
-      "" ->
+  defp maybe_add_prompt(entries, node_dir, events, static_prompt) do
+    # Prefer the on-disk prompt (post-interpolation) once the node has run;
+    # fall back to the static template from the DOT source so pending nodes
+    # still surface their prompt to the sidebar.
+    case {read_text(node_dir, "prompt.md"), static_prompt} do
+      {"", nil} ->
         entries
 
-      prompt ->
-        [
-          %{
-            id: "prompt",
-            ts: node_started_ts(events) || first_event_ts(events),
-            seq: -2,
-            type: :prompt,
-            title: "Prompt",
-            summary: one_line(prompt),
-            body: prompt,
-            collapsed_by_default?: true,
-            tone: :neutral
-          }
-          | entries
-        ]
+      {"", ""} ->
+        entries
+
+      {prompt, _static} when prompt != "" ->
+        [prompt_entry(prompt, node_started_ts(events) || first_event_ts(events)) | entries]
+
+      {"", static} when is_binary(static) ->
+        [prompt_entry(static, nil) | entries]
     end
+  end
+
+  defp prompt_entry(prompt, ts) do
+    %{
+      id: "prompt",
+      ts: ts,
+      seq: -2,
+      type: :prompt,
+      title: "Prompt",
+      summary: one_line(prompt),
+      body: prompt,
+      collapsed_by_default?: true,
+      tone: :neutral
+    }
   end
 
   defp add_event_entries(entries, events) do
@@ -125,28 +140,41 @@ defmodule TractorWeb.RunLive.Timeline do
   end
 
   defp maybe_add_terminal_status(entries, node_dir, events) do
-    status = read_json(node_dir, "status.json")
+    # If the event stream already has a node_succeeded / node_failed entry,
+    # trust that and skip the synthesized status.json fallback — otherwise
+    # the sidebar renders two "node succeeded" rows.
+    if has_terminal_event?(events) do
+      entries
+    else
+      status = read_json(node_dir, "status.json")
 
-    case normalize_terminal_status(status["status"]) do
-      nil ->
-        entries
+      case normalize_terminal_status(status["status"]) do
+        nil ->
+          entries
 
-      {state, tone} ->
-        [
-          %{
-            id: "lifecycle-status",
-            ts: parse_ts(status["finished_at"]) || last_event_ts(events),
-            seq: 1_000_001,
-            type: :lifecycle,
-            title: "Lifecycle",
-            summary: "node #{state}",
-            body: status,
-            collapsed_by_default?: true,
-            tone: tone
-          }
-          | entries
-        ]
+        {state, tone} ->
+          [
+            %{
+              id: "lifecycle-status",
+              ts: parse_ts(status["finished_at"]) || last_event_ts(events),
+              seq: 1_000_001,
+              type: :lifecycle,
+              title: "Lifecycle",
+              summary: "node #{state}",
+              body: status,
+              collapsed_by_default?: true,
+              tone: tone
+            }
+            | entries
+          ]
+      end
     end
+  end
+
+  defp has_terminal_event?(events) do
+    Enum.any?(events, fn event ->
+      event["kind"] in ["node_succeeded", "node_failed", "parallel_completed"]
+    end)
   end
 
   defp merge_event_entry(entries, event) do
@@ -209,6 +237,107 @@ defmodule TractorWeb.RunLive.Timeline do
       body: data,
       collapsed_by_default?: true,
       tone: :muted
+    }
+  end
+
+  defp event_entry(%{"kind" => "iteration_started", "data" => data} = event) do
+    iteration = data["iteration"]
+
+    %{
+      id: "iteration-#{iteration}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :iteration_header,
+      title: "Iteration",
+      summary: "Iteration #{iteration}",
+      body: data,
+      collapsed_by_default?: true,
+      tone: :muted
+    }
+  end
+
+  defp event_entry(%{"kind" => "judge_verdict", "data" => data} = event) do
+    verdict = data["verdict"] || "unknown"
+    critique = data["critique"] || ""
+
+    %{
+      id: "verdict-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :verdict,
+      title: "Verdict",
+      summary: "#{verdict}: #{one_line(critique)}",
+      body: critique,
+      collapsed_by_default?: false,
+      tone: verdict_tone(verdict)
+    }
+  end
+
+  defp event_entry(%{"kind" => "tool_invoked", "data" => data} = event) do
+    command = data["command"] || []
+    exit_status = data["exit_status"]
+
+    %{
+      id: "tool-runtime-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :tool_runtime,
+      title: "[TOOL] invoked",
+      summary: "#{Enum.join(command, " ")} (exit #{exit_status})",
+      body: data,
+      collapsed_by_default?: true,
+      tone: if(exit_status in [0, nil], do: :neutral, else: :accent)
+    }
+  end
+
+  defp event_entry(%{"kind" => "tool_output_truncated", "data" => data} = event) do
+    stream = data["stream"] || "stdout"
+    limit = data["limit"] || "?"
+
+    %{
+      id: "tool-runtime-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :tool_runtime,
+      title: "[TOOL] output truncated",
+      summary: "#{stream} limited to #{limit} bytes",
+      body: data,
+      collapsed_by_default?: true,
+      tone: :accent
+    }
+  end
+
+  defp event_entry(%{"kind" => "wait_human_pending", "data" => data} = event) do
+    labels = data["outgoing_labels"] || []
+    prompt = data["wait_prompt"] || "human decision required"
+
+    %{
+      id: "wait-runtime-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :wait_runtime,
+      title: "[WAIT] pending",
+      summary: "#{prompt} (#{Enum.join(labels, ", ")})",
+      body: data,
+      collapsed_by_default?: false,
+      tone: :accent
+    }
+  end
+
+  defp event_entry(%{"kind" => "wait_human_resolved", "data" => data} = event) do
+    label = data["label"] || "?"
+    source = data["source"] || "operator"
+
+    %{
+      id: "wait-runtime-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :wait_runtime,
+      title: "[WAIT] resolved",
+      summary: "#{label} via #{source}",
+      body: data,
+      collapsed_by_default?: true,
+      tone: :success
     }
   end
 
@@ -413,6 +542,10 @@ defmodule TractorWeb.RunLive.Timeline do
   defp lifecycle_tone("parallel_completed"), do: :success
   defp lifecycle_tone("node_failed"), do: :failure
   defp lifecycle_tone(_kind), do: :muted
+
+  defp verdict_tone("accept"), do: :success
+  defp verdict_tone("reject"), do: :accent
+  defp verdict_tone(_verdict), do: :muted
 
   defp usage_summary(nil), do: "usage updated"
   defp usage_summary(total), do: "#{Format.token_count(total)} tokens"

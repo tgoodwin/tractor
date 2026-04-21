@@ -1,0 +1,13 @@
+digraph {
+  start [shape=Mdiamond]
+  route [shape=diamond, label="Route by score"]
+  strong [shape=box, llm_provider=codex, prompt="Continue with the strong candidate"]
+  weak [shape=box, llm_provider=codex, prompt="Continue with the weak candidate"]
+  exit [shape=Msquare]
+
+  start -> route
+  route -> strong [condition="context.score >= 0.8"]
+  route -> weak [condition="!(context.score >= 0.8)"]
+  strong -> exit
+  weak -> exit
+}

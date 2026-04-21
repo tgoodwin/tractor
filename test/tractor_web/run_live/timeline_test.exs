@@ -124,6 +124,58 @@ defmodule TractorWeb.RunLive.TimelineTest do
     assert updated.body["updates"] == [%{"toolCallId" => "tc_1", "status" => "done"}]
   end
 
+  test "insert renders runtime tool events distinctly" do
+    invoked =
+      event(
+        1,
+        "tool_invoked",
+        %{"command" => ["grep", "foo"], "exit_status" => 0},
+        "2026-04-19T10:00:00Z"
+      )
+
+    truncated =
+      event(
+        2,
+        "tool_output_truncated",
+        %{"stream" => "stdout", "limit" => 20},
+        "2026-04-19T10:00:01Z"
+      )
+
+    {0, invoked_entry} = Timeline.insert([], invoked)
+    {1, truncated_entry} = Timeline.insert([invoked_entry], truncated)
+
+    assert invoked_entry.type == :tool_runtime
+    assert invoked_entry.title == "[TOOL] invoked"
+    assert truncated_entry.type == :tool_runtime
+    assert truncated_entry.title == "[TOOL] output truncated"
+  end
+
+  test "insert renders wait runtime events distinctly" do
+    pending =
+      event(
+        1,
+        "wait_human_pending",
+        %{"wait_prompt" => "Choose", "outgoing_labels" => ["approve", "reject"]},
+        "2026-04-19T10:00:00Z"
+      )
+
+    resolved =
+      event(
+        2,
+        "wait_human_resolved",
+        %{"label" => "approve", "source" => "operator"},
+        "2026-04-19T10:00:01Z"
+      )
+
+    {0, pending_entry} = Timeline.insert([], pending)
+    {1, resolved_entry} = Timeline.insert([pending_entry], resolved)
+
+    assert pending_entry.type == :wait_runtime
+    assert pending_entry.title == "[WAIT] pending"
+    assert resolved_entry.type == :wait_runtime
+    assert resolved_entry.title == "[WAIT] resolved"
+  end
+
   defp node_dir(tmp_dir \\ nil) do
     tmp_dir =
       tmp_dir ||

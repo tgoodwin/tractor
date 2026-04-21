@@ -1,31 +1,54 @@
 <main class="tractor-shell">
   <header class="top-bar" aria-label="Tractor">
     <div class="top-bar-brand">
+      <span class="top-bar-icon" aria-hidden="true"></span>
       <span class="top-bar-mark">Tractor</span>
       <span :if={tractor_version() != ""} class="top-bar-version">{tractor_version()}</span>
     </div>
+    <button
+      type="button"
+      id="theme-toggle"
+      class="theme-toggle"
+      phx-hook="ThemeToggle"
+      aria-label="Toggle dark mode"
+    >
+      <span class="theme-toggle-track" aria-hidden="true">
+        <span class="theme-toggle-thumb"></span>
+        <span class="theme-toggle-slot theme-toggle-slot-light">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+            <circle cx="8" cy="8" r="3" fill="currentColor" stroke="none" />
+            <line x1="8" y1="1.2" x2="8" y2="2.6" />
+            <line x1="8" y1="13.4" x2="8" y2="14.8" />
+            <line x1="1.2" y1="8" x2="2.6" y2="8" />
+            <line x1="13.4" y1="8" x2="14.8" y2="8" />
+            <line x1="3.2" y1="3.2" x2="4.2" y2="4.2" />
+            <line x1="11.8" y1="11.8" x2="12.8" y2="12.8" />
+            <line x1="3.2" y1="12.8" x2="4.2" y2="11.8" />
+            <line x1="11.8" y1="4.2" x2="12.8" y2="3.2" />
+          </svg>
+        </span>
+        <span class="theme-toggle-slot theme-toggle-slot-dark">
+          <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+            <path d="M11 2.2a6 6 0 1 0 2.8 11.2A5 5 0 1 1 11 2.2z" />
+          </svg>
+        </span>
+      </span>
+    </button>
   </header>
 
   <aside class="runs-panel" aria-label="Runs in this context">
-    <section class="phases-panel" aria-label="Run summary">
-      <div class="runs-panel-header">
-        <p class="eyebrow">Phases</p>
-      </div>
-      <ol class="phases-list">
-        <li :for={phase <- @phases} class={"phases-row phases-row-#{phase.status}"}>
-          <div class="phases-row-top">
-            <span class="phases-row-name mono">{phase.name}</span>
-            <span class={"status-pill status-#{phase_pill(phase)}"}>
-              {phase_status_label(phase)}
-            </span>
-          </div>
-          <div class="phases-row-meta mono">
-            <span>{phase_duration(phase)}</span>
-            <span :if={phase.note} class="phases-row-note">{phase.note}</span>
-          </div>
-        </li>
-      </ol>
-    </section>
+    <div
+      id="resizer-left"
+      class="resizer resizer-right-edge"
+      phx-hook="Resizer"
+      data-panel="left"
+      aria-hidden="true"
+    ></div>
+    <StatusFeed.status_feed
+      status_agent={@status_agent}
+      updates={@streams.status_updates}
+      empty?={@status_feed_empty?}
+    />
 
     <section class="runs-list-panel" aria-label="Runs">
       <div class="runs-panel-header">
@@ -68,6 +91,29 @@
   </section>
 
   <aside class="node-panel">
+    <div
+      id="resizer-right"
+      class="resizer resizer-left-edge"
+      phx-hook="Resizer"
+      data-panel="right"
+      aria-hidden="true"
+    ></div>
+    <section class="run-summary-card" aria-label="Run summary">
+      <div class="panel-heading">
+        <p class="eyebrow">Run</p>
+        <h2>{@run_id}</h2>
+        <div class="panel-pills">
+          <span class={"status-pill status-#{@run_status}"}>
+            {run_status_label(@run_status)}
+          </span>
+          <span class="pill pill-model">cost {run_total_cost_label(@run_total_cost_usd)}</span>
+        </div>
+      </div>
+      <p :if={@run_status == :goal_gate_failed} class="run-summary-note">
+        Goal-gate failure terminated the run before `exit`; the missing exit node is expected.
+      </p>
+    </section>
+
     <div :if={is_nil(@selected_node_id)} class="empty-sidebar">
       <div class="empty-mark" aria-hidden="true"></div>
       <p>Select a node.</p>
@@ -84,6 +130,52 @@
         </div>
       </div>
 
+      <div :if={@selected_plan != []} class="panel-section-heading">
+        <p class="eyebrow">Plan</p>
+      </div>
+      <ul :if={@selected_plan != []} class="tractor-plan">
+        <li
+          :for={entry <- @selected_plan}
+          class={"tractor-plan-item #{entry["status"] || "pending"}"}
+        >
+          <span class="tractor-plan-status" aria-hidden="true"></span>
+          <span class="tractor-plan-content">{entry["content"]}</span>
+          <span :if={entry["priority"]} class="tractor-plan-priority mono">{entry["priority"]}</span>
+        </li>
+      </ul>
+
+      <div class="panel-section-heading">
+        <p class="eyebrow">Activity</p>
+      </div>
+
+      <WaitForm.wait_form
+        :if={@selected_node && @selected_node.type == "wait.human" && @selected_node.state == "waiting"}
+        node_id={@selected_node.id}
+        status={@selected_node.status}
+        error={@wait_form_error}
+      />
+
+      <section
+        :if={
+          @selected_node &&
+            @selected_node.type == "wait.human" &&
+            @selected_node.state != "waiting" &&
+            @selected_node.status["resolved_label"]
+        }
+        class="wait-form-panel"
+        aria-label="Wait resolution"
+      >
+        <div class="panel-section-heading">
+          <p class="eyebrow">Resolved</p>
+        </div>
+
+        <div class="wait-form-body">
+          <p class="wait-form-prompt">
+            {@selected_node.status["resolved_label"]} via {@selected_node.status["resolution_source"]}
+          </p>
+        </div>
+      </section>
+
       <ol id="timeline" class="timeline" phx-update="stream" phx-hook="StickyTimeline">
         <li
           :for={{id, entry} <- @streams.timeline}
@@ -91,14 +183,23 @@
           class={"tl-entry tl-#{entry.type} tl-#{entry.tone}"}
           aria-label={timeline_aria_label(entry)}
         >
-          <details open={timeline_open?(entry)}>
-            <summary tabindex="0">
+          <%= if entry.type == :lifecycle do %>
+            <div class="tl-static">
               <span class="tl-chip">{entry.title}</span>
               <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
               <span class="tl-summary">{entry.summary}</span>
-            </summary>
-            <div class={"tl-body tl-body-#{entry.type}"}>{render_entry_body(entry)}</div>
-          </details>
+            </div>
+          <% else %>
+            <details open={timeline_open?(entry)}>
+              <summary tabindex="0">
+                <span class="tl-caret" aria-hidden="true"></span>
+                <span class="tl-chip">{entry.title}</span>
+                <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
+                <span class="tl-summary">{entry.summary}</span>
+              </summary>
+              <div class={"tl-body tl-body-#{entry.type}"}>{render_entry_body(entry)}</div>
+            </details>
+          <% end %>
         </li>
       </ol>
     </div>

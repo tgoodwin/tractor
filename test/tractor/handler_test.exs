@@ -28,6 +28,11 @@ defmodule Tractor.HandlerTest do
              Handler.Exit.run(%Node{id: "exit", type: "exit"}, %{}, "/tmp/run")
   end
 
+  test "conditional handler succeeds without side effects" do
+    assert {:ok, %{}, %{status: %{"status" => "ok"}}} =
+             Handler.Conditional.run(%Node{id: "route", type: "conditional"}, %{}, "/tmp/run")
+  end
+
   test "codergen interpolates prior node output and prompts provider session" do
     node = %Node{
       id: "ask",
@@ -40,7 +45,7 @@ defmodule Tractor.HandlerTest do
       {:ok, self()}
     end)
 
-    expect(Tractor.AgentClientMock, :prompt, fn _pid, "Use ready", 300_000 -> {:ok, "done"} end)
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, "Use ready", 600_000 -> {:ok, "done"} end)
     expect(Tractor.AgentClientMock, :stop, fn _pid -> :ok end)
 
     assert {:ok, "done", updates} = Handler.Codergen.run(node, %{"start" => "ready"}, "/tmp/run")
@@ -48,6 +53,28 @@ defmodule Tractor.HandlerTest do
     assert updates.response == "done"
     assert updates.status["status"] == "ok"
     assert updates.provider_command.provider == "codex"
+  end
+
+  test "codergen preserves unresolved placeholders for artifact debugging" do
+    node = %Node{
+      id: "ask",
+      type: "codergen",
+      llm_provider: "codex",
+      prompt: "Use {{missing}}"
+    }
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Codex, _opts ->
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, "Use {{missing}}", 600_000 ->
+      {:ok, "done"}
+    end)
+
+    expect(Tractor.AgentClientMock, :stop, fn _pid -> :ok end)
+
+    assert {:ok, "done", updates} = Handler.Codergen.run(node, %{}, "/tmp/run")
+    assert updates.prompt == "Use {{missing}}"
   end
 
   test "codergen carries token usage into status metadata" do
@@ -64,7 +91,7 @@ defmodule Tractor.HandlerTest do
       {:ok, self()}
     end)
 
-    expect(Tractor.AgentClientMock, :prompt, fn _pid, "Go", 300_000 ->
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, "Go", 600_000 ->
       {:ok, %Tractor.ACP.Turn{response_text: "done", token_usage: usage}}
     end)
 
