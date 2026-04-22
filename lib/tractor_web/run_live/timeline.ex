@@ -250,7 +250,7 @@ defmodule TractorWeb.RunLive.Timeline do
       seq: event["seq"],
       type: :iteration_header,
       title: "Iteration",
-      summary: "Iteration #{iteration}",
+      summary: "Iteration #{iteration} started",
       body: data,
       collapsed_by_default?: true,
       tone: :muted

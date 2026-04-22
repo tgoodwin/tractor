@@ -1043,8 +1043,13 @@ summary {
   stroke-linejoin: round;
 }
 
-/* Edge arrowheads / lines — Graphviz emits black. Follow ink at a dimmer weight. */
-.graph-svg svg g.edge path,
+/* Edge arrowheads / lines — Graphviz emits black. Follow ink at a dimmer weight.
+ * Path is the curve body (stroke only); polygon is the arrowhead (stroke + fill). */
+.graph-svg svg g.edge path {
+  stroke: var(--ink-muted);
+  fill: none;
+}
+
 .graph-svg svg g.edge polygon {
   stroke: var(--ink-muted);
   fill: var(--ink-muted);
@@ -1055,15 +1060,21 @@ summary {
   stroke-dasharray: 7 4;
 }
 
-.graph-svg svg g.tractor-edge-accept path,
+.graph-svg svg g.tractor-edge-accept path {
+  stroke: var(--state-success);
+}
+
 .graph-svg svg g.tractor-edge-accept polygon {
   stroke: var(--state-success);
   fill: var(--state-success);
 }
 
 .graph-svg svg g.tractor-edge-reject path,
+.graph-svg svg g.tractor-edge-back path {
+  stroke: var(--tone-stderr);
+}
+
 .graph-svg svg g.tractor-edge-reject polygon,
-.graph-svg svg g.tractor-edge-back path,
 .graph-svg svg g.tractor-edge-back polygon {
   stroke: var(--tone-stderr);
   fill: var(--tone-stderr);
@@ -1144,48 +1155,53 @@ summary {
 .tractor-plan {
   list-style: none;
   margin: 0 0 18px;
-  padding: 0;
-  display: grid;
-  gap: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid rgba(37, 42, 37, 0.10);
+  border-radius: 6px;
+  background: var(--surface-panel);
 }
 
 .tractor-plan-item {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 8px 10px;
-  border: 1px solid rgba(37, 42, 37, 0.10);
-  border-radius: 6px;
-  background: var(--surface-panel);
-  transition: background-color 300ms;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 2px;
+  background: transparent;
+  border: 0;
+  transition: color 300ms;
 }
 
-.tractor-plan-item.pending {
-  background: rgba(140, 146, 140, 0.08);
+.tractor-plan-item.pending .tractor-plan-content {
+  color: var(--ink-muted, #4a5b49);
 }
 
-.tractor-plan-item.in_progress {
-  background: rgba(52, 126, 174, 0.12);
-}
-
-.tractor-plan-item.completed {
-  background: rgba(55, 139, 88, 0.14);
+.tractor-plan-item.completed .tractor-plan-content {
+  color: var(--ink-muted, #4a5b49);
+  text-decoration: line-through;
+  text-decoration-color: rgba(37, 42, 37, 0.35);
 }
 
 .tractor-plan-status {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--state-pending);
+  border: 1.5px solid currentColor;
+  color: var(--state-pending);
+  background: transparent;
+  align-self: center;
 }
 
 .tractor-plan-item.in_progress .tractor-plan-status {
+  color: var(--accent-live);
   background: var(--accent-live);
 }
 
 .tractor-plan-item.completed .tractor-plan-status {
+  color: var(--state-success);
   background: var(--state-success);
 }
 
@@ -1194,9 +1210,72 @@ summary {
   overflow-wrap: anywhere;
 }
 
-.tractor-plan-priority {
-  color: var(--ink-muted, #4a5b49);
+.wait-form-panel {
+  margin: 0 0 18px;
+}
+
+.wait-form-body {
+  padding: 12px 14px;
+  border: 1px solid rgba(37, 42, 37, 0.10);
+  border-radius: 6px;
+  background: var(--surface-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wait-form-prompt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink, inherit);
+}
+
+.wait-form-meta {
+  display: flex;
+  gap: 14px;
   font-size: 11px;
+  color: var(--ink-muted, #4a5b49);
+}
+
+.wait-form-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--tone-stderr);
+}
+
+.wait-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.wait-choice-button {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(37, 42, 37, 0.20);
+  background: transparent;
+  color: var(--ink, inherit);
+  transition: background-color 120ms, border-color 120ms, transform 80ms;
+}
+
+.wait-choice-button:hover {
+  background: rgba(140, 146, 140, 0.12);
+  border-color: rgba(37, 42, 37, 0.35);
+}
+
+.wait-choice-button:active {
+  transform: translateY(1px);
+}
+
+.wait-choice-button:focus-visible {
+  outline: 2px solid var(--accent-live);
+  outline-offset: 2px;
 }
 
 @keyframes pulse-node {

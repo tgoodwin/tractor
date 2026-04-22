@@ -55,7 +55,7 @@
         <p class="eyebrow">Runs</p>
         <span class="runs-count">{length(@runs)}</span>
       </div>
-      <ol class="runs-list">
+      <ol class="runs-list" id="runs-list" phx-hook="RunsListScroll">
         <li
           :for={entry <- @runs}
           class={"runs-row #{if entry.run_id == @run_id, do: "is-current", else: ""}"}
@@ -140,13 +140,8 @@
         >
           <span class="tractor-plan-status" aria-hidden="true"></span>
           <span class="tractor-plan-content">{entry["content"]}</span>
-          <span :if={entry["priority"]} class="tractor-plan-priority mono">{entry["priority"]}</span>
         </li>
       </ul>
-
-      <div class="panel-section-heading">
-        <p class="eyebrow">Activity</p>
-      </div>
 
       <WaitForm.wait_form
         :if={@selected_node && @selected_node.type == "wait.human" && @selected_node.state == "waiting"}
@@ -176,6 +171,10 @@
         </div>
       </section>
 
+      <div class="panel-section-heading">
+        <p class="eyebrow">Activity</p>
+      </div>
+
       <ol id="timeline" class="timeline" phx-update="stream" phx-hook="StickyTimeline">
         <li
           :for={{id, entry} <- @streams.timeline}
@@ -183,7 +182,7 @@
           class={"tl-entry tl-#{entry.type} tl-#{entry.tone}"}
           aria-label={timeline_aria_label(entry)}
         >
-          <%= if entry.type == :lifecycle do %>
+          <%= if entry.type in [:lifecycle, :iteration_header] do %>
             <div class="tl-static">
               <span class="tl-chip">{entry.title}</span>
               <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>

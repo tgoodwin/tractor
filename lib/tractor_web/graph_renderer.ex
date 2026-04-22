@@ -72,18 +72,22 @@ defmodule TractorWeb.GraphRenderer do
     edges =
       pipeline.edges
       |> Enum.map_join("\n", fn edge ->
+        is_back = MapSet.member?(back_edges, {edge.from, edge.to})
+
         attrs =
           edge.attrs
           |> maybe_put("condition", edge.condition)
           |> maybe_put("label", edge.label)
           |> maybe_put("weight", edge.weight)
-          |> maybe_put("constraint", MapSet.member?(back_edges, {edge.from, edge.to}) && "false")
+          |> maybe_put("constraint", is_back && "false")
+          |> maybe_put("tailport", is_back && "e")
+          |> maybe_put("headport", is_back && "e")
           |> dot_attrs()
 
         "  #{quote_id(edge.from)} -> #{quote_id(edge.to)} [#{attrs}]"
       end)
 
-    "digraph {\n#{nodes}\n#{edges}\n}\n"
+    "digraph {\n  nodesep=0.8;\n  ranksep=0.7;\n#{nodes}\n#{edges}\n}\n"
   end
 
   defp dot_attrs(attrs) do
@@ -162,8 +166,6 @@ defmodule TractorWeb.GraphRenderer do
   defp inject_edge_attrs(svg, pipeline) do
     edge_meta =
       Map.new(pipeline.edges, fn edge ->
-        title = "#{edge.from}->#{edge.to}"
-
         classes =
           ["tractor-edge"]
           |> maybe_class(condition?(edge), "tractor-edge-conditional")
@@ -175,7 +177,7 @@ defmodule TractorWeb.GraphRenderer do
           )
           |> Enum.join(" ")
 
-        {title,
+        {edge_title(edge),
          %{condition: edge.condition || "", classes: classes, from: edge.from, to: edge.to}}
       end)
 
@@ -205,11 +207,16 @@ defmodule TractorWeb.GraphRenderer do
   defp maybe_class(classes, true, class), do: [class | classes]
   defp maybe_class(classes, _condition, _class), do: classes
 
+  defp edge_title(edge), do: "#{edge.from}->#{edge.to}"
+
   defp decode_edge_title(title) do
     title
     |> String.replace("&#45;", "-")
     |> String.replace("&gt;", ">")
     |> String.replace("&lt;", "<")
+    |> String.replace(":e->", "->")
+    |> String.replace("->", "->")
+    |> String.replace_suffix(":e", "")
   end
 
   defp condition?(edge), do: edge_condition(edge) != ""

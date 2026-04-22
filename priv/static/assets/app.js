@@ -148,11 +148,19 @@ const GraphBoard = {
     badge.setAttribute("aria-label", "");
 
     const duration = document.createElementNS(svgNs, "text");
-    duration.classList.add("tractor-badge-duration");
     duration.setAttribute("x", "0");
     duration.setAttribute("y", "0");
     duration.setAttribute("dominant-baseline", "hanging");
     duration.setAttribute("text-anchor", "middle");
+
+    const durationText = document.createElementNS(svgNs, "tspan");
+    durationText.classList.add("tractor-badge-duration");
+    duration.appendChild(durationText);
+
+    const iterations = document.createElementNS(svgNs, "tspan");
+    iterations.classList.add("tractor-badge-iterations");
+    iterations.setAttribute("dx", "6");
+    duration.appendChild(iterations);
 
     const tokens = document.createElementNS(svgNs, "text");
     tokens.classList.add("tractor-badge-tokens");
@@ -161,21 +169,14 @@ const GraphBoard = {
     tokens.setAttribute("dominant-baseline", "hanging");
     tokens.setAttribute("text-anchor", "middle");
 
-    const iterations = document.createElementNS(svgNs, "text");
-    iterations.classList.add("tractor-badge-iterations");
-    iterations.setAttribute("x", "0");
-    iterations.setAttribute("y", "22");
-    iterations.setAttribute("dominant-baseline", "hanging");
-    iterations.setAttribute("text-anchor", "middle");
-
     const cumulative = document.createElementNS(svgNs, "text");
     cumulative.classList.add("tractor-badge-cumulative");
     cumulative.setAttribute("x", "0");
-    cumulative.setAttribute("y", "33");
+    cumulative.setAttribute("y", "22");
     cumulative.setAttribute("dominant-baseline", "hanging");
     cumulative.setAttribute("text-anchor", "middle");
 
-    badge.append(duration, tokens, iterations, cumulative);
+    badge.append(duration, tokens, cumulative);
     node.appendChild(badge);
     return badge;
   },
@@ -194,7 +195,9 @@ const GraphBoard = {
 
     badge.querySelector(".tractor-badge-duration").textContent = duration || "";
     badge.querySelector(".tractor-badge-tokens").textContent = tokens || "";
-    badge.querySelector(".tractor-badge-iterations").textContent = iterations || "";
+    const iterationsEl = badge.querySelector(".tractor-badge-iterations");
+    iterationsEl.textContent = iterations || "";
+    iterationsEl.setAttribute("dx", iterations && duration ? "6" : "0");
     badge.querySelector(".tractor-badge-cumulative").textContent =
       cumulative ? `Σ ${cumulative}` : "";
     badge.setAttribute(
@@ -385,9 +388,26 @@ const StickyTimeline = {
   }
 };
 
+const RunsListScroll = {
+  mounted() {
+    this.scrollCurrentIntoView();
+  },
+  updated() {
+    this.scrollCurrentIntoView();
+  },
+  scrollCurrentIntoView() {
+    const row = this.el.querySelector(".runs-row.is-current");
+    if (!row) return;
+    const containerTop = this.el.getBoundingClientRect().top;
+    const rowTop = row.getBoundingClientRect().top;
+    const offset = rowTop - containerTop + this.el.scrollTop;
+    this.el.scrollTop = Math.max(0, offset - 8);
+  }
+};
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").content;
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { GraphBoard, Resizer, StickyTimeline, ThemeToggle, VerticalResizer },
+  hooks: { GraphBoard, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
   params: { _csrf_token: csrfToken }
 });
 
