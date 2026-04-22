@@ -12,6 +12,14 @@ defmodule Tractor.Paths do
       Path.expand("~/.tractor")
   end
 
+  @spec runs_dir(keyword()) :: Path.t()
+  def runs_dir(opts \\ []) do
+    opts[:runs_dir] ||
+      Application.get_env(:tractor, :runs_dir) ||
+      Path.join(data_dir(opts), "runs")
+      |> Path.expand()
+  end
+
   # If the CWD looks like a Tractor context (has a .tractor/ dir already, or
   # has a DOT file next to a Mix project), default to ./.tractor. Lets a user
   # keep run artifacts inside the project for sharing / inspection without
@@ -29,9 +37,7 @@ defmodule Tractor.Paths do
 
   @spec run_dir(keyword()) :: Path.t()
   def run_dir(opts \\ []) do
-    opts
-    |> runs_root()
-    |> Path.join(Keyword.get(opts, :run_id, new_run_id()))
+    Path.join(runs_dir(opts), Keyword.get(opts, :run_id) || new_run_id())
   end
 
   @spec atomic_write!(Path.t(), iodata()) :: :ok
@@ -55,10 +61,6 @@ defmodule Tractor.Paths do
     Path.join(run_dir, "checkpoint.json")
   end
 
-  defp runs_root(opts) do
-    opts[:runs_dir] || Path.join(data_dir(opts), "runs")
-  end
-
   defp xdg_data_dir do
     case System.get_env("XDG_DATA_HOME") do
       nil -> nil
@@ -66,9 +68,15 @@ defmodule Tractor.Paths do
     end
   end
 
-  defp new_run_id do
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%dT%H%M%SZ")
-    short_id = Base.url_encode64(:crypto.strong_rand_bytes(4), padding: false)
-    "#{timestamp}-#{short_id}"
+  @doc """
+  Build a short slug run id deterministically derived from `dt` (UTC microsecond
+  precision). Used as both the URL-visible run id and the run-directory name.
+  """
+  @spec new_run_id(DateTime.t()) :: String.t()
+  def new_run_id(dt \\ DateTime.utc_now()) do
+    dt = DateTime.shift_zone!(dt, "Etc/UTC")
+    iso = DateTime.to_iso8601(dt)
+    <<slug_bytes::4-bytes, _::binary>> = :crypto.hash(:sha256, iso)
+    Base.url_encode64(slug_bytes, padding: false)
   end
 end

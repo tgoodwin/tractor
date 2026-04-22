@@ -27,6 +27,7 @@ defmodule Tractor.RunEvents do
 
   @impl true
   def handle_call({:register_run, run_id, run_dir}, _from, state) do
+    Tractor.RunBus.reset_run(run_id)
     {:reply, :ok, Map.put(state, {:run_dir, run_id}, run_dir)}
   end
 

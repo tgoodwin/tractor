@@ -22,5 +22,7 @@ Suites:
 - `10_wait_form.sh` — static/error/approve/reject/timeout/restart-resume wait-form flow on `examples/wait_human_review.dot`.
 - `11_help_overlay.sh` — `?` / `Escape` keyboard help behavior on `test/browser/fixtures/node_panel_header.dot`.
 - `12_resizers.sh` — left/right drag plus persistence on `examples/wait_human_review.dot`.
-- `13_dev_endpoints.sh` — `/dev/reap`, `/dev/stop/:run_id`, and `/dev/stop-all` API coverage using `test/browser/fixtures/node_panel_header.dot`, `test/browser/fixtures/dev_interruptible.dot`, and `test/browser/fixtures/invalid_pipeline.dot`.
+- `13_dev_endpoints.sh` — `/api/health` coverage plus `/dev/*` retirement checks using `test/browser/fixtures/node_panel_header.dot`.
 - `14_error_states.sh` — missing-run LiveView state and plain 404 route on `/runs/<bogus>` and `/nope`.
+- `15_cross_process_observer.sh` — external `bin/tractor reap --serve` adopts the running observer and the browser sees the live run complete.
+- `16_cross_process_wait_human.sh` — external `bin/tractor reap --serve` resolves `wait.human` across BEAMs and consumes the control file.

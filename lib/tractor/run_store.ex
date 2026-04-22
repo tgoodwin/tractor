@@ -19,10 +19,14 @@ defmodule Tractor.RunStore do
   def open(%Pipeline{} = pipeline, opts \\ []) do
     run_dir = Paths.run_dir(opts)
     File.mkdir_p!(run_dir)
+    dot_path = expand_dot_path(pipeline.path)
+    dot_path_input = Keyword.get(opts, :dot_path_input, pipeline.path)
 
     manifest = %{
       "run_id" => Path.basename(run_dir),
-      "pipeline_path" => pipeline.path,
+      "pipeline_path" => dot_path,
+      "dot_path" => dot_path,
+      "dot_path_input" => dot_path_input,
       "goal" => pipeline.goal,
       "started_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "tractor_version" => tractor_version(),
@@ -45,6 +49,8 @@ defmodule Tractor.RunStore do
 
     with {:ok, raw} <- File.read(manifest_path),
          {:ok, manifest} <- Jason.decode(raw) do
+      manifest = normalize_manifest_paths(manifest)
+
       store = %__MODULE__{
         run_id: manifest["run_id"] || Path.basename(run_dir),
         run_dir: run_dir,
@@ -162,6 +168,18 @@ defmodule Tractor.RunStore do
   defp write_manifest(store, manifest) do
     Paths.atomic_write!(Path.join(store.run_dir, "manifest.json"), encode_json!(manifest))
   end
+
+  defp normalize_manifest_paths(manifest) do
+    dot_path = manifest["dot_path"] || manifest["pipeline_path"]
+
+    manifest
+    |> Map.put("pipeline_path", dot_path)
+    |> Map.put("dot_path", dot_path)
+    |> Map.put("dot_path_input", manifest["dot_path_input"] || dot_path)
+  end
+
+  defp expand_dot_path(path) when is_binary(path), do: Path.expand(path)
+  defp expand_dot_path(path), do: path
 
   defp write_run_status(store, manifest) do
     Paths.atomic_write!(Path.join(store.run_dir, "status.json"), encode_json!(manifest))

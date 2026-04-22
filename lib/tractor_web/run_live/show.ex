@@ -31,6 +31,7 @@ defmodule TractorWeb.RunLive.Show do
         latest_plans: %{},
         selected_plan: [],
         wait_form_error: nil,
+        load_error: nil,
         status_agent: "off",
         status_feed_empty?: true
       )
@@ -74,8 +75,17 @@ defmodule TractorWeb.RunLive.Show do
          |> push_all_graph_badges(pipeline, run_dir, node_states)
          |> select_node(selected)}
 
+      {:error, {:source_dot_unreachable, run_dir, path}} ->
+        {:ok,
+         socket
+         |> assign(
+           missing?: true,
+           runs: list_runs(run_dir),
+           load_error: "source DOT not reachable; path was `#{path}`"
+         )}
+
       {:error, _reason} ->
-        {:ok, assign(socket, missing?: true, runs: [])}
+        {:ok, assign(socket, missing?: true, runs: [], load_error: nil)}
     end
   end
 
@@ -100,19 +110,54 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   defp load_from_disk(run_id) do
-    runs_dir = Path.join(Tractor.Paths.data_dir(), "runs")
+    runs_dir = Tractor.Paths.runs_dir()
     run_dir = Path.join(runs_dir, run_id)
     manifest_path = Path.join(run_dir, "manifest.json")
 
     with true <- File.dir?(run_dir),
          {:ok, raw} <- File.read(manifest_path),
          {:ok, manifest} <- Jason.decode(raw),
-         pipeline_path when is_binary(pipeline_path) and pipeline_path != "" <-
-           manifest["pipeline_path"],
+         manifest <- normalize_manifest_paths(manifest),
+         {:ok, pipeline_path} <- resolve_dot_path(manifest),
          {:ok, pipeline} <- Tractor.DotParser.parse_file(pipeline_path) do
       {:ok, %{pipeline: pipeline, run_dir: run_dir}}
     else
-      _ -> {:error, :run_not_found}
+      {:error, {:source_dot_unreachable, path}} ->
+        {:error, {:source_dot_unreachable, run_dir, path}}
+
+      _ ->
+        {:error, :run_not_found}
+    end
+  end
+
+  defp normalize_manifest_paths(manifest) do
+    dot_path = manifest["dot_path"] || manifest["pipeline_path"]
+
+    manifest
+    |> Map.put("pipeline_path", dot_path)
+    |> Map.put("dot_path", dot_path)
+    |> Map.put("dot_path_input", manifest["dot_path_input"] || dot_path)
+  end
+
+  defp resolve_dot_path(manifest) do
+    dot_path = manifest["dot_path"]
+    dot_path_input = manifest["dot_path_input"] || dot_path
+
+    cond do
+      is_binary(dot_path) and dot_path != "" and File.regular?(dot_path) ->
+        {:ok, dot_path}
+
+      is_binary(dot_path_input) and dot_path_input != "" ->
+        resolved = Path.expand(dot_path_input)
+
+        if File.regular?(resolved) do
+          {:ok, resolved}
+        else
+          {:error, {:source_dot_unreachable, dot_path_input}}
+        end
+
+      true ->
+        {:error, :missing_dot_path}
     end
   end
 

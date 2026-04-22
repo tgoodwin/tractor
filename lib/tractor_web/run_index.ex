@@ -60,8 +60,8 @@ defmodule TractorWeb.RunIndex do
       %{
         run_id: manifest["run_id"] || name,
         run_dir: run_dir,
-        pipeline_path: manifest["pipeline_path"] || "",
-        pipeline_name: pipeline_name(manifest["pipeline_path"]),
+        pipeline_path: manifest["dot_path_input"] || manifest["pipeline_path"] || "",
+        pipeline_name: pipeline_name(manifest["dot_path_input"] || manifest["pipeline_path"]),
         started_at: started_at,
         finished_at: finished_at,
         duration_ms: duration_ms(started_at, finished_at),

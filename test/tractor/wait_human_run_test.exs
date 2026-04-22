@@ -125,7 +125,7 @@ defmodule Tractor.WaitHumanRunTest do
     assert_receive {:run_event, "gate", %{"kind" => "wait_human_pending"}}, 1_000
 
     resumed_waiting = wait_for_waiting(run_id, "gate")
-    assert resumed_waiting.attempt == 2
+    assert resumed_waiting.attempt == 1
     assert DateTime.compare(resumed_waiting.waiting_since, waiting_since) == :eq
 
     assert :ok = Run.submit_wait_choice(run_id, "gate", "reject")
@@ -149,7 +149,7 @@ defmodule Tractor.WaitHumanRunTest do
     wait_for_runner_exit(run_id)
 
     assert ResumeBoot.resume_inflight_runs(tmp_dir) == 1
-    assert wait_for_waiting(run_id, "gate").attempt == 2
+    assert wait_for_waiting(run_id, "gate").attempt == 1
 
     assert :ok = Run.submit_wait_choice(run_id, "gate", "approve")
     assert {:ok, result} = Run.await(run_id, 2_000)

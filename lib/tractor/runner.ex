@@ -6,7 +6,7 @@ defmodule Tractor.Runner do
   use GenServer
 
   alias Tractor.{Checkpoint, Context, Duration, EdgeSelector, Node, Pipeline, RunEvents, RunStore}
-  alias Tractor.Runner.{Adjudication, Budget, Failure, Routing}
+  alias Tractor.Runner.{Adjudication, Budget, ControlFile, Failure, Routing}
 
   defstruct pipeline: nil,
             store: nil,
@@ -33,7 +33,9 @@ defmodule Tractor.Runner do
             provider_commands: [],
             started_at_ms: nil,
             started_at_wall_iso: nil,
-            budget_exhausted?: false
+            budget_exhausted?: false,
+            control_watcher: nil,
+            control_rescan_ref: nil
 
   @spec child_spec({Pipeline.t(), keyword(), RunStore.t()}) :: Supervisor.child_spec()
   def child_spec({pipeline, opts, store}) do
@@ -128,6 +130,15 @@ defmodule Tractor.Runner do
       case Keyword.get(opts, :resume_state) do
         nil -> state
         checkpoint -> restore_waiting_state(state, checkpoint["waiting"] || %{})
+      end
+
+    state =
+      if map_size(state.waiting) > 0 do
+        state
+        |> ensure_control_subscription()
+        |> scan_control_dir()
+      else
+        state
       end
 
     maybe_start_status_agent(state)
@@ -240,6 +251,24 @@ defmodule Tractor.Runner do
           {:error, _reason} -> {:noreply, state}
           {:ok, next_state} -> {:noreply, next_state}
         end
+    end
+  end
+
+  def handle_info({:file_event, watcher, {_path, _events}}, %{control_watcher: watcher} = state) do
+    {:noreply, scan_control_dir(state)}
+  end
+
+  def handle_info({:file_event, watcher, :stop}, %{control_watcher: watcher} = state) do
+    {:noreply, %{state | control_watcher: nil}}
+  end
+
+  def handle_info(:control_rescan, state) do
+    state = %{state | control_rescan_ref: nil}
+
+    if map_size(state.waiting) > 0 do
+      {:noreply, state |> scan_control_dir() |> schedule_control_rescan()}
+    else
+      {:noreply, state}
     end
   end
 
@@ -600,6 +629,7 @@ defmodule Tractor.Runner do
       |> maybe_put_wait_timer(timeout_ref, entry.node_id, entry.attempt)
 
     Checkpoint.save(state)
+    state = state |> ensure_control_subscription() |> scan_control_dir()
     advance(state)
   end
 
@@ -1339,6 +1369,25 @@ defmodule Tractor.Runner do
     put_in(state.wait_timers[timeout_ref], %{node_id: node_id, attempt: attempt})
   end
 
+  def apply_control_file(state, control) do
+    with run_id when is_binary(run_id) <- control["run_id"],
+         true <- run_id == state.store.run_id,
+         node_id when is_binary(node_id) <- control["node_id"],
+         label when is_binary(label) <- control["label"],
+         attempt when is_integer(attempt) <- control["attempt"],
+         %{attempt: expected_attempt} <- Map.get(state.waiting, node_id) do
+      if attempt == expected_attempt do
+        {:resolve, node_id, label}
+      else
+        {:archive, :attempt_mismatch}
+      end
+    else
+      false -> {:archive, :run_mismatch}
+      nil -> {:archive, :wait_not_pending}
+      _other -> {:archive, :invalid_control_file}
+    end
+  end
+
   defp resolve_waiting_node(state, node_id, label, source) do
     case waiting_entry(state, node_id) do
       nil ->
@@ -1360,6 +1409,7 @@ defmodule Tractor.Runner do
 
           state =
             update_in(state.waiting, &Map.delete(&1, node_id))
+            |> maybe_stop_control_subscription()
 
           handler_result = synthesized_wait_resolution(label, source)
 
@@ -1588,7 +1638,6 @@ defmodule Tractor.Runner do
       waiting_entry =
         entry
         |> normalize_waiting_entry()
-        |> Map.put(:attempt, entry["attempt"] + 1)
         |> Map.put(:started_at_ms, resumed_started_at_ms(entry["started_at"]))
 
       timeout_ref =
@@ -1607,6 +1656,92 @@ defmodule Tractor.Runner do
       |> put_in([Access.key(:waiting), node_id], waiting_entry)
       |> maybe_put_wait_timer(timeout_ref, node_id, waiting_entry.attempt)
     end)
+  end
+
+  defp ensure_control_subscription(state) do
+    state
+    |> ensure_control_watcher()
+    |> schedule_control_rescan()
+  end
+
+  defp ensure_control_watcher(%{control_watcher: watcher} = state) when is_pid(watcher), do: state
+
+  defp ensure_control_watcher(state) do
+    control_dir = ControlFile.control_dir(state.store.run_dir)
+    File.mkdir_p!(control_dir)
+
+    case FileSystem.start_link(dirs: [control_dir]) do
+      {:ok, pid} ->
+        FileSystem.subscribe(pid)
+        %{state | control_watcher: pid}
+
+      :ignore ->
+        %{state | control_watcher: nil}
+
+      {:error, _reason} ->
+        %{state | control_watcher: nil}
+    end
+  end
+
+  defp schedule_control_rescan(%{control_rescan_ref: ref} = state) when is_reference(ref),
+    do: state
+
+  defp schedule_control_rescan(state) do
+    %{state | control_rescan_ref: Process.send_after(self(), :control_rescan, 1_000)}
+  end
+
+  defp scan_control_dir(state) do
+    Enum.reduce(ControlFile.scan(state.store.run_dir), state, fn path, state ->
+      consume_control_file(state, path)
+    end)
+  end
+
+  defp consume_control_file(state, path) do
+    with true <- File.exists?(path),
+         {:ok, control} <- ControlFile.load(path) do
+      case apply_control_file(state, control) do
+        {:resolve, node_id, label} ->
+          case resolve_waiting_node(state, node_id, label, :operator) do
+            {:ok, next_state} ->
+              File.rm(path)
+              next_state
+
+            {:error, _reason} ->
+              archive_control_file(path)
+              state
+          end
+
+        {:archive, _reason} ->
+          archive_control_file(path)
+          state
+      end
+    else
+      _other ->
+        state
+    end
+  end
+
+  defp archive_control_file(path) do
+    if File.exists?(path) do
+      ControlFile.archive_stale(path)
+    else
+      :ok
+    end
+  end
+
+  defp maybe_stop_control_subscription(%{waiting: waiting} = state) when map_size(waiting) > 0,
+    do: state
+
+  defp maybe_stop_control_subscription(state) do
+    if is_reference(state.control_rescan_ref) do
+      Process.cancel_timer(state.control_rescan_ref)
+    end
+
+    if is_pid(state.control_watcher) do
+      GenServer.stop(state.control_watcher, :normal)
+    end
+
+    %{state | control_watcher: nil, control_rescan_ref: nil}
   end
 
   defp schedule_restored_wait_timeout(nil, _entry), do: nil

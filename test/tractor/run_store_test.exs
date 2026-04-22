@@ -40,7 +40,9 @@ defmodule Tractor.RunStoreTest do
 
     manifest = read_json(Path.join(store.run_dir, "manifest.json"))
 
-    assert manifest["pipeline_path"] == "examples/flow.dot"
+    assert manifest["pipeline_path"] == Path.expand("examples/flow.dot")
+    assert manifest["dot_path"] == Path.expand("examples/flow.dot")
+    assert manifest["dot_path_input"] == "examples/flow.dot"
     assert manifest["goal"] == "ship"
     assert manifest["status"] == "ok"
 

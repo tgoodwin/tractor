@@ -19,14 +19,22 @@ Run with the local LiveView observer:
 ./bin/tractor reap --serve examples/parallel_audit.dot
 ```
 
-`--serve` starts an HTTP observer on `127.0.0.1`, prints the run URL before the
-first node starts, runs the pipeline, then keeps the page available for
-post-mortem inspection until Ctrl-C.
+`--serve` probes `http://127.0.0.1:4000/api/health` first. If a compatible
+observer is already running against the same `runs_dir`, Tractor adopts it and
+prints that existing run URL. If nothing is listening, Tractor starts its own
+loopback observer, prints the run URL, runs the pipeline, and exits when the
+run finishes. It no longer waits for Ctrl-C after completion.
 
 Use an explicit loopback port:
 
 ```sh
 ./bin/tractor reap --serve --port 4040 examples/parallel_audit.dot
+```
+
+Use `--port 0` to force a fresh ephemeral observer and skip the adoption probe:
+
+```sh
+./bin/tractor reap --serve --port 0 examples/parallel_audit.dot
 ```
 
 Suppress browser auto-open:
@@ -40,6 +48,10 @@ Write runs to a specific directory:
 ```sh
 ./bin/tractor reap examples/three_agents.dot --runs-dir /tmp/tractor-runs
 ```
+
+`--cwd`, `--runs-dir`, and the DOT path are expanded to absolute paths before
+Tractor probes or starts an observer. Adoption requires the observer's
+`runs_dir` to match exactly; otherwise `tractor reap --serve` exits with code 6.
 
 Set a prompt timeout:
 
@@ -246,7 +258,10 @@ digraph {
 
 With `--serve`, the observer shows a button per outgoing label while the node is
 waiting. Pending waits are checkpointed, so `tractor reap --resume ...` restores
-the form and any remaining timeout budget.
+the form and any remaining timeout budget. Wait decisions now cross process
+boundaries through `<run_dir>/control/`, so a standalone observer can resolve a
+`wait.human` node for a separate `tractor reap` executor as long as both point
+at the same `runs_dir`.
 
 ## Conditional Nodes
 

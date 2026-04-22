@@ -229,8 +229,8 @@
   <section class="missing-run-state" aria-label="Missing run">
     <div class="panel-heading">
       <p class="eyebrow">Run</p>
-      <h2>Run not found.</h2>
+      <h2>{if @load_error, do: "Run unavailable.", else: "Run not found."}</h2>
     </div>
-    <p>The requested run could not be loaded.</p>
+    <p>{@load_error || "The requested run could not be loaded."}</p>
   </section>
 </main>

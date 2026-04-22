@@ -9,7 +9,7 @@ mkdir -p "$LOG_DIR"
 
 TRACTOR_DATA_DIR="${TRACTOR_DATA_DIR:-$ROOT/.tmp/browser-data}"
 export TRACTOR_DATA_DIR
-export TRACTOR_BROWSER_PORT="${TRACTOR_BROWSER_PORT:-4001}"
+export TRACTOR_BROWSER_PORT="${TRACTOR_BROWSER_PORT:-4000}"
 export TRACTOR_BASE_URL="http://127.0.0.1:${TRACTOR_BROWSER_PORT}"
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-tractor-browser-run-all}"
 export TRACTOR_BROWSER_LOG_DIR="$LOG_DIR"
@@ -20,12 +20,16 @@ export TRACTOR_BROWSER_HEALTH_URL="${TRACTOR_BASE_URL}/runs/browser-health"
 cleanup() {
   local exit_code=$?
 
+  tractor_runs_stop_all
   tractor_server_stop
   AGENT_BROWSER_SESSION="$TRACTOR_AB_SESSION" agent-browser close >/dev/null 2>&1 || true
+  ab_force_kill_daemon
   exit "$exit_code"
 }
 
 trap cleanup EXIT
+
+ab_reap_stale_daemons
 
 rm -rf "$TRACTOR_DATA_DIR"
 mkdir -p "$TRACTOR_DATA_DIR"

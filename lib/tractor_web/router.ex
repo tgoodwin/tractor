@@ -17,12 +17,10 @@ defmodule TractorWeb.Router do
     plug(:accepts, ["json"])
   end
 
-  scope "/dev", TractorWeb do
+  scope "/api", TractorWeb do
     pipe_through(:api)
 
-    post("/reap", DevController, :reap)
-    post("/stop/:run_id", DevController, :stop)
-    post("/stop-all", DevController, :stop_all)
+    get("/health", HealthController, :show)
   end
 
   scope "/", TractorWeb do

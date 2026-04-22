@@ -4,6 +4,7 @@ defmodule Tractor.Run do
   """
 
   alias Tractor.{Checkpoint, DotParser, Pipeline, Runner, RunStore, Validator}
+  alias Tractor.Runner.ControlFile
 
   @spec start(Pipeline.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def start(%Pipeline{} = pipeline, opts \\ []) do
@@ -46,6 +47,22 @@ defmodule Tractor.Run do
 
   @spec submit_wait_choice(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
   def submit_wait_choice(run_id, node_id, label) do
-    Runner.submit_wait_choice(run_id, node_id, label)
+    case Process.whereis(Tractor.RunRegistry) do
+      nil ->
+        run_dir = Path.join(Tractor.Paths.runs_dir(), run_id)
+        :ok = ControlFile.write(run_dir, run_id, node_id, label)
+        :ok
+
+      _registry ->
+        case Runner.submit_wait_choice(run_id, node_id, label) do
+          {:error, :run_not_found} ->
+            run_dir = Path.join(Tractor.Paths.runs_dir(), run_id)
+            :ok = ControlFile.write(run_dir, run_id, node_id, label)
+            :ok
+
+          other ->
+            other
+        end
+    end
   end
 end

@@ -7,6 +7,8 @@ defmodule Tractor.Application do
 
   @impl true
   def start(_type, _args) do
+    Application.put_env(:tractor, :runs_dir, Tractor.Paths.runs_dir())
+
     children =
       [
         {Registry, keys: :unique, name: Tractor.RunRegistry},
@@ -20,7 +22,7 @@ defmodule Tractor.Application do
         {Phoenix.PubSub, name: Tractor.PubSub},
         Tractor.RunEvents,
         {DynamicSupervisor, strategy: :one_for_one, name: Tractor.WebSup}
-      ] ++ maybe_resume_boot_child() ++ maybe_endpoint_child()
+      ] ++ maybe_resume_boot_child() ++ maybe_endpoint_child() ++ maybe_run_watcher_children()
 
     opts = [strategy: :one_for_one, name: Tractor.Supervisor]
     Supervisor.start_link(children, opts)
@@ -43,6 +45,22 @@ defmodule Tractor.Application do
       escript?() -> []
       Application.get_env(:tractor, TractorWeb.Endpoint)[:server] -> [Tractor.ResumeBoot]
       true -> []
+    end
+  end
+
+  defp maybe_run_watcher_children do
+    cond do
+      escript?() ->
+        []
+
+      Application.get_env(:tractor, TractorWeb.Endpoint)[:server] ->
+        [
+          {DynamicSupervisor, strategy: :one_for_one, name: Tractor.RunWatcher.TailSupervisor},
+          Tractor.RunWatcher
+        ]
+
+      true ->
+        []
     end
   end
 

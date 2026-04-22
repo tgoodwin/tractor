@@ -40,6 +40,7 @@ defmodule Tractor.MixProject do
       {:decimal, "~> 2.3"},
       {:earmark, "~> 1.4"},
       {:toml, "~> 0.7"},
+      {:file_system, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:mox, "~> 1.2", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

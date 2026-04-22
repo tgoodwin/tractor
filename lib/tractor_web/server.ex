@@ -19,13 +19,22 @@ defmodule TractorWeb.Server do
   def start_link(opts) do
     with :ok <- TractorWeb.GraphRenderer.probe_dot() do
       configure(opts)
-      TractorWeb.Endpoint.start_link()
+
+      Supervisor.start_link(
+        [
+          TractorWeb.Endpoint,
+          {DynamicSupervisor, strategy: :one_for_one, name: Tractor.RunWatcher.TailSupervisor},
+          Tractor.RunWatcher
+        ],
+        strategy: :one_for_one
+      )
     end
   end
 
   @spec configure(keyword()) :: :ok
   def configure(opts) do
     port = Keyword.get(opts, :port, 0)
+    runs_dir = Keyword.get(opts, :runs_dir, Tractor.Paths.runs_dir()) |> Path.expand()
 
     base = [
       adapter: Bandit.PhoenixAdapter,
@@ -48,6 +57,7 @@ defmodule TractorWeb.Server do
       |> Keyword.put(:http, ip: @host, port: port)
 
     Application.put_env(:tractor, TractorWeb.Endpoint, merged)
+    Application.put_env(:tractor, :runs_dir, runs_dir)
 
     :ok
   end

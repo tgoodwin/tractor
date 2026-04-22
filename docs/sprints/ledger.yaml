@@ -44,3 +44,9 @@ sprints:
     executor: gpt-5.4
     created: "2026-04-21T04:55:00+00:00"
     updated: "2026-04-21T07:43:23+00:00"
+  - id: SPRINT-0010
+    title: decouple reap from observer (thin-launcher)
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-21T19:52:32+00:00"
+    updated: "2026-04-22T17:01:31+00:00"
