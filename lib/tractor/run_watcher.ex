@@ -83,6 +83,7 @@ defmodule Tractor.RunWatcher do
       |> Path.join("*")
       |> Path.wildcard()
       |> Enum.filter(&File.dir?/1)
+      |> Enum.reject(&MapSet.member?(state.finished_runs, Path.basename(&1)))
       |> Enum.filter(&running_run?/1)
       |> Map.new(fn run_dir -> {Path.basename(run_dir), run_dir} end)
 
@@ -97,8 +98,8 @@ defmodule Tractor.RunWatcher do
 
     stale_run_ids =
       state.runs
-      |> Map.keys()
-      |> Enum.reject(&Map.has_key?(running_runs, &1))
+      |> Enum.reject(fn {_run_id, %{run_dir: run_dir}} -> File.dir?(run_dir) end)
+      |> Enum.map(fn {run_id, _entry} -> run_id end)
 
     Enum.reduce(stale_run_ids, state, &stop_tail/2)
   end

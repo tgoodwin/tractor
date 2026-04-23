@@ -3,6 +3,7 @@ set -euo pipefail
 
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-sprint0009-timeline-$$}"
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+tractor_suite_setup
 
 restore_needed=0
 original_claude_env="${TRACTOR_ACP_CLAUDE_ENV_JSON-}"

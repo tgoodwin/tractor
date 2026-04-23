@@ -50,3 +50,9 @@ sprints:
     executor: gpt-5.4
     created: "2026-04-21T19:52:32+00:00"
     updated: "2026-04-22T17:01:31+00:00"
+  - id: SPRINT-0011
+    title: browser harness rearchitecture (fast + reliable)
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-22T19:15:28+00:00"
+    updated: "2026-04-23T02:38:57+00:00"

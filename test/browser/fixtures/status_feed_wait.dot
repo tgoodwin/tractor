@@ -2,7 +2,7 @@ digraph {
   graph [goal="Status feed wait probe", status_agent=claude]
 
   start [shape=Mdiamond]
-  review_gate [shape=hexagon, wait_prompt="Approve the operator handoff?"]
+  review_gate [shape=hexagon, wait_prompt="Approve the operator handoff?", wait_timeout="120s", default_edge="reject"]
   approved [shape=parallelogram, command=["sh","-c","printf approved"]]
   rejected [shape=parallelogram, command=["sh","-c","printf rejected"]]
   exit [shape=Msquare]

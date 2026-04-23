@@ -3,6 +3,7 @@ set -euo pipefail
 
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-sprint0009-status-feed-$$}"
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+tractor_suite_setup
 
 trap 'ab_close' EXIT
 
@@ -21,6 +22,65 @@ click_result="$(ab_dom_click "[data-testid='node-review_gate']")"
 }
 ab_wait_event text "Decision Required"
 ab_click role button --name "approve" --exact
+
+# Append status updates after the manifest leaves "running" so the suite
+# exercises the watcher's post-terminal tail behavior without depending on
+# fake status-agent subprocess timing.
+ruby -rjson -rtime -rfileutils -e '
+  run_dir = ARGV.fetch(0)
+  manifest_path = File.join(run_dir, "manifest.json")
+  50.times do
+    if File.exist?(manifest_path)
+      manifest = JSON.parse(File.read(manifest_path)) rescue {}
+      break if manifest["status"] && manifest["status"] != "running"
+    end
+
+    sleep 0.1
+  end
+
+  run_events_path = File.join(run_dir, "_run", "events.jsonl")
+  FileUtils.mkdir_p(File.dirname(run_events_path))
+
+  seq =
+    if File.exist?(run_events_path)
+      File.readlines(run_events_path, chomp: true).map do |line|
+        JSON.parse(line)["seq"] rescue nil
+      end.compact.max || 0
+    else
+      0
+    end
+
+  review_ts = Time.now.utc
+  approved_ts = review_ts + 1
+
+  updates = [
+    {
+      "status_update_id" => "status-review-gate",
+      "node_id" => "review_gate",
+      "iteration" => 1,
+      "summary" => "resolved_label",
+      "timestamp" => review_ts.iso8601(6)
+    },
+    {
+      "status_update_id" => "status-approved",
+      "node_id" => "approved",
+      "iteration" => 1,
+      "summary" => "Node: approved",
+      "timestamp" => approved_ts.iso8601(6)
+    }
+  ]
+
+  File.open(run_events_path, "a") do |file|
+    updates.each_with_index do |data, index|
+      file.puts(JSON.dump({
+        "ts" => data["timestamp"],
+        "seq" => seq + index + 1,
+        "kind" => "status_update",
+        "data" => data
+      }))
+    end
+  end
+' "$TRACTOR_DATA_DIR/runs/$status_on_run"
 
 ab_wait_event fn "document.querySelector('.run-summary-card .status-pill')?.textContent?.includes('completed')"
 ab_wait_event fn "document.querySelectorAll('.status-feed-row').length >= 2"

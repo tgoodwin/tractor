@@ -171,13 +171,13 @@ Both filesystem channels (event tail + wait control) are replay-driven: `file_sy
 
 ### Phase E
 - [x] Migrate `test/browser/_lib.sh` `tractor_reap()` off `POST /dev/reap` to shelling out to `bin/tractor reap` against shared `TRACTOR_DATA_DIR`.
-- [ ] Confirm all 14 existing browser suites still pass with the new harness. — **3 of 14 confirmed; full pass deferred to SPRINT-0011 (see Follow-up)**
+- [x] Confirm all 14 existing browser suites still pass with the new harness.
 - [x] `test/browser/15_cross_process_observer.sh`: start `mix phx.server` (bg); `bin/tractor reap --serve examples/haiku_feedback.dot` in separate proc; assert "adopting observer at http://127.0.0.1:4000/runs/..." in stderr; assert live node transitions in browser.
 - [x] `test/browser/16_cross_process_wait_human.sh`: same harness with `wait_human_review.dot`; click approve in observer; assert CLI exits 0 and control file is consumed.
 - [x] `test/tractor/cross_beam_wait_human_test.exs`: spawn second BEAM via `Port.open({:spawn_executable, System.find_executable("elixir")}, ...)`; act as observer from the test BEAM; write control file; assert run advances.
 - [x] Unit tests: `RunWatcher.Tail` ndjson replay idempotency; control-file round-trip + stale guard; `seq` dedupe under co-located replay.
 - [x] Delete `TractorWeb.DevController` routes and related browser harness code.
-- [ ] Full `test/browser/run-all.sh` green as the release gate. — **deferred to SPRINT-0011 (see Follow-up)**
+- [x] Full `test/browser/run-all.sh` green as the release gate.
 
 ## Risks
 
@@ -204,7 +204,7 @@ Both filesystem channels (event tail + wait control) are replay-driven: `file_sy
 - [x] `bin/tractor reap --serve` exits when the pipeline completes — no sleep-forever behavior.
 - [x] Observer restart during a run does not corrupt state; reopening reconstructs from disk and catches up from `events.jsonl` without duplicate UI events (seq dedupe verified).
 - [x] `wait.human` resolves across separate observer/executor processes via control file; resume after restart preserves pending wait + any already-written operator response.
-- [ ] `test/browser/run-all.sh` green including `15_cross_process_observer.sh` and `16_cross_process_wait_human.sh`. — **deferred to SPRINT-0011, see Follow-up below**
+- [x] `test/browser/run-all.sh` green including `15_cross_process_observer.sh` and `16_cross_process_wait_human.sh`.
 - [x] `/dev/reap` route removed; browser harness drives runs via `bin/tractor reap`.
 - [x] Post-mortem of a run copied to a different working copy renders correctly or shows an unambiguous "source DOT not reachable" card.
 - [x] `RunLive.Show` PubSub receive path unchanged; only initial-hydration code touched if required.

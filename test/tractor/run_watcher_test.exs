@@ -82,22 +82,87 @@ defmodule Tractor.RunWatcherTest do
     refute_receive {:run_event, "ask", %{"seq" => 1}}, 250
   end
 
+  @tag :tmp_dir
+  test "RunWatcher keeps tail alive across manifest transition and relays final events", %{
+    tmp_dir: tmp_dir
+  } do
+    run_id = "manifest-transition-run"
+    run_dir = write_running_manifest(tmp_dir, run_id)
+
+    append_event(run_dir, "review_gate", %{
+      "ts" => "2026-04-22T11:59:00Z",
+      "seq" => 1,
+      "kind" => "wait_human_pending",
+      "data" => %{"choices" => ["approve", "reject"]}
+    })
+
+    append_event(run_dir, "_run", %{
+      "ts" => "2026-04-22T11:59:01Z",
+      "seq" => 1,
+      "kind" => "run_started",
+      "data" => %{}
+    })
+
+    watcher_pid = start_supervised!({RunWatcher, runs_dir: tmp_dir})
+
+    RunBus.reset_run(run_id)
+    :ok = RunBus.subscribe(run_id)
+
+    tail_pid = wait_for_tail(run_id)
+    tail_ref = Process.monitor(tail_pid)
+
+    write_manifest_status(run_dir, run_id, "completed")
+
+    append_event(run_dir, "review_gate", %{
+      "ts" => "2026-04-22T12:00:00Z",
+      "seq" => 2,
+      "kind" => "wait_human_resolved",
+      "data" => %{"choice" => "approve"}
+    })
+
+    append_event(run_dir, "_run", %{
+      "ts" => "2026-04-22T12:00:01Z",
+      "seq" => 2,
+      "kind" => "run_completed",
+      "data" => %{"status" => "ok"}
+    })
+
+    send(watcher_pid, :rescan_runs)
+    assert Process.alive?(tail_pid)
+    send(tail_pid, :rescan)
+
+    assert_receive {:run_event, "review_gate", %{"kind" => "wait_human_resolved", "seq" => 2}},
+                   1_000
+
+    assert_receive {:run_event, "_run", %{"kind" => "run_completed", "seq" => 2}}, 1_000
+
+    refute_receive {:DOWN, ^tail_ref, :process, ^tail_pid, _reason}, 250
+
+    Process.sleep(550)
+    send(tail_pid, :rescan)
+    assert_receive {:DOWN, ^tail_ref, :process, ^tail_pid, _reason}, 1_000
+  end
+
   defp write_running_manifest(runs_dir, run_id) do
     run_dir = Path.join(runs_dir, run_id)
     File.mkdir_p!(run_dir)
 
+    write_manifest_status(run_dir, run_id, "running")
+
+    run_dir
+  end
+
+  defp write_manifest_status(run_dir, run_id, status) do
     File.write!(
       Path.join(run_dir, "manifest.json"),
       Jason.encode!(%{
         "run_id" => run_id,
-        "status" => "running",
+        "status" => status,
         "pipeline_path" => Path.expand("examples/wait_human_review.dot"),
         "dot_path" => Path.expand("examples/wait_human_review.dot"),
         "dot_path_input" => "examples/wait_human_review.dot"
       })
     )
-
-    run_dir
   end
 
   defp wait_for_tail(run_id) do

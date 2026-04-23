@@ -7,6 +7,7 @@ defmodule Tractor.RunWatcher.Tail do
 
   @flush_ms 200
   @rescan_ms 1_000
+  @quiescence_ms 500
   @terminal_kinds ~w(run_completed run_failed run_interrupted)
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
@@ -37,10 +38,19 @@ defmodule Tractor.RunWatcher.Tail do
       watcher: start_fs_watcher(run_dir),
       nodes: %{},
       flush_ref: nil,
-      terminal_sent?: false
+      terminal_event_seen?: false,
+      manifest_terminal?: false,
+      terminal_sent?: false,
+      last_activity_ms: System.monotonic_time(:millisecond)
     }
 
-    {:ok, state |> discover_nodes() |> replay_nodes() |> schedule_rescan()}
+    {:ok,
+     state
+     |> discover_nodes()
+     |> replay_nodes()
+     |> refresh_manifest_status()
+     |> maybe_notify_terminal()
+     |> schedule_rescan()}
   end
 
   @impl true
@@ -49,18 +59,25 @@ defmodule Tractor.RunWatcher.Tail do
       state
       |> discover_nodes()
       |> replay_nodes()
+      |> refresh_manifest_status()
       |> flush_offsets()
+      |> maybe_notify_terminal()
       |> schedule_rescan()
 
     {:noreply, state}
   end
 
   def handle_info(:flush_offsets, state) do
-    {:noreply, %{flush_offsets(state) | flush_ref: nil}}
+    {:noreply, state |> flush_offsets() |> Map.put(:flush_ref, nil) |> maybe_notify_terminal()}
   end
 
   def handle_info({:file_event, watcher, _event}, %{watcher: watcher} = state) do
-    {:noreply, state |> discover_nodes() |> replay_nodes()}
+    {:noreply,
+     state
+     |> discover_nodes()
+     |> replay_nodes()
+     |> refresh_manifest_status()
+     |> maybe_notify_terminal()}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -115,26 +132,24 @@ defmodule Tractor.RunWatcher.Tail do
         chunk = merge_buffer(node_state.buffer, raw)
         {complete, remainder} = split_complete_lines(chunk)
         {last_seq, terminal_sent?} = emit_events(state, node_id, complete, node_state.last_seq)
+        activity? = size != node_state.file_size
 
         node_state = %{
           node_state
           | offset: offset + byte_size(complete),
             buffer: remainder,
             last_seq: last_seq,
-            dirty?: node_state.dirty? or byte_size(complete) > 0
+            dirty?: node_state.dirty? or byte_size(complete) > 0,
+            file_size: size
         }
 
         state =
           state
           |> put_in([Access.key(:nodes), node_id], node_state)
+          |> maybe_mark_activity(activity?)
           |> maybe_schedule_flush(node_state.dirty?)
 
-        if terminal_sent? and not state.terminal_sent? do
-          send(state.notify, {:run_watcher_terminal, state.run_id})
-          %{state | terminal_sent?: true}
-        else
-          state
-        end
+        maybe_mark_terminal_seen(state, terminal_sent?)
 
       {:error, :enoent} ->
         state
@@ -210,7 +225,14 @@ defmodule Tractor.RunWatcher.Tail do
   end
 
   defp schedule_rescan(state) do
-    Process.send_after(self(), :rescan, @rescan_ms)
+    delay =
+      if terminal_candidate?(state) do
+        min(@rescan_ms, @quiescence_ms)
+      else
+        @rescan_ms
+      end
+
+    Process.send_after(self(), :rescan, delay)
     state
   end
 
@@ -223,8 +245,61 @@ defmodule Tractor.RunWatcher.Tail do
       offset: offset,
       buffer: "",
       last_seq: last_seq(node_dir),
-      dirty?: false
+      dirty?: false,
+      file_size: file_size
     }
+  end
+
+  defp maybe_mark_activity(state, false), do: state
+
+  defp maybe_mark_activity(state, true) do
+    %{state | last_activity_ms: System.monotonic_time(:millisecond)}
+  end
+
+  defp maybe_mark_terminal_seen(state, false), do: state
+
+  defp maybe_mark_terminal_seen(state, true) do
+    %{state | terminal_event_seen?: true}
+  end
+
+  defp refresh_manifest_status(state) do
+    %{state | manifest_terminal?: manifest_terminal?(state.run_dir)}
+  end
+
+  defp manifest_terminal?(run_dir) do
+    manifest_path = Path.join(run_dir, "manifest.json")
+
+    with true <- File.regular?(manifest_path),
+         {:ok, raw} <- File.read(manifest_path),
+         {:ok, manifest} <- Jason.decode(raw),
+         status when is_binary(status) <- manifest["status"] do
+      status != "running"
+    else
+      _other -> false
+    end
+  end
+
+  defp maybe_notify_terminal(%{terminal_sent?: true} = state), do: state
+
+  defp maybe_notify_terminal(state) do
+    now = System.monotonic_time(:millisecond)
+
+    if terminal_candidate?(state) and drained?(state) and
+         now - state.last_activity_ms >= @quiescence_ms do
+      send(state.notify, {:run_watcher_terminal, state.run_id})
+      %{state | terminal_sent?: true}
+    else
+      state
+    end
+  end
+
+  defp terminal_candidate?(state), do: state.terminal_event_seen? or state.manifest_terminal?
+
+  defp drained?(state) do
+    Enum.all?(state.nodes, fn {node_id, node_state} ->
+      size = file_size(events_path(state.run_dir, node_id))
+      normalize_offset(node_state.offset, size) >= size and node_state.buffer == ""
+    end)
   end
 
   defp offset_path(run_dir, node_id), do: Path.join([run_dir, node_id, ".watcher-offset"])

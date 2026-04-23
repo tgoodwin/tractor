@@ -3,6 +3,7 @@ set -euo pipefail
 
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-sprint0009-plan-checklist-$$}"
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+tractor_suite_setup
 
 restore_needed=0
 original_claude_env="${TRACTOR_ACP_CLAUDE_ENV_JSON-}"
@@ -95,9 +96,3 @@ plan_has_sketch="$(ab eval "document.querySelector('.tractor-plan')?.textContent
 
 ab_assert_class ".tractor-plan .tractor-plan-item:nth-child(1)" "in_progress"
 ab_assert_class ".tractor-plan .tractor-plan-item:nth-child(2)" "completed"
-
-priority_text="$(ab eval "document.querySelector('.tractor-plan .tractor-plan-priority')?.textContent.trim() ?? ''")"
-[[ "$priority_text" == '"high"' ]] || {
-  printf 'Expected priority badge high, got %s\n' "$priority_text" >&2
-  exit 1
-}

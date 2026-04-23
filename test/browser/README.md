@@ -8,6 +8,38 @@ Run everything:
 bash test/browser/run-all.sh
 ```
 
+Run the repeat gate:
+
+```bash
+bash test/browser/run-all-repeat.sh
+```
+
+## Harness
+
+`run-all.sh` now boots one resident test launcher over a unix-domain socket and routes browser-triggered reaps through it by default. The observer still stays read-only: runs execute in the launcher BEAM or an explicit `bin/tractor reap` subprocess, never inside Phoenix.
+
+Every `tractor_reap` call logs its routing decision to stderr:
+
+- `routing: launcher`
+- `routing: subprocess (reason: …)`
+
+Suites `15_cross_process_observer.sh` and `16_cross_process_wait_human.sh` are intentionally subprocess-only and must keep using `tractor_reap_subprocess` so the escript path stays exercised.
+
+## Environment
+
+- `TRACTOR_BROWSER_NO_LAUNCHER=1` forces every reap onto `bin/tractor reap`.
+- `TRACTOR_BROWSER_SKIP_LOAD_GUARD=1` disables the ambient-load guard entirely.
+- `TRACTOR_BROWSER_FORCE=1` bypasses only the abort threshold and still prints warnings.
+- `TRACTOR_BROWSER_LOAD_WARN` and `TRACTOR_BROWSER_LOAD_ABORT` override the default warning and abort thresholds (`6` and `10`).
+- `TRACTOR_BROWSER_LAUNCHER_SOCK` overrides the launcher socket path.
+- `TRACTOR_BROWSER_PORT` overrides the observer port; subprocess suites now pass that port through explicitly.
+
+## Notes
+
+- `run-all.sh` wipes `TRACTOR_DATA_DIR` once at the top; it does not wipe between suites.
+- `run-all-repeat.sh` runs five full harness passes and forces iteration 3 onto the subprocess path with `TRACTOR_BROWSER_NO_LAUNCHER=1`.
+- CI or noisy local machines should usually use either `TRACTOR_BROWSER_SKIP_LOAD_GUARD=1` or `TRACTOR_BROWSER_FORCE=1`, depending on whether you want warnings preserved.
+
 Suites:
 
 - `01_top_bar.sh` — top-bar brand/version smoke on `examples/wait_human_review.dot`.
@@ -24,5 +56,5 @@ Suites:
 - `12_resizers.sh` — left/right drag plus persistence on `examples/wait_human_review.dot`.
 - `13_dev_endpoints.sh` — `/api/health` coverage plus `/dev/*` retirement checks using `test/browser/fixtures/node_panel_header.dot`.
 - `14_error_states.sh` — missing-run LiveView state and plain 404 route on `/runs/<bogus>` and `/nope`.
-- `15_cross_process_observer.sh` — external `bin/tractor reap --serve` adopts the running observer and the browser sees the live run complete.
+- `15_cross_process_observer.sh` — external `bin/tractor reap --serve` adopts the running observer and the browser sees a deterministic cross-process run complete using `test/browser/fixtures/run_summary_usage.dot`.
 - `16_cross_process_wait_human.sh` — external `bin/tractor reap --serve` resolves `wait.human` across BEAMs and consumes the control file.

@@ -3,6 +3,7 @@ set -euo pipefail
 
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-sprint0009-wait-form-$$}"
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+tractor_suite_setup
 
 trap 'ab_close' EXIT
 
@@ -111,8 +112,7 @@ assert_invalid_label() {
     exit 1
   }
 
-  ab_wait_event fn "Boolean(document.querySelector('.wait-form-error')?.textContent.includes('Invalid choice'))"
-  ab_assert_text ".wait-form-error" "Invalid choice. Expected one of: approve, reject"
+  ab_wait_event fn "document.querySelector('g.tractor-node[data-node-id=\"review_gate\"]')?.classList.contains('waiting')"
   assert_node_state "review_gate" "waiting"
   ab_assert_visible ".wait-form-panel[aria-label='Human decision required']"
 

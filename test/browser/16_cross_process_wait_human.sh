@@ -2,8 +2,9 @@
 set -euo pipefail
 
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+tractor_suite_setup
 
-token="$(tractor_reap_serve "examples/wait_human_review.dot")"
+token="$(tractor_reap_subprocess "examples/wait_human_review.dot" --serve --no-open --port "$TRACTOR_BROWSER_PORT")"
 log_path="$(tractor_log_path "$token")"
 pid="$(tractor_pid "$token")"
 run_id="$(wait_for_run_id "$log_path" "$pid")"
@@ -11,7 +12,7 @@ run_id="$(wait_for_run_id "$log_path" "$pid")"
 wait_for_log_text "$log_path" "adopting observer at ${TRACTOR_BASE_URL}/runs/${run_id}" "$pid"
 
 curl -fsS "${TRACTOR_BASE_URL}/runs/${run_id}" >/dev/null
-sleep 1
+wait_for_file_exists "${TRACTOR_DATA_DIR}/runs/${run_id}/review_gate/attempt-1/wait.json" 100
 
 submit_cmd=("$(command -v elixir)")
 while IFS= read -r ebin; do

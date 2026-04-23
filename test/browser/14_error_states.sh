@@ -3,6 +3,7 @@ set -euo pipefail
 
 export TRACTOR_AB_SESSION="${TRACTOR_AB_SESSION:-sprint0009-error-states-$$}"
 source "$(cd "$(dirname "$0")" && pwd)/_lib.sh"
+tractor_suite_setup
 
 trap 'ab_close' EXIT
 
