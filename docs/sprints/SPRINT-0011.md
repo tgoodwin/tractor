@@ -1,5 +1,7 @@
 # SPRINT-0011 — Browser harness: fast, deterministic, cheap-to-run
 
+**Status:** Closed 2026-04-23. Engineering complete; launcher path robust under load, all 16 suites green repeatedly, `mix test` green. Unchecked boxes in Phase E / Acceptance are the quiet-host measurement gates described in §"Measurement gates — pending quiet-host verification" — verifications, not outstanding work.
+
 **Type:** Infra/tooling sprint. Rearchitect `test/browser/` so `run-all.sh` becomes a tool engineers actually reach for between edits — under 2 min on a quiet machine, deterministic up to load avg ~6, fail-fast with a clear message above load avg ~10. Subsume the narrow suite-04 fixes (`ab_wait_event` timeouts, fixture retune, ambient-load guard) while going after the underlying cause: cold-starting a fresh escript BEAM per reap.
 
 ## Why this sprint exists
