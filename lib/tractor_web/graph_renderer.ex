@@ -56,6 +56,7 @@ defmodule TractorWeb.GraphRenderer do
 
   defp pipeline_dot(pipeline) do
     back_edges = back_edge_set(pipeline)
+    back_edge_sources = MapSet.new(back_edges, &elem(&1, 0))
 
     nodes =
       pipeline.nodes
@@ -74,14 +75,21 @@ defmodule TractorWeb.GraphRenderer do
       |> Enum.map_join("\n", fn edge ->
         is_back = MapSet.member?(back_edges, {edge.from, edge.to})
 
+        # When a node has an outbound back-edge, mirror the inbound forward
+        # edge and the outbound back-edge across the node's vertical midline:
+        # forward in at NW, back out at NE. Looks balanced; keeps the back-edge
+        # off the central column where forward arrows live.
+        is_forward_into_back_source =
+          not is_back and MapSet.member?(back_edge_sources, edge.to)
+
         attrs =
           edge.attrs
           |> maybe_put("condition", edge.condition)
           |> maybe_put("label", edge.label)
           |> maybe_put("weight", edge.weight)
           |> maybe_put("constraint", is_back && "false")
-          |> maybe_put("tailport", is_back && "e")
-          |> maybe_put("headport", is_back && "e")
+          |> maybe_put("tailport", is_back && "ne")
+          |> maybe_put("headport", is_forward_into_back_source && "nw")
           |> dot_attrs()
 
         "  #{quote_id(edge.from)} -> #{quote_id(edge.to)} [#{attrs}]"

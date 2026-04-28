@@ -1069,15 +1069,21 @@ summary {
   fill: var(--state-success);
 }
 
-.graph-svg svg g.tractor-edge-reject path,
-.graph-svg svg g.tractor-edge-back path {
+.graph-svg svg g.tractor-edge-reject path {
   stroke: var(--tone-stderr);
 }
 
-.graph-svg svg g.tractor-edge-reject polygon,
-.graph-svg svg g.tractor-edge-back polygon {
+.graph-svg svg g.tractor-edge-reject polygon {
   stroke: var(--tone-stderr);
   fill: var(--tone-stderr);
+}
+
+/* Back-edges keep the default edge color and a solid stroke. Layout (the
+   curved loop) comes from DOT-side tailport/headport hints in graph_renderer;
+   styling stays uniform with forward edges. */
+.graph-svg svg g.tractor-edge-back path,
+.graph-svg svg g.tractor-edge-back polygon {
+  stroke-dasharray: none;
 }
 
 .graph-svg svg g.tractor-edge.is-taken path,
