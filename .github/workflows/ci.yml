@@ -31,3 +31,9 @@ jobs:
       - run: mix format --check-formatted
       - run: mix credo --strict
       - run: mix test --exclude integration
+      - run: mix escript.build
+      - name: Validate example pipelines
+        run: |
+          for dot in examples/*.dot; do
+            ./bin/tractor validate "$dot"
+          done

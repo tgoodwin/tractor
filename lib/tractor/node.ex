@@ -55,6 +55,21 @@ defmodule Tractor.Node do
     retry_jitter: true
   }
 
+  @shape_types %{
+    "Mdiamond" => "start",
+    "Msquare" => "exit",
+    "box" => "codergen",
+    "diamond" => "conditional",
+    "hexagon" => "wait.human",
+    "parallelogram" => "tool",
+    "component" => "parallel",
+    "tripleoctagon" => "parallel.fan_in"
+  }
+
+  @spec implied_type_from_shape(String.t() | nil) :: String.t() | nil
+  def implied_type_from_shape(shape) when is_binary(shape), do: Map.get(@shape_types, shape)
+  def implied_type_from_shape(_shape), do: nil
+
   @spec join_policy(t()) :: String.t()
   def join_policy(%__MODULE__{attrs: attrs}) do
     Map.get(attrs, "join_policy", "wait_all")

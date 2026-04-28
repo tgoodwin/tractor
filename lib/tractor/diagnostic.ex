@@ -9,6 +9,7 @@ defmodule Tractor.Diagnostic do
           node_id: String.t() | nil,
           edge: {String.t(), String.t()} | nil,
           path: String.t() | nil,
+          fix: String.t() | nil,
           severity: :error | :warning
         }
 
@@ -17,5 +18,6 @@ defmodule Tractor.Diagnostic do
             node_id: nil,
             edge: nil,
             path: nil,
+            fix: nil,
             severity: :error
 end

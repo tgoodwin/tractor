@@ -6,17 +6,6 @@ defmodule Tractor.DotParser do
   alias Tractor.{Diagnostic, Duration, Edge, Node, Pipeline}
   alias Tractor.Pipeline.ParallelBlock
 
-  @shape_types %{
-    "Mdiamond" => "start",
-    "Msquare" => "exit",
-    "box" => "codergen",
-    "diamond" => "conditional",
-    "hexagon" => "wait.human",
-    "parallelogram" => "tool",
-    "component" => "parallel",
-    "tripleoctagon" => "parallel.fan_in"
-  }
-
   @doc """
   Parses a DOT file into a normalized Tractor pipeline.
   """
@@ -67,7 +56,7 @@ defmodule Tractor.DotParser do
   defp normalize_node(%Dotx.Node{id: id, attrs: attrs}) do
     attrs = normalize_attrs(attrs)
     node_id = normalize_node_id(id)
-    type = Map.get(attrs, "type") || @shape_types[attrs["shape"]]
+    type = Map.get(attrs, "type") || Node.implied_type_from_shape(attrs["shape"])
 
     with {:ok, timeout} <- parse_timeout(attrs["timeout"], node_id) do
       {:ok,

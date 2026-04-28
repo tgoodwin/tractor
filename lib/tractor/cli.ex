@@ -15,10 +15,10 @@ defmodule Tractor.CLI do
 
   # credo:disable-for-this-file Credo.Check.Refactor.Nesting
 
-  alias Tractor.{DotParser, Run, Validator}
+  alias Tractor.{Diagnostic.Formatter, Run, Validator}
 
   @probe_timeout_ms 500
-  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n"
+  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor validate PATH\n"
 
   @spec main([String.t()]) :: no_return()
   def main(args) do
@@ -72,23 +72,29 @@ defmodule Tractor.CLI do
          path = Path.expand(path_input),
          :ok <- ensure_file(path),
          :ok <- progress("parse: #{path}"),
-         {:ok, pipeline} <- DotParser.parse_file(path),
+         {:ok, pipeline, diagnostics} <- Validator.validate_path(path),
          :ok <-
            progress(
              "parse: ok (#{map_size(pipeline.nodes)} nodes, #{length(pipeline.edges)} edges)"
            ),
-         :ok <- Validator.validate(pipeline),
-         :ok <- progress("validate: ok"),
+         :ok <- maybe_progress_validation(diagnostics),
          {:ok, timeout} <- timeout_ms(opts[:timeout]) do
       opts = Keyword.put(opts, :dot_path_input, path_input)
+      validation_output = format_diagnostics(diagnostics)
 
       if opts[:serve] do
         case TractorWeb.GraphRenderer.probe_dot() do
-          :ok -> {:serve, fn -> serve_reap(pipeline, opts, timeout) end}
+          :ok ->
+            unless validation_output == "" do
+              IO.write(:stderr, validation_output)
+            end
+
+            {:serve, fn -> serve_reap(pipeline, opts, timeout) end}
+
           {:error, message} -> {2, "", message <> "\n"}
         end
       else
-        run_once(pipeline, opts, timeout)
+        run_once(pipeline, opts, timeout, validation_output)
       end
     else
       {:usage, message} -> {2, "", message}
@@ -104,14 +110,10 @@ defmodule Tractor.CLI do
     path = Path.expand(path_input)
 
     with :ok <- ensure_file(path),
-         {:ok, pipeline} <- DotParser.parse_file(path),
-         warnings <- Validator.warnings(pipeline),
-         :ok <- Validator.validate(pipeline) do
-      warning_text = format_diagnostics(warnings)
-      {0, "validate: ok\n", warning_text}
+         result <- Validator.validate_path(path) do
+      validate_result(result)
     else
       {:missing_file, path} -> {3, "", "DOT file not found: #{path}\n"}
-      {:error, diagnostics} when is_list(diagnostics) -> {10, "", format_diagnostics(diagnostics)}
       {:error, reason} -> {20, "", "validation failure: #{inspect(reason)}\n"}
     end
   end
@@ -190,13 +192,14 @@ defmodule Tractor.CLI do
     |> maybe_put(:dot_path_input, opts[:dot_path_input])
   end
 
-  defp run_once(pipeline, opts, timeout) do
+  defp run_once(pipeline, opts, timeout, validation_output) do
     with {:ok, run_id} <- Run.start(pipeline, run_opts(opts)),
          :ok <- progress("run: #{run_id}"),
          {:ok, result} <- Run.await(run_id, timeout) do
-      {0, result.run_dir <> "\n", ""}
+      {0, result.run_dir <> "\n", validation_output}
     else
-      {:error, reason} -> {20, "", "agent runtime failure: #{inspect(reason)}\n"}
+      {:error, reason} ->
+        {20, "", validation_output <> "agent runtime failure: #{inspect(reason)}\n"}
     end
   end
 
@@ -438,10 +441,37 @@ defmodule Tractor.CLI do
     end
   end
 
+  defp validate_result({:ok, _pipeline, []}), do: {0, "No issues found.\n", ""}
+
+  defp validate_result({:ok, _pipeline, diagnostics}) do
+    {if(has_errors?(diagnostics), do: 10, else: 0), render_validate_output(diagnostics), ""}
+  end
+
+  defp validate_result({:error, diagnostics}) when is_list(diagnostics) do
+    {10, render_validate_output(diagnostics), ""}
+  end
+
+  defp maybe_progress_validation(diagnostics) do
+    if has_errors?(diagnostics) do
+      {:error, diagnostics}
+    else
+      progress("validate: ok")
+    end
+  end
+
+  defp render_validate_output(diagnostics) do
+    format_diagnostics(diagnostics) <> diagnostic_summary(diagnostics)
+  end
+
+  defp diagnostic_summary(diagnostics) do
+    error_count = Enum.count(diagnostics, &(&1.severity == :error))
+    warning_count = Enum.count(diagnostics, &(&1.severity == :warning))
+    "#{length(diagnostics)} diagnostic(s): #{error_count} error(s), #{warning_count} warning(s)\n"
+  end
+
+  defp has_errors?(diagnostics), do: Enum.any?(diagnostics, &(&1.severity == :error))
+
   defp format_diagnostics(diagnostics) do
-    Enum.map_join(diagnostics, "", fn diagnostic ->
-      prefix = if diagnostic.severity == :warning, do: "warning ", else: ""
-      "#{prefix}#{diagnostic.code}: #{diagnostic.message}\n"
-    end)
+    Formatter.format(diagnostics)
   end
 end

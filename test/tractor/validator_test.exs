@@ -1,7 +1,7 @@
 defmodule Tractor.ValidatorTest do
   use ExUnit.Case, async: true
 
-  alias Tractor.{Edge, Node, Pipeline, Validator}
+  alias Tractor.{DotParser, Edge, Node, Pipeline, Validator}
   alias Tractor.Pipeline.ParallelBlock
 
   test "accepts a linear start to codergen to exit pipeline" do
@@ -379,9 +379,7 @@ defmodule Tractor.ValidatorTest do
           {%{"max_wall_clock" => "foo"}, :invalid_budget},
           {%{"max_wall_clock" => "48h"}, :invalid_budget},
           {%{"status_agent" => "gpt4"}, :invalid_status_agent},
-          {%{"status_agent_prompt" => "custom"}, :unsupported_attr},
-          {%{"max_retries" => "3"}, :unsupported_attr},
-          {%{"default_max_retries" => "3"}, :unsupported_attr}
+          {%{"status_agent_prompt" => "custom"}, :unsupported_attr}
         ] do
       assert_codes(
         pipeline(graph_attrs: attrs, nodes: base_nodes, edges: base_edges),
@@ -439,6 +437,22 @@ defmodule Tractor.ValidatorTest do
                  edges: base_edges
                )
              )
+
+    assert_warning_diagnostic(
+      pipeline(graph_attrs: %{"max_retries" => "3"}, nodes: base_nodes, edges: base_edges),
+      :deprecated_attr,
+      "max_retries is deprecated"
+    )
+
+    assert_warning_diagnostic(
+      pipeline(
+        graph_attrs: %{"default_max_retries" => "3"},
+        nodes: base_nodes,
+        edges: base_edges
+      ),
+      :deprecated_attr,
+      "default_max_retries is deprecated"
+    )
   end
 
   test "rejects undirected and strict graphs" do
@@ -464,7 +478,6 @@ defmodule Tractor.ValidatorTest do
     base_edges = [edge("start", "ask"), edge("ask", "exit"), edge("recover", "exit")]
 
     for attrs <- [
-          %{"retry_target" => "missing"},
           %{"retry_target" => "ask"},
           %{"retry_target" => "start"},
           %{"retry_target" => "exit"},
@@ -585,6 +598,206 @@ defmodule Tractor.ValidatorTest do
     )
   end
 
+  test "warns for type and shape mismatch when shape survives lowering attrs" do
+    pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "tool",
+            llm_provider: nil,
+            attrs: %{"type" => "tool", "shape" => "box", "command" => ["echo"]}
+          ),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "ask"), edge("ask", "exit")]
+      )
+
+    assert pipeline.nodes["ask"].attrs["shape"] == "box"
+
+    assert_warning_diagnostic(
+      pipeline,
+      :type_shape_mismatch,
+      "shape 'box' implies type 'codergen'"
+    )
+  end
+
+  test "warns for command on non-tool nodes and prompt on tool nodes" do
+    assert_warning_diagnostic(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen",
+            llm_provider: "codex",
+            attrs: %{"command" => ["echo", "hi"]}
+          ),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "ask"), edge("ask", "exit")]
+      ),
+      :tool_command_on_non_tool,
+      "has command but resolved type is 'codergen'"
+    )
+
+    assert_warning_diagnostic(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("tool", "tool", attrs: %{"command" => ["echo"], "prompt" => "hi"}),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "tool"), edge("tool", "exit")]
+      ),
+      :prompt_on_tool_node,
+      "tool node but has a prompt"
+    )
+  end
+
+  test "warns for goal_gate and llm attrs on non-agent nodes" do
+    assert_warning_diagnostic(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("tool", "tool", attrs: %{"command" => ["echo"], "goal_gate" => "true"}),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "tool"), edge("tool", "exit")]
+      ),
+      :goal_gate_on_non_agent,
+      "not an agent-capable node"
+    )
+
+    assert_warning_diagnostic(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("wait", "wait.human", llm_provider: "codex"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "wait"), edge("wait", "exit")]
+      ),
+      :agent_on_non_agent,
+      "LLM attrs are ignored"
+    )
+  end
+
+  test "warns for timeout on instant nodes and allow_partial without retries" do
+    assert_warning_diagnostic(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("route", "parallel", attrs: %{"timeout" => "5s"}),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "route"), edge("route", "exit")]
+      ),
+      :timeout_on_instant_node,
+      "parallel nodes execute instantly"
+    )
+
+    assert_warning_diagnostic(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("ask", "codergen",
+            llm_provider: "codex",
+            attrs: %{"allow_partial" => "true"}
+          ),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "ask"), edge("ask", "exit")]
+      ),
+      :allow_partial_without_retries,
+      "effective retries is 0"
+    )
+  end
+
+  test "warns for two-way edges and principle warnings on wait/tool nodes" do
+    pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("gate", "wait.human"),
+          node("tool", "tool", attrs: %{"command" => ["echo"]}),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "gate"),
+          edge("gate", "tool"),
+          edge("tool", "gate"),
+          edge("tool", "exit")
+        ]
+      )
+
+    assert_warning_diagnostic(pipeline, :two_way_edge, "have edges in both directions")
+    assert_warning_diagnostic(pipeline, :human_gate_warning, "pipelines should run autonomously")
+    assert_warning_diagnostic(pipeline, :tool_node_warning, "tool node running a shell command directly")
+  end
+
+  test "splits retry target existence warnings from illegal retry target errors" do
+    diagnostics =
+      diagnostics(
+        pipeline(
+          nodes: [
+            node("start", "start"),
+            node("ask", "codergen", llm_provider: "codex", attrs: %{"retry_target" => "missing"}),
+            node("self", "codergen", llm_provider: "codex", attrs: %{"retry_target" => "self"}),
+            node("terminal", "codergen",
+              llm_provider: "codex",
+              attrs: %{"retry_target" => "exit"}
+            ),
+            node("parallel_node", "codergen",
+              llm_provider: "codex",
+              attrs: %{"retry_target" => "branch"}
+            ),
+            node("branch", "codergen", llm_provider: "codex"),
+            node("join", "parallel.fan_in"),
+            node("exit", "exit")
+          ],
+          edges: [
+            edge("start", "ask"),
+            edge("ask", "exit"),
+            edge("self", "exit"),
+            edge("terminal", "exit"),
+            edge("parallel_node", "exit"),
+            edge("branch", "join"),
+            edge("join", "exit")
+          ],
+          parallel_blocks: %{
+            "parallel" => %ParallelBlock{
+              parallel_node_id: "parallel",
+              branches: ["branch"],
+              fan_in_id: "join"
+            }
+          }
+        )
+      )
+
+    assert Enum.count(diagnostics, &(&1.code == :retry_target_exists and &1.severity == :warning)) == 1
+    assert Enum.count(diagnostics, &(&1.code == :invalid_retry_target and &1.severity == :error)) == 3
+  end
+
+  test "validate and warnings wrappers match diagnostics on example graphs" do
+    for path <- Path.wildcard(Path.expand("../../examples/*.dot", __DIR__)) do
+      assert {:ok, pipeline} = DotParser.parse_file(path)
+
+      diagnostics = Validator.diagnostics(pipeline)
+      warning_diagnostics = Enum.filter(diagnostics, &(&1.severity == :warning))
+      error_diagnostics = Enum.filter(diagnostics, &(&1.severity == :error))
+
+      assert Validator.warnings(pipeline) == warning_diagnostics
+
+      expected_validate =
+        case error_diagnostics do
+          [] -> :ok
+          errors -> {:error, errors}
+        end
+
+      assert Validator.validate(pipeline) == expected_validate
+    end
+  end
+
+  defp diagnostics(pipeline), do: Validator.diagnostics(pipeline)
+
   defp assert_codes(pipeline, expected_codes) do
     assert {:error, diagnostics} = Validator.validate(pipeline)
     assert expected_codes -- Enum.map(diagnostics, & &1.code) == []
@@ -593,6 +806,17 @@ defmodule Tractor.ValidatorTest do
   defp assert_warning_codes(pipeline, expected_codes) do
     warnings = Validator.warnings(pipeline)
     assert expected_codes -- Enum.map(warnings, & &1.code) == []
+  end
+
+  defp assert_warning_diagnostic(pipeline, code, message_fragment) do
+    assert %{
+             code: ^code,
+             severity: :warning,
+             message: message
+           } =
+             Enum.find(Validator.warnings(pipeline), &(&1.code == code))
+
+    assert String.contains?(message, message_fragment)
   end
 
   defp pipeline(opts) do

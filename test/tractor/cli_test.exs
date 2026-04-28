@@ -12,6 +12,118 @@ defmodule Tractor.CLITest do
   end
 
   @tag :tmp_dir
+  test "validate reports clean, warning-only, and error cases on stdout", %{tmp_dir: tmp_dir} do
+    clean = Path.join(tmp_dir, "clean.dot")
+
+    File.write!(clean, """
+    digraph {
+      start [shape=Mdiamond]
+      ask [shape=box, prompt="hello", llm_provider=codex]
+      exit [shape=Msquare]
+      start -> ask -> exit
+    }
+    """)
+
+    assert {0, "No issues found.\n", ""} = Tractor.CLI.run(["validate", clean])
+
+    warning = Path.join(tmp_dir, "warning.dot")
+
+    File.write!(warning, """
+    digraph {
+      start [shape=Mdiamond]
+      tool [shape=parallelogram, command=["sh","-c","printf ok"]]
+      exit [shape=Msquare]
+      start -> tool -> exit
+    }
+    """)
+
+    assert {0, stdout, ""} = Tractor.CLI.run(["validate", warning])
+    assert stdout =~ "WARNING [tool_node_warning] (node: tool)"
+    assert stdout =~ "1 diagnostic(s): 0 error(s), 1 warning(s)"
+
+    invalid = Path.join(tmp_dir, "invalid.dot")
+
+    File.write!(invalid, """
+    digraph {
+      start [shape=Mdiamond]
+      ask [shape=box, prompt="hello"]
+      exit [shape=Msquare]
+      start -> ask -> exit
+    }
+    """)
+
+    assert {10, stdout, ""} = Tractor.CLI.run(["validate", invalid])
+    assert stdout =~ "ERROR [missing_provider] (node: ask)"
+    assert stdout =~ "1 diagnostic(s): 1 error(s), 0 warning(s)"
+  end
+
+  @tag :tmp_dir
+  test "reap emits validation diagnostics on stderr and preserves runtime exits", %{tmp_dir: tmp_dir} do
+    invalid = Path.join(tmp_dir, "invalid.dot")
+
+    File.write!(invalid, """
+    digraph {
+      start [shape=Mdiamond]
+      ask [shape=box, prompt="hello"]
+      exit [shape=Msquare]
+      start -> ask -> exit
+    }
+    """)
+
+    assert {10, "", stderr} = Tractor.CLI.run(["reap", invalid])
+    assert stderr =~ "ERROR [missing_provider] (node: ask)"
+
+    warning = Path.join(tmp_dir, "warning.dot")
+
+    File.write!(warning, """
+    digraph {
+      start [shape=Mdiamond]
+      tool [shape=parallelogram, command=["sh","-c","printf ok"]]
+      exit [shape=Msquare]
+      start -> tool -> exit
+    }
+    """)
+
+    assert {0, stdout, stderr} = Tractor.CLI.run(["reap", warning, "--runs-dir", tmp_dir])
+    assert stdout =~ tmp_dir
+    assert stderr =~ "WARNING [tool_node_warning] (node: tool)"
+
+    runtime_failure = Path.join(tmp_dir, "runtime_failure.dot")
+
+    File.write!(runtime_failure, """
+    digraph {
+      start [shape=Mdiamond]
+      tool [shape=parallelogram, command=["sh","-c","exit 7"]]
+      exit [shape=Msquare]
+      start -> tool -> exit
+    }
+    """)
+
+    assert {20, "", stderr} = Tractor.CLI.run(["reap", runtime_failure, "--runs-dir", tmp_dir])
+    assert stderr =~ "WARNING [tool_node_warning] (node: tool)"
+    assert stderr =~ "agent runtime failure:"
+  end
+
+  @tag :tmp_dir
+  test "validate and reap share diagnostic body text for invalid graphs", %{tmp_dir: tmp_dir} do
+    invalid = Path.join(tmp_dir, "invalid.dot")
+
+    File.write!(invalid, """
+    digraph {
+      start [shape=Mdiamond]
+      ask [shape=box, prompt="hello"]
+      exit [shape=Msquare]
+      start -> ask -> exit
+    }
+    """)
+
+    assert {10, validate_stdout, ""} = Tractor.CLI.run(["validate", invalid])
+    assert {10, "", reap_stderr} = Tractor.CLI.run(["reap", invalid])
+
+    assert diagnostic_body(validate_stdout) == reap_stderr
+  end
+
+  @tag :tmp_dir
   test "escript exits 0 against fake ACP agent on PATH", %{tmp_dir: tmp_dir} do
     fake_bin = fake_agent_wrapper!(tmp_dir)
 
@@ -251,6 +363,15 @@ defmodule Tractor.CLITest do
     after
       timeout -> flunk("process did not exit")
     end
+  end
+
+  defp diagnostic_body(output) do
+    output
+    |> String.split("\n")
+    |> Enum.reject(&String.match?(&1, ~r/^\d+ diagnostic\(s\): /))
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join("\n")
+    |> Kernel.<>("\n")
   end
 
   defp start_mix_observer!(port_number, data_dir, runs_dir) do

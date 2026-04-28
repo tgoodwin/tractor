@@ -4,7 +4,7 @@ defmodule Tractor.Validator do
   """
 
   alias Decimal, as: D
-  alias Tractor.{Condition, Diagnostic, Duration, Edge, Node, Pipeline}
+  alias Tractor.{Condition, Diagnostic, DotParser, Duration, Edge, Node, Pipeline}
 
   @supported_providers ~w(claude codex gemini)
 
@@ -14,25 +14,49 @@ defmodule Tractor.Validator do
   @unsupported_graph_attrs ~w(model_stylesheet default-fidelity default_fidelity)
   @unsupported_attr_aliases ~w(max_retries default_max_retries status_agent_prompt)
 
+  @spec validate_path(Path.t()) ::
+          {:ok, Pipeline.t(), [Diagnostic.t()]} | {:error, [Diagnostic.t()]}
+  def validate_path(path) do
+    case DotParser.parse_file(path) do
+      {:ok, %Pipeline{} = pipeline} -> {:ok, pipeline, diagnostics(pipeline)}
+      {:error, diagnostics} when is_list(diagnostics) -> {:error, sort_diagnostics(diagnostics)}
+    end
+  end
+
+  @spec diagnostics(Pipeline.t()) :: [Diagnostic.t()]
+  def diagnostics(%Pipeline{} = pipeline) do
+    []
+    |> add_graph_shape_diagnostics(pipeline)
+    |> add_cardinality_diagnostics(pipeline)
+    |> add_endpoint_diagnostics(pipeline)
+    |> add_connectivity_diagnostics(pipeline)
+    |> add_cycle_diagnostics(pipeline)
+    |> add_node_diagnostics(pipeline)
+    |> add_budget_diagnostics(pipeline)
+    |> add_status_agent_diagnostics(pipeline)
+    |> add_parallel_diagnostics(pipeline)
+    |> add_condition_diagnostics(pipeline)
+    |> add_judge_diagnostics(pipeline)
+    |> add_condition_coverage_diagnostics(pipeline)
+    |> add_attr_diagnostics(pipeline)
+    |> add_retry_diagnostics(pipeline)
+    |> add_semantic_warning_diagnostics(pipeline)
+    |> add_principle_warning_diagnostics(pipeline)
+    |> add_retry_warning_diagnostics(pipeline)
+    |> add_goal_gate_warning_diagnostics(pipeline)
+    |> add_allow_partial_warning_diagnostics(pipeline)
+    |> add_wait_human_warning_diagnostics(pipeline)
+    |> add_implicit_iteration_cap_diagnostics(pipeline)
+    |> Enum.reverse()
+    |> sort_diagnostics()
+  end
+
   @spec validate(Pipeline.t()) :: :ok | {:error, [Diagnostic.t()]}
   def validate(%Pipeline{} = pipeline) do
     diagnostics =
-      []
-      |> add_graph_shape_diagnostics(pipeline)
-      |> add_cardinality_diagnostics(pipeline)
-      |> add_endpoint_diagnostics(pipeline)
-      |> add_connectivity_diagnostics(pipeline)
-      |> add_cycle_diagnostics(pipeline)
-      |> add_node_diagnostics(pipeline)
-      |> add_budget_diagnostics(pipeline)
-      |> add_status_agent_diagnostics(pipeline)
-      |> add_parallel_diagnostics(pipeline)
-      |> add_condition_diagnostics(pipeline)
-      |> add_judge_diagnostics(pipeline)
-      |> add_condition_coverage_diagnostics(pipeline)
-      |> add_attr_diagnostics(pipeline)
-      |> add_retry_diagnostics(pipeline)
-      |> Enum.reverse()
+      pipeline
+      |> diagnostics()
+      |> Enum.filter(&(&1.severity == :error))
 
     case diagnostics do
       [] -> :ok
@@ -42,13 +66,9 @@ defmodule Tractor.Validator do
 
   @spec warnings(Pipeline.t()) :: [Diagnostic.t()]
   def warnings(%Pipeline{} = pipeline) do
-    []
-    |> add_retry_warning_diagnostics(pipeline)
-    |> add_goal_gate_warning_diagnostics(pipeline)
-    |> add_allow_partial_warning_diagnostics(pipeline)
-    |> add_wait_human_warning_diagnostics(pipeline)
-    |> add_implicit_iteration_cap_diagnostics(pipeline)
-    |> Enum.reverse()
+    pipeline
+    |> diagnostics()
+    |> Enum.filter(&(&1.severity == :warning))
   end
 
   defp add_graph_shape_diagnostics(diagnostics, %Pipeline{} = pipeline) do
@@ -630,12 +650,7 @@ defmodule Tractor.Validator do
 
     diagnostics =
       Enum.reduce(@unsupported_attr_aliases, diagnostics, fn attr, diagnostics ->
-        maybe_add(
-          diagnostics,
-          Map.has_key?(graph_attrs, attr),
-          :unsupported_attr,
-          "unsupported attribute #{attr}"
-        )
+        add_attr_alias_diagnostic(diagnostics, graph_attrs, attr)
       end)
 
     Enum.reduce(edges, diagnostics, fn %Edge{from: from, to: to, attrs: attrs}, diagnostics ->
@@ -649,6 +664,37 @@ defmodule Tractor.Validator do
         )
       end)
     end)
+  end
+
+  defp add_attr_alias_diagnostic(diagnostics, graph_attrs, "max_retries") do
+    maybe_add(
+      diagnostics,
+      Map.has_key?(graph_attrs, "max_retries"),
+      :deprecated_attr,
+      "max_retries is deprecated; use retries",
+      severity: :warning,
+      fix: "Rename max_retries to retries."
+    )
+  end
+
+  defp add_attr_alias_diagnostic(diagnostics, graph_attrs, "default_max_retries") do
+    maybe_add(
+      diagnostics,
+      Map.has_key?(graph_attrs, "default_max_retries"),
+      :deprecated_attr,
+      "default_max_retries is deprecated; use retries",
+      severity: :warning,
+      fix: "Rename default_max_retries to retries."
+    )
+  end
+
+  defp add_attr_alias_diagnostic(diagnostics, graph_attrs, attr) do
+    maybe_add(
+      diagnostics,
+      Map.has_key?(graph_attrs, attr),
+      :unsupported_attr,
+      "unsupported attribute #{attr}"
+    )
   end
 
   defp add_retry_diagnostics(
@@ -989,6 +1035,123 @@ defmodule Tractor.Validator do
     end)
   end
 
+  defp add_semantic_warning_diagnostics(diagnostics, %Pipeline{} = pipeline) do
+    diagnostics
+    |> add_node_semantic_warning_diagnostics(pipeline)
+    |> add_two_way_edge_warning_diagnostics(pipeline)
+  end
+
+  defp add_node_semantic_warning_diagnostics(diagnostics, %Pipeline{nodes: nodes} = pipeline) do
+    Enum.reduce(nodes, diagnostics, fn {_node_id, %Node{id: node_id} = node}, diagnostics ->
+      implied_type = Node.implied_type_from_shape(node.attrs["shape"])
+      effective_retries = effective_retries(node, pipeline.graph_attrs)
+
+      diagnostics
+      |> maybe_add(
+        Map.has_key?(node.attrs, "type") and is_binary(implied_type) and node.type != implied_type,
+        :type_shape_mismatch,
+        "node '#{node_id}' has type='#{node.type}' but shape '#{node.attrs["shape"]}' implies type '#{implied_type}' - these disagree",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Make type and shape agree, or remove the explicit type."
+      )
+      |> maybe_add(
+        Map.has_key?(node.attrs, "command") and not tool?(node),
+        :tool_command_on_non_tool,
+        "node '#{node_id}' has command but resolved type is '#{node.type}', not 'tool'",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Move command to a tool node, or remove the command attribute."
+      )
+      |> maybe_add(
+        tool?(node) and Map.has_key?(node.attrs, "prompt"),
+        :prompt_on_tool_node,
+        "node '#{node_id}' is a tool node but has a prompt - tool nodes use command, not prompt",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Remove prompt from the tool node, or change the node type to codergen or judge."
+      )
+      |> maybe_add(
+        Node.goal_gate?(node) and not agent_capable?(node),
+        :goal_gate_on_non_agent,
+        "node '#{node_id}' has goal_gate=true but resolved type is '#{node.type}', not an agent-capable node",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Use goal_gate only on codergen or judge nodes, or remove goal_gate."
+      )
+      |> maybe_add(
+        llm_attrs_present?(node) and not agent_capable?(node),
+        :agent_on_non_agent,
+        "node '#{node_id}' has llm_provider or llm_model but resolved type is '#{node.type}' - LLM attrs are ignored on this node type",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Move llm_provider/llm_model to a codergen or judge node, or remove them."
+      )
+      |> maybe_add(
+        Map.has_key?(node.attrs, "timeout") and instant_only?(node),
+        :timeout_on_instant_node,
+        "node '#{node_id}' has timeout but resolved type is '#{node.type}' - #{node.type} nodes execute instantly",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Remove timeout from instant-routing nodes."
+      )
+      |> maybe_add(
+        Node.allow_partial?(node) and effective_retries == 0,
+        :allow_partial_without_retries,
+        "node '#{node_id}' has allow_partial=true but effective retries is 0 - allow_partial has no effect without retries",
+        node_id: node_id,
+        severity: :warning,
+        fix: "Set retries above 0, or remove allow_partial."
+      )
+    end)
+  end
+
+  defp add_two_way_edge_warning_diagnostics(diagnostics, %Pipeline{edges: edges}) do
+    edges
+    |> Enum.map(fn %Edge{from: from, to: to} -> Enum.sort([from, to]) end)
+    |> Enum.frequencies()
+    |> Enum.reduce(diagnostics, fn
+      {[from, to], count}, diagnostics when count > 1 ->
+        diagnostic(
+          diagnostics,
+          :two_way_edge,
+          "nodes '#{from}' and '#{to}' have edges in both directions",
+          edge: {from, to},
+          severity: :warning,
+          fix: "Two-way edges are a potential malformed loop; a node should not validate its own work."
+        )
+
+      _other, diagnostics ->
+        diagnostics
+    end)
+  end
+
+  defp add_principle_warning_diagnostics(diagnostics, %Pipeline{nodes: nodes}) do
+    Enum.reduce(nodes, diagnostics, fn
+      {_node_id, %Node{id: node_id} = node}, diagnostics ->
+        diagnostics
+        |> maybe_add(
+          wait_human?(node),
+          :human_gate_warning,
+          "node '#{node_id}' is a human gate - pipelines should run autonomously",
+          node_id: node_id,
+          severity: :warning,
+          fix: "Human gates should only be used for debugging during pipeline development; replace with an agent node for production use."
+        )
+        |> maybe_add(
+          tool?(node),
+          :tool_node_warning,
+          "node '#{node_id}' is a tool node running a shell command directly",
+          node_id: node_id,
+          severity: :warning,
+          fix: "Prefer an agent node; agents run commands and can diagnose and fix errors."
+        )
+
+      _other, diagnostics ->
+        diagnostics
+    end)
+  end
+
   defp conditional_back_edges(nodes, edges) do
     graph = :digraph.new()
 
@@ -1062,23 +1225,28 @@ defmodule Tractor.Validator do
          _node,
          node_id,
          nodes,
-         _attr,
+         attr,
          target_id,
          pipeline
        ) do
     target = Map.get(nodes, target_id)
     target_scope = parallel_scope(target_id, pipeline)
 
-    invalid? =
-      is_nil(target) or
-        target_id in ["start", "exit"] or
-        target_id == node_id or
-        not is_nil(target_scope) or
-        (target && target.type in ["start", "exit"])
-
-    maybe_add(
-      diagnostics,
-      invalid?,
+    diagnostics
+    |> maybe_add(
+      is_nil(target),
+      :retry_target_exists,
+      "node '#{node_id}' has #{attr} '#{target_id}' which does not exist",
+      node_id: node_id,
+      severity: :warning,
+      fix: "Point #{attr} at an existing non-terminal node."
+    )
+    |> maybe_add(
+      not is_nil(target) and
+        (target_id in ["start", "exit"] or
+           target_id == node_id or
+           not is_nil(target_scope) or
+           target.type in ["start", "exit"]),
       :invalid_retry_target,
       "retry targets must reference a non-terminal node outside parallel blocks",
       node_id: node_id
@@ -1152,6 +1320,28 @@ defmodule Tractor.Validator do
     end)
   end
 
+  defp effective_retries(node, graph_attrs) do
+    retry_config = Node.retry_config(node, graph_attrs)
+    Map.get(retry_config, :retries) || Map.get(retry_config, "retries") || 0
+  end
+
+  defp llm_attrs_present?(%Node{llm_provider: llm_provider, llm_model: llm_model}) do
+    is_binary(llm_provider) or is_binary(llm_model)
+  end
+
+  # Moab's "agent" warnings map to tractor node types that can invoke an LLM handler.
+  # parallel.fan_in is excluded because whether it invokes an LLM depends on runtime config,
+  # which is not statically knowable from the lowered pipeline alone.
+  defp agent_capable?(%Node{type: type}), do: type in ["codergen", "judge"]
+
+  defp instant_only?(%Node{type: type}), do: type in ["start", "exit", "conditional", "parallel"]
+
+  defp tool?(%Node{type: "tool"}), do: true
+  defp tool?(%Node{}), do: false
+
+  defp wait_human?(%Node{type: "wait.human"}), do: true
+  defp wait_human?(%Node{}), do: false
+
   defp parallel_scope(node_id, %Pipeline{parallel_blocks: parallel_blocks})
        when parallel_blocks != %{} do
     Enum.find_value(parallel_blocks, fn {parallel_id, block} ->
@@ -1176,9 +1366,27 @@ defmodule Tractor.Validator do
         message: message,
         node_id: Keyword.get(opts, :node_id),
         edge: Keyword.get(opts, :edge),
+        fix: Keyword.get(opts, :fix),
         severity: Keyword.get(opts, :severity, :error)
       }
       | diagnostics
     ]
   end
+
+  defp sort_diagnostics(diagnostics) do
+    Enum.sort_by(diagnostics, fn diagnostic ->
+      {severity_rank(diagnostic.severity), diagnostic.code,
+       diagnostic.node_id || edge_from(diagnostic.edge),
+       diagnostic.node_id || edge_to(diagnostic.edge)}
+    end)
+  end
+
+  defp severity_rank(:error), do: 0
+  defp severity_rank(:warning), do: 1
+
+  defp edge_from({from, _to}), do: from
+  defp edge_from(nil), do: nil
+
+  defp edge_to({_from, to}), do: to
+  defp edge_to(nil), do: nil
 end
