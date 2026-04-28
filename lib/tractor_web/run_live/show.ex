@@ -33,7 +33,11 @@ defmodule TractorWeb.RunLive.Show do
         wait_form_error: nil,
         load_error: nil,
         status_agent: "off",
-        status_feed_empty?: true
+        status_feed_empty?: true,
+        assistant_open?: false,
+        assistant_messages: [],
+        assistant_pending?: false,
+        assistant_error: nil
       )
       |> stream(:timeline, [])
       |> stream(:status_updates, [])
@@ -258,6 +262,85 @@ defmodule TractorWeb.RunLive.Show do
         {:noreply, socket}
     end
   end
+
+  def handle_event("toggle_assistant", _params, socket) do
+    {:noreply,
+     socket
+     |> update(:assistant_open?, &(!&1))
+     |> assign(:assistant_error, nil)}
+  end
+
+  def handle_event("clear_assistant", _params, socket) do
+    {:noreply,
+     assign(socket,
+       assistant_messages: [],
+       assistant_error: nil,
+       assistant_pending?: false
+     )}
+  end
+
+  def handle_event("submit_assistant", %{"question" => raw}, socket) do
+    question = String.trim(raw || "")
+
+    cond do
+      socket.assigns.assistant_pending? ->
+        {:noreply, socket}
+
+      question == "" ->
+        {:noreply, socket}
+
+      is_nil(socket.assigns[:run_dir]) ->
+        {:noreply,
+         assign(socket, :assistant_error, "Run is not loaded; cannot ask the assistant.")}
+
+      true ->
+        history = socket.assigns.assistant_messages
+        messages = history ++ [%{role: :user, content: question}]
+        run_dir = socket.assigns.run_dir
+
+        {:noreply,
+         socket
+         |> assign(
+           assistant_messages: messages,
+           assistant_pending?: true,
+           assistant_error: nil
+         )
+         |> Phoenix.LiveView.start_async(:assistant_answer, fn ->
+           Tractor.Assistant.ask(run_dir, question, history)
+         end)}
+    end
+  end
+
+  @impl true
+  def handle_async(:assistant_answer, {:ok, {:ok, reply}}, socket) do
+    {:noreply,
+     socket
+     |> update(:assistant_messages, &(&1 ++ [%{role: :assistant, content: reply}]))
+     |> assign(assistant_pending?: false, assistant_error: nil)}
+  end
+
+  def handle_async(:assistant_answer, {:ok, {:error, reason}}, socket) do
+    {:noreply,
+     assign(socket,
+       assistant_pending?: false,
+       assistant_error: format_assistant_error(reason)
+     )}
+  end
+
+  def handle_async(:assistant_answer, {:exit, reason}, socket) do
+    {:noreply,
+     assign(socket,
+       assistant_pending?: false,
+       assistant_error: "Assistant crashed: #{inspect(reason)}"
+     )}
+  end
+
+  defp format_assistant_error(:timeout), do: "Assistant timed out before responding."
+  defp format_assistant_error(:empty_response), do: "Assistant returned an empty response."
+  defp format_assistant_error({:missing_executable, exe}),
+    do: "Provider command not found: #{exe}. Is the ACP bridge installed?"
+
+  defp format_assistant_error(reason), do: "Assistant error: #{inspect(reason)}"
 
   defp select_node(socket, nil), do: socket
 

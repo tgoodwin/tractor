@@ -442,9 +442,145 @@ const LiveRunDuration = {
   }
 };
 
+const AssistantInput = {
+  mounted() {
+    this.form = this.el.closest("form");
+    this.onKey = this.onKey.bind(this);
+    this.onSubmit = this.onSubmit.bind(this);
+    this.el.addEventListener("keydown", this.onKey);
+    if (this.form) this.form.addEventListener("submit", this.onSubmit);
+    this.focusSoon();
+  },
+  destroyed() {
+    this.el.removeEventListener("keydown", this.onKey);
+    if (this.form) this.form.removeEventListener("submit", this.onSubmit);
+  },
+  updated() {
+    if (!this.el.disabled) this.focusSoon();
+  },
+  focusSoon() {
+    requestAnimationFrame(() => {
+      try { this.el.focus(); } catch (_) {}
+    });
+  },
+  onKey(event) {
+    if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      if (this.el.disabled) return;
+      if (!this.el.value.trim()) return;
+      if (this.form) this.form.requestSubmit();
+    }
+  },
+  onSubmit() {
+    // Clear immediately so the user sees their input commit; the server has
+    // the value via the form payload.
+    setTimeout(() => { this.el.value = ""; }, 0);
+  }
+};
+
+const AssistantScroll = {
+  mounted() { this.scrollToBottom(); },
+  updated() { this.scrollToBottom(); },
+  scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight;
+  }
+};
+
+const AssistantResize = {
+  WIDTH_KEY: "tractor-assistant-width",
+  HEIGHT_KEY: "tractor-assistant-height",
+  MIN_W: 320,
+  MIN_H: 240,
+
+  mounted() {
+    this.handles = this.el.querySelectorAll(".assistant-resize");
+    this.onDown = this.onDown.bind(this);
+    this.onMove = this.onMove.bind(this);
+    this.onUp = this.onUp.bind(this);
+    this.handles.forEach((h) => h.addEventListener("mousedown", this.onDown));
+    this.restoreSize();
+  },
+
+  destroyed() {
+    this.handles.forEach((h) => h.removeEventListener("mousedown", this.onDown));
+    document.removeEventListener("mousemove", this.onMove);
+    document.removeEventListener("mouseup", this.onUp);
+  },
+
+  restoreSize() {
+    try {
+      const w = parseInt(localStorage.getItem(this.WIDTH_KEY), 10);
+      const h = parseInt(localStorage.getItem(this.HEIGHT_KEY), 10);
+      const max = this.maxBounds();
+      if (Number.isFinite(w)) this.el.style.width = clamp(w, this.MIN_W, max.w) + "px";
+      if (Number.isFinite(h)) this.el.style.height = clamp(h, this.MIN_H, max.h) + "px";
+    } catch (_) {}
+  },
+
+  maxBounds() {
+    // Drawer is anchored inside .graph-surface; allow growing up to the pane
+    // minus the bottom offset (FAB clearance) and side margins.
+    const surface = this.el.parentElement;
+    const rect = surface.getBoundingClientRect();
+    return {
+      w: Math.max(this.MIN_W, rect.width - 32),
+      h: Math.max(this.MIN_H, rect.height - 80)
+    };
+  },
+
+  onDown(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.axis = event.currentTarget.dataset.axis; // "width" | "height" | "both"
+    this.startX = event.clientX;
+    this.startY = event.clientY;
+    const rect = this.el.getBoundingClientRect();
+    this.startW = rect.width;
+    this.startH = rect.height;
+    document.body.style.cursor =
+      this.axis === "width" ? "ew-resize" :
+      this.axis === "height" ? "ns-resize" : "nesw-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", this.onMove);
+    document.addEventListener("mouseup", this.onUp);
+  },
+
+  onMove(event) {
+    const max = this.maxBounds();
+    // Drawer is anchored bottom-right: dragging left grows width, dragging up grows height.
+    if (this.axis === "width" || this.axis === "both") {
+      const dx = this.startX - event.clientX;
+      const next = clamp(this.startW + dx, this.MIN_W, max.w);
+      this.el.style.width = next + "px";
+    }
+    if (this.axis === "height" || this.axis === "both") {
+      const dy = this.startY - event.clientY;
+      const next = clamp(this.startH + dy, this.MIN_H, max.h);
+      this.el.style.height = next + "px";
+      this.el.style.maxHeight = "none";
+    }
+  },
+
+  onUp() {
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    document.removeEventListener("mousemove", this.onMove);
+    document.removeEventListener("mouseup", this.onUp);
+    try {
+      const rect = this.el.getBoundingClientRect();
+      localStorage.setItem(this.WIDTH_KEY, String(Math.round(rect.width)));
+      localStorage.setItem(this.HEIGHT_KEY, String(Math.round(rect.height)));
+    } catch (_) {}
+  }
+};
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").content;
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { GraphBoard, LiveRunDuration, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
+  hooks: { AssistantInput, AssistantResize, AssistantScroll, GraphBoard, LiveRunDuration, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
   params: { _csrf_token: csrfToken }
 });
 

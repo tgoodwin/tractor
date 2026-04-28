@@ -96,6 +96,104 @@
     <div id="graph" class="graph-svg" phx-hook="GraphBoard" phx-update="ignore">
       {Phoenix.HTML.raw(@graph_svg)}
     </div>
+
+    <button
+      type="button"
+      class={"assistant-fab #{if @assistant_open?, do: "is-open", else: ""}"}
+      phx-click="toggle_assistant"
+      aria-expanded={if @assistant_open?, do: "true", else: "false"}
+      aria-controls="assistant-drawer"
+      aria-label={if @assistant_open?, do: "Close Tractor assistant", else: "Open Tractor assistant"}
+    >
+      <span class="assistant-fab-icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 11.5V4.5a1.5 1.5 0 0 1 1.5-1.5h7A1.5 1.5 0 0 1 13 4.5v5A1.5 1.5 0 0 1 11.5 11H6.5L3 14v-2.5z" />
+          <circle cx="6.2" cy="7" r="0.6" fill="currentColor" />
+          <circle cx="9.8" cy="7" r="0.6" fill="currentColor" />
+        </svg>
+      </span>
+      <span class="assistant-fab-label">{if @assistant_open?, do: "Close", else: "Ask Tractor"}</span>
+    </button>
+
+    <section
+      :if={@assistant_open?}
+      id="assistant-drawer"
+      class="assistant-drawer"
+      phx-hook="AssistantResize"
+      aria-label="Tractor assistant"
+    >
+      <div class="assistant-resize assistant-resize-top" data-axis="height" aria-hidden="true"></div>
+      <div class="assistant-resize assistant-resize-left" data-axis="width" aria-hidden="true"></div>
+      <div class="assistant-resize assistant-resize-corner" data-axis="both" aria-hidden="true"></div>
+
+      <header class="assistant-header">
+        <div>
+          <p class="eyebrow">Assistant</p>
+          <h2>Ask about this run</h2>
+        </div>
+        <div class="assistant-header-actions">
+          <button
+            :if={@assistant_messages != []}
+            type="button"
+            class="assistant-clear"
+            phx-click="clear_assistant"
+            aria-label="Clear conversation"
+          >Clear</button>
+          <button
+            type="button"
+            class="assistant-close"
+            phx-click="toggle_assistant"
+            aria-label="Close assistant"
+          >×</button>
+        </div>
+      </header>
+
+      <ol class="assistant-messages" id="assistant-messages" phx-hook="AssistantScroll">
+        <li :if={@assistant_messages == [] and !@assistant_pending?} class="assistant-empty">
+          <p>I have access to this run's event log. Ask things like:</p>
+          <ul>
+            <li>"Why did the judge reject?"</li>
+            <li>"Which node took the longest?"</li>
+            <li>"Summarize what happened in this run."</li>
+          </ul>
+        </li>
+        <li
+          :for={{msg, idx} <- Enum.with_index(@assistant_messages)}
+          class={"assistant-msg assistant-msg-#{msg.role}"}
+          id={"assistant-msg-#{idx}"}
+        >
+          <span class="assistant-msg-role">{if msg.role == :user, do: "You", else: "Tractor"}</span>
+          <div class="assistant-msg-body">
+            {if msg.role == :assistant, do: TractorWeb.Markdown.to_html(msg.content), else: msg.content}
+          </div>
+        </li>
+        <li :if={@assistant_pending?} class="assistant-msg assistant-msg-pending">
+          <span class="assistant-msg-role">Tractor</span>
+          <div class="assistant-msg-body">
+            <span class="assistant-thinking" aria-label="Thinking">
+              <span></span><span></span><span></span>
+            </span>
+          </div>
+        </li>
+        <li :if={@assistant_error} class="assistant-msg assistant-msg-error">
+          <span class="assistant-msg-role">Error</span>
+          <div class="assistant-msg-body">{@assistant_error}</div>
+        </li>
+      </ol>
+
+      <form class="assistant-form" phx-submit="submit_assistant">
+        <textarea
+          name="question"
+          id="assistant-input"
+          class="assistant-input"
+          placeholder="Ask about this run…"
+          rows="1"
+          disabled={@assistant_pending?}
+          phx-hook="AssistantInput"
+          autofocus
+        ></textarea>
+      </form>
+    </section>
   </section>
 
   <aside class="node-panel">
