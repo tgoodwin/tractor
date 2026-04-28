@@ -8,9 +8,11 @@ defmodule Tractor.AgentTest do
       "TRACTOR_ACP_GEMINI_COMMAND",
       "TRACTOR_ACP_GEMINI_ARGS",
       "TRACTOR_ACP_GEMINI_ENV_JSON",
+      "TRACTOR_ACP_GEMINI_MCP",
       "TRACTOR_ACP_CLAUDE_COMMAND",
       "TRACTOR_ACP_CLAUDE_ARGS",
       "TRACTOR_ACP_CLAUDE_ENV_JSON",
+      "TRACTOR_ACP_CLAUDE_MCP",
       "TRACTOR_ACP_CODEX_COMMAND",
       "TRACTOR_ACP_CODEX_ARGS",
       "TRACTOR_ACP_CODEX_ENV_JSON"
@@ -27,10 +29,39 @@ defmodule Tractor.AgentTest do
     end)
   end
 
+  @gemini_block "--allowed-mcp-server-names=__tractor_no_mcp__"
+
   test "provider adapters expose default ACP commands" do
-    assert Gemini.command([]) == {"gemini", ["--acp"], []}
+    assert Gemini.command([]) == {"gemini", ["--acp", @gemini_block], []}
     assert Claude.command([]) == {"npx", ["acp-claude-code"], [{"CLAUDECODE", false}]}
     assert Codex.command([]) == {"codex-acp", [], []}
+  end
+
+  test "Claude session_params suppresses on-disk MCP / settings by default" do
+    assert Claude.session_params([]) == %{
+             "_meta" => %{
+               "claudeCode" => %{
+                 "options" => %{
+                   "settingSources" => []
+                 }
+               }
+             }
+           }
+  end
+
+  test "TRACTOR_ACP_CLAUDE_MCP=true restores claude-code-acp's default settingSources" do
+    System.put_env("TRACTOR_ACP_CLAUDE_MCP", "true")
+    assert Claude.session_params([]) == %{}
+  end
+
+  test "TRACTOR_ACP_GEMINI_MCP=true drops the gemini MCP allowlist sentinel" do
+    System.put_env("TRACTOR_ACP_GEMINI_MCP", "true")
+    assert Gemini.command([]) == {"gemini", ["--acp"], []}
+  end
+
+  test "Gemini args containing --allowed-mcp-server-names are not double-appended" do
+    System.put_env("TRACTOR_ACP_GEMINI_ARGS", ~s(["--acp","--allowed-mcp-server-names=foo"]))
+    assert Gemini.command([]) == {"gemini", ["--acp", "--allowed-mcp-server-names=foo"], []}
   end
 
   test "Claude adapter unsets CLAUDECODE even with env overrides" do
@@ -47,6 +78,7 @@ defmodule Tractor.AgentTest do
     System.put_env("TRACTOR_ACP_GEMINI_ENV_JSON", ~s({"TOKEN":"secret","MODE":"test"}))
 
     assert Gemini.command([]) ==
-             {"gemini-dev", ["--experimental-acp"], [{"MODE", "test"}, {"TOKEN", "secret"}]}
+             {"gemini-dev", ["--experimental-acp", @gemini_block],
+              [{"MODE", "test"}, {"TOKEN", "secret"}]}
   end
 end

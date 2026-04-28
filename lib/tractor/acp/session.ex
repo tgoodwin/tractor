@@ -12,6 +12,7 @@ defmodule Tractor.ACP.Session do
   alias Tractor.ACP.Turn
 
   @default_timeout 300_000
+  @default_init_timeout 30_000
   @line_length 1024 * 1024
 
   defstruct agent_module: nil,
@@ -26,11 +27,14 @@ defmodule Tractor.ACP.Session do
             prompt_from: nil,
             prompt_timer: nil,
             prompt_timeout_ref: nil,
+            init_timer: nil,
+            init_timeout_ref: nil,
             event_sink: nil,
             turn: %Turn{}
 
   @type reason ::
           :timeout
+          | :init_timeout
           | :max_tokens
           | :max_turn_requests
           | :refusal
@@ -77,10 +81,34 @@ defmodule Tractor.ACP.Session do
         event_sink: Keyword.get(opts, :event_sink, fn _event -> :ok end)
       }
 
-      {:ok, send_initialize(state)}
+      {:ok, state |> arm_init_timer() |> send_initialize()}
     else
       {:error, reason} -> {:stop, reason}
     end
+  end
+
+  defp arm_init_timer(state) do
+    timeout = Keyword.get(state.opts, :init_timeout, @default_init_timeout)
+
+    case timeout do
+      :infinity ->
+        state
+
+      ms when is_integer(ms) and ms > 0 ->
+        ref = make_ref()
+        timer = Process.send_after(self(), {:init_timeout, ref}, ms)
+        %{state | init_timer: timer, init_timeout_ref: ref}
+
+      _other ->
+        state
+    end
+  end
+
+  defp cancel_init_timer(%{init_timer: nil} = state), do: state
+
+  defp cancel_init_timer(%{init_timer: timer} = state) do
+    Process.cancel_timer(timer)
+    %{state | init_timer: nil, init_timeout_ref: nil}
   end
 
   @impl true
@@ -108,7 +136,7 @@ defmodule Tractor.ACP.Session do
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    {:stop, :normal, fail_prompt(state, {:port_exit, status})}
+    {:stop, :normal, fail_any_pending(state, {:port_exit, status})}
   end
 
   def handle_info({:prompt_timeout, timeout_ref}, %{prompt_timeout_ref: timeout_ref} = state) do
@@ -116,6 +144,12 @@ defmodule Tractor.ACP.Session do
   end
 
   def handle_info({:prompt_timeout, _timeout_ref}, state), do: {:noreply, state}
+
+  def handle_info({:init_timeout, ref}, %{init_timeout_ref: ref} = state) do
+    {:stop, :normal, fail_any_pending(state, :init_timeout)}
+  end
+
+  def handle_info({:init_timeout, _ref}, state), do: {:noreply, state}
 
   defp handle_json_line(line, state) do
     case Jason.decode(line) do
@@ -223,10 +257,21 @@ defmodule Tractor.ACP.Session do
   end
 
   defp send_session_new(state) do
-    send_request(state, :session_new, "session/new", %{
+    base = %{
       "cwd" => Keyword.get(state.opts, :cwd, File.cwd!()),
       "mcpServers" => []
-    })
+    }
+
+    extras = Tractor.Agent.session_params(state.agent_module, state.opts)
+    send_request(state, :session_new, "session/new", deep_merge(base, extras))
+  end
+
+  # Deep merge two maps (right-biased). Used to fold adapter-provided extras
+  # into session/new params without clobbering nested keys like `_meta`.
+  defp deep_merge(left, right) when is_map(left) and is_map(right) do
+    Map.merge(left, right, fn _k, l, r ->
+      if is_map(l) and is_map(r), do: deep_merge(l, r), else: r
+    end)
   end
 
   defp send_prompt(state, from, text, timeout) do
@@ -268,7 +313,10 @@ defmodule Tractor.ACP.Session do
 
       {:session_new, pending} ->
         session_id = result["sessionId"] || result["session_id"]
-        state = %{state | pending: pending, session_id: session_id, status: :idle}
+        state =
+          %{state | pending: pending, session_id: session_id, status: :idle}
+          |> cancel_init_timer()
+
         maybe_send_queued_prompt(state)
 
       {:prompt, pending} ->
@@ -281,9 +329,16 @@ defmodule Tractor.ACP.Session do
 
   defp handle_message(%{"id" => id, "error" => error}, state) do
     case Map.pop(state.pending, id) do
-      {:prompt, pending} -> %{state | pending: pending} |> fail_prompt({:jsonrpc_error, error})
-      {nil, _pending} -> state
-      {_kind, pending} -> %{state | pending: pending} |> fail_prompt({:jsonrpc_error, error})
+      {:prompt, pending} ->
+        %{state | pending: pending} |> fail_prompt({:jsonrpc_error, error})
+
+      {nil, _pending} ->
+        state
+
+      # initialize / session_new failures: the session can't recover, so fail
+      # the queued prompt too rather than letting the caller hang.
+      {_kind, pending} ->
+        %{state | pending: pending} |> fail_any_pending({:jsonrpc_error, error})
     end
   end
 
@@ -547,6 +602,23 @@ defmodule Tractor.ACP.Session do
 
   defp fail_prompt(state, reason) do
     reply_prompt(state, {:error, reason})
+  end
+
+  # Fail every blocked caller on this session — both the in-flight prompt and
+  # any queued one waiting for :starting → :idle. Used for terminal failures
+  # (port_exit, init_timeout, init-stage JSON-RPC errors) where the session
+  # can't recover, so we must reply rather than let GenServer.call hang.
+  defp fail_any_pending(state, reason) do
+    state
+    |> fail_prompt(reason)
+    |> fail_queued_prompt(reason)
+  end
+
+  defp fail_queued_prompt(%{queued_prompt: nil} = state, _reason), do: state
+
+  defp fail_queued_prompt(%{queued_prompt: {from, _text, _timeout}} = state, reason) do
+    GenServer.reply(from, {:error, reason})
+    %{state | queued_prompt: nil}
   end
 
   defp reply_prompt(state, reply) do
