@@ -95,9 +95,11 @@ defmodule TractorWeb.RunIndex do
   defp duration_ms(_started, _finished), do: nil
 
   # Manifest "status" after finalize: "ok" | "error" | "running" | "interrupted".
-  # "running" without a finished_at AND where no one's writing is interrupted —
-  # heuristically, if the manifest hasn't been touched in >30s it's likely a
-  # crashed or Ctrl-C'd run.
+  # When manifest still says "running" but no node is waiting and the manifest
+  # hasn't been touched in a while, the run died silently. We disambiguate
+  # `:interrupted` (operator-initiated SIGINT) from `:errored` (crash / silent
+  # failure) by reading the `_run` event log: only an explicit run_interrupted
+  # event earns the :interrupted label. Everything else is a failure.
   # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   defp classify_status(manifest, finished_at, run_dir) do
     case {manifest["status"], finished_at} do
@@ -116,7 +118,7 @@ defmodule TractorWeb.RunIndex do
       {"running", nil} ->
         cond do
           any_waiting_node?(run_dir) -> :running
-          stale_run?(run_dir) -> :interrupted
+          stale_run?(run_dir) -> classify_stale_run(run_dir)
           true -> :running
         end
 
@@ -128,6 +130,33 @@ defmodule TractorWeb.RunIndex do
 
       _ ->
         :unknown
+    end
+  end
+
+  defp classify_stale_run(run_dir) do
+    case terminal_run_event(run_dir) do
+      :run_interrupted -> :interrupted
+      :run_completed -> :completed
+      # `run_failed` or no terminal event at all both mean the run did not end
+      # cleanly; surface it as an error so the operator notices.
+      _ -> :errored
+    end
+  end
+
+  defp terminal_run_event(run_dir) do
+    path = Path.join([run_dir, "_run", "events.jsonl"])
+
+    if File.exists?(path) do
+      path
+      |> File.stream!()
+      |> Enum.reduce(nil, fn line, acc ->
+        case Jason.decode(line) do
+          {:ok, %{"kind" => "run_interrupted"}} -> :run_interrupted
+          {:ok, %{"kind" => "run_failed"}} -> :run_failed
+          {:ok, %{"kind" => "run_completed"}} -> :run_completed
+          _ -> acc
+        end
+      end)
     end
   end
 
