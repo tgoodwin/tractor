@@ -729,6 +729,30 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   defp run_duration(entry), do: TractorWeb.RunIndex.duration_label(entry)
+
+  defp run_duration_live(%{status: :running, started_at: %DateTime{} = started_at}) do
+    DateTime.utc_now()
+    |> DateTime.diff(started_at, :second)
+    |> max(0)
+    |> format_elapsed_seconds()
+  end
+
+  defp run_duration_live(entry), do: run_duration(entry)
+
+  defp format_elapsed_seconds(seconds) when seconds < 60, do: "#{seconds}s"
+
+  defp format_elapsed_seconds(seconds) when seconds < 3_600 do
+    "#{div(seconds, 60)}m #{rem(seconds, 60)}s"
+  end
+
+  defp format_elapsed_seconds(seconds) do
+    hours = div(seconds, 3_600)
+    minutes = div(rem(seconds, 3_600), 60)
+    "#{hours}h #{minutes}m #{rem(seconds, 60)}s"
+  end
+
+  defp run_started_at_iso(%{started_at: %DateTime{} = dt}), do: DateTime.to_iso8601(dt)
+  defp run_started_at_iso(_entry), do: nil
   defp run_status_label(%{status: status}), do: TractorWeb.RunIndex.status_label(status)
   defp run_status_label(status) when is_atom(status), do: TractorWeb.RunIndex.status_label(status)
 

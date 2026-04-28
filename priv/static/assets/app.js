@@ -405,9 +405,46 @@ const RunsListScroll = {
   }
 };
 
+function formatElapsedMs(ms) {
+  if (ms < 0) ms = 0;
+  const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds < 60) return totalSeconds + "s";
+  if (totalSeconds < 3600) {
+    return Math.floor(totalSeconds / 60) + "m " + (totalSeconds % 60) + "s";
+  }
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours + "h " + minutes + "m " + seconds + "s";
+}
+
+const LiveRunDuration = {
+  mounted() { this.start(); },
+  updated() { this.start(); },
+  destroyed() { this.stop(); },
+  start() {
+    this.stop();
+    const isoStart = this.el.dataset.startedAt;
+    if (!isoStart) return;
+    const startMs = Date.parse(isoStart);
+    if (isNaN(startMs)) return;
+    const tick = () => {
+      this.el.textContent = formatElapsedMs(Date.now() - startMs);
+    };
+    tick();
+    this.interval = setInterval(tick, 1000);
+  },
+  stop() {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+  }
+};
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").content;
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { GraphBoard, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
+  hooks: { GraphBoard, LiveRunDuration, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
   params: { _csrf_token: csrfToken }
 });
 

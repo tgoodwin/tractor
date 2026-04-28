@@ -73,7 +73,15 @@
             <div class="runs-row-meta mono">
               <span>{run_started_at(entry)}</span>
               <span class="runs-row-sep">·</span>
-              <span>{run_duration(entry)}</span>
+              <%= if entry.status == :running and entry.started_at do %>
+                <span
+                  id={"runs-row-duration-#{entry.run_id}"}
+                  phx-hook="LiveRunDuration"
+                  data-started-at={run_started_at_iso(entry)}
+                >{run_duration_live(entry)}</span>
+              <% else %>
+                <span>{run_duration(entry)}</span>
+              <% end %>
             </div>
           </.link>
         </li>
