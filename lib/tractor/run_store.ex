@@ -57,8 +57,31 @@ defmodule Tractor.RunStore do
         manifest: manifest
       }
 
+      write_runner_pidfile(store)
       Tractor.RunEvents.register_run(store.run_id, store.run_dir)
       {:ok, store}
+    end
+  end
+
+  @spec write_runner_pidfile(t()) :: :ok
+  def write_runner_pidfile(%__MODULE__{} = store) do
+    pidfile = Path.join(store.run_dir, "_runner.pid")
+
+    payload = %{
+      "os_pid" => System.pid() |> String.to_integer(),
+      "node" => Atom.to_string(node()),
+      "started_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+    }
+
+    Paths.atomic_write!(pidfile, encode_json!(payload))
+  end
+
+  @spec delete_runner_pidfile(t()) :: :ok
+  def delete_runner_pidfile(%__MODULE__{} = store) do
+    case File.rm(Path.join(store.run_dir, "_runner.pid")) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, _reason} -> :ok
     end
   end
 

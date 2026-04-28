@@ -82,6 +82,7 @@ defmodule Tractor.Runner do
     # racing handler completion) can't kill the runner GenServer and trigger a
     # supervisor restart loop. We handle the EXIT messages explicitly below.
     Process.flag(:trap_exit, true)
+    RunStore.write_runner_pidfile(store)
 
     state =
       case Keyword.get(opts, :resume_state) do
@@ -311,6 +312,12 @@ defmodule Tractor.Runner do
       finalize_interrupted(state)
     end
 
+    RunStore.delete_runner_pidfile(state.store)
+    :ok
+  end
+
+  def terminate(_reason, %{store: %RunStore{} = store}) do
+    RunStore.delete_runner_pidfile(store)
     :ok
   end
 
