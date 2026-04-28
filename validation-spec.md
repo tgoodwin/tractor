@@ -656,97 +656,18 @@ The stylesheet validator checks:
 
 ---
 
-## 8. Validate-Prompt Skill
+## 8. Pipeline Authoring Guidance
 
-The `validate-prompt` skill (`skills/moab/validate-prompt.md`) is a design-review checklist used by AI agents when authoring or reviewing pipelines. It is not part of the CLI; it is loaded as context by the `create-pipeline` and `edit-pipeline` skills.
+Pipeline-authoring guidance (canonical topologies, prompt design, common failure modes, review checklist) lives in `docs/usage/`:
 
-### Operational Principles
+- `docs/usage/validate-prompt.md` — design principles, prompt design rules, common failure modes, review checklist.
+- `docs/usage/loop-patterns.md` — Implement/Test and Audit/Fix loop topologies with worked DOT and prompt templates.
+- `docs/usage/pipeline-reference.md` — DOT subset, attribute tables, condition syntax, template variables, run directory layout.
+- `skills/create-pipeline.md` — the workflow skill that loads the three docs above as shared context when an agent is authoring a new pipeline.
 
-1. Agents must finish 100% of their assigned step — prompts enumerate work, forbid deferral, require verification
-2. `goal` must be concise — high-level objective, quality bar, constraints only
-3. `goal` must scope agents — ends with the "multi-phase pipeline" sentinel
-4. Diamond gates never have prompts
-5. Fully autonomous by default — no human gates unless debugging
-6. Avoid tool nodes — agents run commands and fix errors themselves
-7. Agents don't share memory — prompts must be self-contained
-8. YAGNI ruthlessly
+This section previously embedded a copy of that guidance keyed to Moab's conventions (agent stylesheets, STATUS markers, fidelity, auto_status). Tractor uses different idioms — see the docs above for the current authoritative content.
 
-### Pipeline Defaults
-
-Every pipeline should include:
-- `rankdir=TB`
-- `default_max_retries=50, default_max_visits=50`
-- `agent_stylesheet` with `agent`, `model`, and `reasoning_effort`
-- `status_agent_stylesheet` and `companion_agent_stylesheet`
-- `class` attributes for targeted stylesheet overrides
-
-### Canonical Topologies
-
-**A. Implement/Test Loop** (3 nodes):
-```
-implement → run_tests → gate → [success: next] / [fail: implement]
-```
-- Implementor handles both initial work and fixing (no separate fix node)
-- Test node writes report under `$context.run_dir/`
-- Diamond gate has no prompt
-- `fidelity="full"` is a trade-off to discuss with the user
-
-**B. Audit/Fix Loop** (7+ nodes):
-```
-preparer → fan_out → 3 reviewers → fan_in → verdict → gate → fix → preparer
-```
-- Preparer runs first every cycle (fresh evidence)
-- 3 independent reviewers with `auto_status="true"`
-- Unanimity rule: any FAIL → FAIL
-- Fix nodes work incrementally (highest-impact first)
-
-### Prompt Design Principles
-
-1. Role first
-2. Context before task
-3. Requirements as numbered lists
-4. Output format and checklist last (recency bias)
-5. STATUS markers explicit (`<!-- STATUS: SUCCESS/FAIL -->`)
-6. Commit incrementally
-
-### Prompt Patterns
-
-- **Clean state between iterations** — delete output files before writing
-- **Anti-gaming constraints** — forbid weakening tests, deferring items
-- **Pre-completion checklist** — `[ ]` items verified before declaring success
-- **Incremental fix scoping** — fix highest-impact finding first, Pareto-optimal
-- **Commit cadence** — commit after each logical unit
-- **EXCLUDED in goal** — explicit out-of-scope list
-- **Verify before assigning** — consolidators verify findings against source
-- **auto_status on fan-out branches** — status agent can't reach parallel branches
-- **Run directory as workspace** — `$context.run_dir/` for all inter-node files
-
-### Review Checklist
-
-When evaluating any pipeline:
-- Goal alignment — all features represented
-- Self-validation — no node validates its own work (two-way edge smell)
-- Unsolvable loops — implementor can actually fix what the test reports
-- Separate fix nodes — only in Audit/Fix and post-merge loops
-- Prompt/scope mismatches — test nodes only test, audit nodes only audit
-- Fidelity trade-offs — discuss with human partner
-- Prompt completeness — pre-completion checklist, handles both visits
-- Requirements quality — independently verifiable
-- Loop-aware prompts — work on every iteration
-- Topology correctness — matches canonical wiring
-- No redundant conditional edges — diamond has one unconditional fallback
-- Agent stylesheet completeness — all three properties declared
-
-### Common Runtime Failure Modes
-
-| Failure | Symptom | Prevention |
-|---------|---------|------------|
-| Fix introduces regressions | Loop cycles between fixing and breaking | Include "verify previously-passing requirements" |
-| Test loop doesn't converge | Hits max_visits | Review requirements for ambiguity, keep features small |
-| Test node too lenient | Test passes but audit finds gaps | Structured report with per-requirement evidence |
-| Agent games the metric | High pass rate but skipped tests | Cap exclusions, separate excluder from implementer |
-| Audit loop nit-picking | Endless trivial findings | Pareto-optimal guidance in reviewer and fix prompts |
-| No spec means no requirements | Vague requirements, loops don't converge | Add spec-expansion phase |
+> **Validator alignment note:** Section 7 (Agent Stylesheet Grammar) and the parts of Section 4 referencing `agent_stylesheet`, `default_agent`, and stylesheet selectors describe Moab features that are NOT planned for Tractor. The Tractor validator currently still warns on a couple of these (`unsupported_graph_attr` for `model_stylesheet`, etc.) but should eventually drop the stylesheet sections entirely. Tracked as a follow-up cleanup.
 
 ---
 
