@@ -16,3 +16,4 @@ docs/sprints/drafts/
 /.tractor/*
 !/.tractor/config.toml
 test/browser/logs/
+.yaks
