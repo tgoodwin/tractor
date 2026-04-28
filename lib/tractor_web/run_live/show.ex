@@ -686,11 +686,7 @@ defmodule TractorWeb.RunLive.Show do
   defp timeline_aria_label(entry), do: "#{entry.title}: #{entry.summary}"
 
   defp timeline_time(%DateTime{} = datetime) do
-    time = DateTime.to_time(datetime)
-    {microsecond, _precision} = time.microsecond
-    millisecond = div(microsecond, 1_000) |> Integer.to_string() |> String.pad_leading(3, "0")
-
-    "#{Time.to_iso8601(%{time | microsecond: {0, 0}})}.#{millisecond}"
+    Calendar.strftime(datetime, "%-I:%M %p")
   end
 
   defp entry_body(body) when is_binary(body), do: body

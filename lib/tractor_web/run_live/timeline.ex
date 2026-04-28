@@ -379,10 +379,16 @@ defmodule TractorWeb.RunLive.Timeline do
       title: tag,
       summary: summary,
       body: %{"call" => data, "updates" => []},
-      collapsed_by_default?: true,
+      collapsed_by_default?: not exec_tool?(data),
       tone: :neutral
     }
   end
+
+  # Bash/shell/execute tool calls are the most action-relevant for an observer
+  # to scan at a glance, so they default to expanded. Read/edit/write/grep/etc.
+  # stay collapsed.
+  defp exec_tool?(%{"kind" => kind}) when kind in ["bash", "execute", "shell"], do: true
+  defp exec_tool?(_data), do: false
 
   defp response_entry(text, ts, seq) do
     %{
