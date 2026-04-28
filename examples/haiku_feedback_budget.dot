@@ -14,36 +14,36 @@ digraph {
     timeout="10m",
     retries=1,
     max_iterations=5,
-    prompt="Plan and then write a one-line haiku about a tractor at dawn. Previous critique (if any): {{codex_review.last_critique}}"
+    prompt="Plan and then write a one-line haiku about a tractor at dawn. Previous critique (if any): {{codex_review.last}}"
   ]
 
   codex_review [
-    shape=hexagon,
-    type=judge,
-    judge_mode=stub,
-    reject_probability=0.5,
-    accept_critique="imagery lands; continue",
-    reject_critique="tighten the opening image and retry once",
-    max_iterations=5
+    shape=box,
+    llm_provider=codex,
+    llm_model="gpt-5",
+    max_iterations=5,
+    prompt="Evaluate this haiku for imagery and meter:\n{{ask_claude.last}}\n\nReturn exactly one line beginning with 'VERDICT: accept' or 'VERDICT: reject'. If you reject, follow with a one-line critique under 80 characters."
   ]
+
+  codex_gate [shape=diamond]
 
   ask_codex [
     shape=box,
     llm_provider=codex,
     llm_model="gpt-5",
     max_iterations=5,
-    prompt="Write a one-line haiku that continues this thought: {{ask_claude.last}}. Previous critique (if any): {{gemini_review.last_critique}}"
+    prompt="Write a one-line haiku that continues this thought: {{ask_claude.last}}. Previous critique (if any): {{gemini_review.last}}"
   ]
 
   gemini_review [
-    shape=hexagon,
-    type=judge,
-    judge_mode=stub,
-    reject_probability=0.5,
-    accept_critique="meter and continuity check out",
-    reject_critique="retry with a calmer final image",
-    max_iterations=5
+    shape=box,
+    llm_provider=gemini,
+    llm_model="gemini-3-pro",
+    max_iterations=5,
+    prompt="Evaluate this haiku for meter and continuity:\n{{ask_codex.last}}\n\nReturn exactly one line beginning with 'VERDICT: accept' or 'VERDICT: reject'. If you reject, follow with a one-line critique under 80 characters."
   ]
+
+  gemini_gate [shape=diamond]
 
   ask_gemini [
     shape=box,
@@ -63,11 +63,13 @@ digraph {
 
   start -> ask_claude
   ask_claude -> codex_review
-  codex_review -> ask_claude [condition="reject"]
-  codex_review -> ask_codex [condition="accept"]
+  codex_review -> codex_gate
+  codex_gate -> ask_claude [condition="context.codex_review.last_output contains \"VERDICT: reject\""]
+  codex_gate -> ask_codex  [condition="context.codex_review.last_output contains \"VERDICT: accept\""]
   ask_codex -> gemini_review
-  gemini_review -> ask_codex [condition="reject"]
-  gemini_review -> ask_gemini [condition="accept"]
+  gemini_review -> gemini_gate
+  gemini_gate -> ask_codex  [condition="context.gemini_review.last_output contains \"VERDICT: reject\""]
+  gemini_gate -> ask_gemini [condition="context.gemini_review.last_output contains \"VERDICT: accept\""]
   ask_gemini -> summarize
   summarize -> exit
 }
