@@ -90,3 +90,14 @@ export TRACTOR_ACP_CODEX_ENV_JSON='{"EXAMPLE":"value"}'
 ```
 
 Environment values are redacted in run manifests.
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — three-plane architecture (execution / observation / driving), supervision tree, log-as-bus contract, reap lifecycle.
+- [`docs/handlers.md`](docs/handlers.md) — per-handler reference (start, exit, codergen, tool, wait.human, conditional, judge, parallel, parallel.fan_in).
+- [`docs/usage/reap.md`](docs/usage/reap.md) — `tractor reap` flags, exit codes, log-directory layout.
+- [`docs/usage/validate-prompt.md`](docs/usage/validate-prompt.md) — pipeline-author reference: validator rules, canonical 3-node feedback loop, design principles.
+- [`docs/usage/testing.md`](docs/usage/testing.md) — `mix test`, browser harness, load guard, CI opt-out.
+- [`docs/spec-coverage.md`](docs/spec-coverage.md) — strongDM attractor spec → tractor implementation map.
+- [`docs/sprints/`](docs/sprints/) — per-sprint plans (`SPRINT-XXXX.md`) and status (`ledger.yaml`).
+- [`IDEA.md`](IDEA.md) — original design pitch.
