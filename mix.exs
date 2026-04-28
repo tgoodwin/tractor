@@ -53,7 +53,8 @@ defmodule Tractor.MixProject do
 
   defp aliases do
     [
-      format_check: ["format --check-formatted"]
+      format_check: ["format --check-formatted"],
+      cli: ["cmd MIX_ENV=prod mix escript.build"]
     ]
   end
 end

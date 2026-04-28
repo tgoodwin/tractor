@@ -878,7 +878,7 @@ tractor_server_start() {
 
   (
     cd "$TRACTOR_ROOT"
-    mix escript.build >/dev/null
+    mix cli >/dev/null
     exec env PORT="$TRACTOR_BROWSER_PORT" mix phx.server >"$TRACTOR_BROWSER_SERVER_LOG" 2>&1
   ) &
 

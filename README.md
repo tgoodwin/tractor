@@ -25,7 +25,7 @@ Tractor is an Elixir escript.
 
 ```sh
 mix deps.get
-mix escript.build
+mix cli   # builds bin/tractor with MIX_ENV=prod (excludes phoenix_live_reload noise)
 ```
 
 `--serve` requires Graphviz at runtime:
