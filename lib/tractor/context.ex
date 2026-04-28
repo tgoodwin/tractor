@@ -3,10 +3,46 @@ defmodule Tractor.Context do
   JSON-safe run context helpers.
   """
 
+  @reserved_keys ~w(goal run_dir)
+
+  @doc """
+  Reserved well-known context keys that the runner injects at run start.
+  Node IDs colliding with these keys would shadow the well-known values and
+  break template rendering — the validator rejects such pipelines.
+  """
+  @spec reserved_keys() :: [String.t()]
+  def reserved_keys, do: @reserved_keys
+
   @spec initial(map() | keyword()) :: map()
   def initial(seed \\ %{}) do
     Map.new(seed)
   end
+
+  @doc """
+  Inject the well-known run-metadata keys (`goal`, `run_dir`) into a context map.
+
+  - `goal` is set when `attrs.goal` is a non-empty string; otherwise the key is
+    left unset so unresolved `{{goal}}` placeholders surface in rendered prompts.
+  - `run_dir` is always set when `attrs.run_dir` is a non-empty string.
+
+  Idempotent — safe to call on resumed contexts that may already have the keys.
+  """
+  @spec with_run_metadata(map(), %{
+          optional(:goal) => String.t() | nil,
+          optional(:run_dir) => String.t() | nil
+        }) :: map()
+  def with_run_metadata(context, attrs) when is_map(context) and is_map(attrs) do
+    context
+    |> maybe_put_string("goal", Map.get(attrs, :goal))
+    |> maybe_put_string("run_dir", Map.get(attrs, :run_dir))
+  end
+
+  defp maybe_put_string(context, _key, nil), do: context
+  defp maybe_put_string(context, _key, ""), do: context
+  defp maybe_put_string(context, key, value) when is_binary(value),
+    do: Map.put(context, key, value)
+
+  defp maybe_put_string(context, _key, _value), do: context
 
   @spec snapshot(map()) :: {:ok, map()} | {:error, term()}
   def snapshot(context) when is_map(context) do

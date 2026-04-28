@@ -27,6 +27,7 @@ defmodule Tractor.Validator do
   def diagnostics(%Pipeline{} = pipeline) do
     []
     |> add_graph_shape_diagnostics(pipeline)
+    |> add_reserved_node_id_diagnostics(pipeline)
     |> add_cardinality_diagnostics(pipeline)
     |> add_endpoint_diagnostics(pipeline)
     |> add_connectivity_diagnostics(pipeline)
@@ -79,6 +80,25 @@ defmodule Tractor.Validator do
       "undirected graphs are not supported"
     )
     |> maybe_add(pipeline.strict?, :strict_graph, "strict graphs are not supported")
+  end
+
+  defp add_reserved_node_id_diagnostics(diagnostics, %Pipeline{nodes: nodes}) do
+    reserved = MapSet.new(Tractor.Context.reserved_keys())
+
+    Enum.reduce(nodes, diagnostics, fn {node_id, _node}, diagnostics ->
+      if MapSet.member?(reserved, node_id) do
+        diagnostic(
+          diagnostics,
+          :reserved_node_id,
+          "node id '#{node_id}' collides with a reserved context key " <>
+            "(#{Enum.join(Tractor.Context.reserved_keys(), ", ")}) — rename the node",
+          node_id: node_id,
+          fix: "rename node '#{node_id}' to avoid shadowing the well-known {{#{node_id}}} value"
+        )
+      else
+        diagnostics
+      end
+    end)
   end
 
   defp add_cardinality_diagnostics(diagnostics, %Pipeline{nodes: nodes}) do

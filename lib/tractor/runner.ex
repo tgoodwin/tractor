@@ -132,6 +132,15 @@ defmodule Tractor.Runner do
         checkpoint -> restore_waiting_state(state, checkpoint["waiting"] || %{})
       end
 
+    state = %{
+      state
+      | context:
+          Context.with_run_metadata(state.context, %{
+            goal: pipeline.goal,
+            run_dir: store.run_dir
+          })
+    }
+
     state =
       if map_size(state.waiting) > 0 do
         state

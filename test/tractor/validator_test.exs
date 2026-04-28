@@ -18,6 +18,32 @@ defmodule Tractor.ValidatorTest do
              )
   end
 
+  test "rejects node ids that collide with reserved context keys" do
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("goal", "codergen", llm_provider: "claude"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "goal"), edge("goal", "exit")]
+      ),
+      [:reserved_node_id]
+    )
+
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("run_dir", "codergen", llm_provider: "claude"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "run_dir"), edge("run_dir", "exit")]
+      ),
+      [:reserved_node_id]
+    )
+  end
+
   test "rejects start and exit cardinality violations" do
     assert_codes(
       pipeline(nodes: [node("a", "codergen", llm_provider: "codex"), node("exit", "exit")]),
