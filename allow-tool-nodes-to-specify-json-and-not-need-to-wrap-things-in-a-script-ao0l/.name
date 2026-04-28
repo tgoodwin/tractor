@@ -1,0 +1,1 @@
+allow tool nodes to specify JSON and not need to wrap things in a script
