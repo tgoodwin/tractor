@@ -15,10 +15,10 @@ defmodule Tractor.CLI do
 
   # credo:disable-for-this-file Credo.Check.Refactor.Nesting
 
-  alias Tractor.{Diagnostic.Formatter, Run, Validator}
+  alias Tractor.{Diagnostic.Formatter, Init, Run, Validator}
 
   @probe_timeout_ms 500
-  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor validate PATH\n"
+  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor validate PATH\n       tractor init [claude|codex|gemini] [--force]\n"
 
   @spec main([String.t()]) :: no_return()
   def main(args) do
@@ -103,6 +103,22 @@ defmodule Tractor.CLI do
       {:error, reason} -> {20, "", "agent runtime failure: #{inspect(reason)}\n"}
       {:resume, true} -> resume_once(opts, timeout_ms!(opts[:timeout]))
       _other -> {2, "", @usage}
+    end
+  end
+
+  def run(["init" | args]) do
+    {parsed, positional, invalid} =
+      OptionParser.parse(args, strict: [force: :boolean], aliases: [])
+
+    cond do
+      invalid != [] ->
+        {2, "", @usage}
+
+      length(positional) > 1 ->
+        {2, "", @usage}
+
+      true ->
+        run_init(positional, Keyword.get(parsed, :force, false))
     end
   end
 
@@ -473,5 +489,74 @@ defmodule Tractor.CLI do
 
   defp format_diagnostics(diagnostics) do
     Formatter.format(diagnostics)
+  end
+
+  defp run_init(positional, force?) do
+    target_root = File.cwd!()
+
+    case resolve_init_agent(positional) do
+      {:ok, agent} -> do_install(agent, target_root, force?)
+      {:error, :no_tty} -> {2, "", "tractor init needs an agent (claude|codex|gemini)\n"}
+      {:error, {:unknown_agent, agent}} -> {2, "", unknown_agent_message(agent)}
+    end
+  end
+
+  defp resolve_init_agent([agent]) do
+    if agent in Init.supported_agents(),
+      do: {:ok, agent},
+      else: {:error, {:unknown_agent, agent}}
+  end
+
+  defp resolve_init_agent([]), do: prompt_for_agent()
+
+  defp prompt_for_agent do
+    IO.write("Install create-pipeline skill for which agent? [claude|codex|gemini] ")
+
+    case IO.gets("") do
+      :eof ->
+        {:error, :no_tty}
+
+      {:error, _reason} ->
+        {:error, :no_tty}
+
+      input when is_binary(input) ->
+        normalized = input |> String.trim() |> String.downcase()
+
+        if normalized in Init.supported_agents(),
+          do: {:ok, normalized},
+          else: {:error, {:unknown_agent, normalized}}
+    end
+  end
+
+  defp do_install(agent, target_root, force?) do
+    case Init.install(agent, target_root, force: force?) do
+      {:ok, paths} ->
+        bundle_dir = Init.bundle_dir(agent, target_root)
+        relative = Path.relative_to_cwd(bundle_dir)
+
+        body = [
+          "Installed create-pipeline skill for #{agent} at #{relative}/\n"
+          | Enum.map(paths, fn path -> "  #{Path.relative_to(path, bundle_dir)}\n" end)
+        ]
+
+        {0, IO.iodata_to_binary(body), ""}
+
+      {:error, {:bundle_exists, dir}} ->
+        relative = Path.relative_to_cwd(dir)
+
+        {2, "",
+         "create-pipeline skill already installed at #{relative}/ — pass --force to overwrite\n"}
+
+      {:error, {:write_failed, path, reason}} ->
+        {20, "", "failed to write #{path}: #{inspect(reason)}\n"}
+
+      {:error, {:unknown_agent, agent}} ->
+        {2, "", unknown_agent_message(agent)}
+    end
+  end
+
+  defp unknown_agent_message(agent) do
+    supported = Enum.join(Init.supported_agents(), "|")
+    "unknown agent #{inspect(agent)} — must be one of: #{supported}\n"
   end
 end
