@@ -64,7 +64,9 @@ tractor_launcher_start() {
 
   (
     cd "$ROOT"
+    # Track the harness shell that parents the exec'd launcher process.
     exec env TRACTOR_BROWSER_LAUNCHER_DISABLE_STDIN_WATCH=1 \
+      TRACTOR_BROWSER_LAUNCHER_PARENT_PID="$$" \
       elixir --no-halt "${args[@]}" test/browser/launcher/launcher.exs >>"$TRACTOR_BROWSER_LOG_DIR/launcher.stdout.log" 2>>"$TRACTOR_BROWSER_LOG_DIR/launcher.stderr.log"
   ) &
 

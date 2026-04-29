@@ -7,7 +7,7 @@ defmodule Tractor.RunWatcher do
 
   require Logger
 
-  alias Tractor.RunWatcher.Tail
+  alias Tractor.RunWatcher.{Reconcile, Tail}
 
   @rescan_ms 1_000
 
@@ -37,7 +37,7 @@ defmodule Tractor.RunWatcher do
       finished_runs: MapSet.new()
     }
 
-    {:ok, schedule_rescan(discover_runs(state))}
+    {:ok, state |> reconcile_dead_runs() |> discover_runs() |> schedule_rescan()}
   end
 
   @impl true
@@ -78,6 +78,8 @@ defmodule Tractor.RunWatcher do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp discover_runs(state) do
+    state = reconcile_dead_runs(state)
+
     running_runs =
       state.runs_dir
       |> Path.join("*")
@@ -102,6 +104,19 @@ defmodule Tractor.RunWatcher do
       |> Enum.map(fn {run_id, _entry} -> run_id end)
 
     Enum.reduce(stale_run_ids, state, &stop_tail/2)
+  end
+
+  defp reconcile_dead_runs(state) do
+    reconciled_run_ids =
+      state.runs_dir
+      |> Reconcile.reconcile_dead_runs()
+      |> Enum.map(fn {run_id, _run_dir, _reason} -> run_id end)
+
+    stop_tails_for(state, reconciled_run_ids)
+  end
+
+  defp stop_tails_for(state, run_ids) do
+    Enum.reduce(run_ids, state, &stop_tail/2)
   end
 
   defp start_tail(state, run_id, run_dir) do

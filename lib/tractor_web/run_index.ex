@@ -118,6 +118,7 @@ defmodule TractorWeb.RunIndex do
       {"running", nil} ->
         cond do
           any_waiting_node?(run_dir) -> :running
+          owner_alive?(run_dir) -> :running
           stale_run?(run_dir) -> classify_stale_run(run_dir)
           true -> :running
         end
@@ -194,4 +195,24 @@ defmodule TractorWeb.RunIndex do
         false
     end
   end
+
+  defp owner_alive?(run_dir) do
+    with {:ok, raw} <- File.read(Path.join(run_dir, "_runner.pid")),
+         {:ok, %{"os_pid" => os_pid}} when is_integer(os_pid) <- Jason.decode(raw) do
+      os_pid_alive?(os_pid)
+    else
+      _ -> false
+    end
+  end
+
+  defp os_pid_alive?(os_pid) when is_integer(os_pid) and os_pid > 0 do
+    {_output, status} =
+      System.cmd("kill", ["-0", Integer.to_string(os_pid)], stderr_to_stdout: true)
+
+    status == 0
+  rescue
+    _error -> false
+  end
+
+  defp os_pid_alive?(_os_pid), do: false
 end

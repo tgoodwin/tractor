@@ -62,3 +62,9 @@ sprints:
     executor: gpt-5.4
     created: "2026-04-24T00:09:13+00:00"
     updated: "2026-04-25T18:09:36+00:00"
+  - id: SPRINT-0013
+    title: "Lifecycle leaks: RunWatcher status reconciliation + launcher parent watchdog"
+    status: done
+    executor: gpt-5.4
+    created: "2026-04-28T23:07:09+00:00"
+    updated: "2026-04-28T23:59:56+00:00"

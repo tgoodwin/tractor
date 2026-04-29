@@ -119,6 +119,7 @@ defmodule Tractor.StatusAgent do
   def handle_info({ref, _result}, %{current: %{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     cancel_observation_timer(state.current)
+
     state =
       state
       |> clear_current()
@@ -129,6 +130,7 @@ defmodule Tractor.StatusAgent do
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{current: %{ref: ref}} = state) do
     cancel_observation_timer(state.current)
+
     state =
       state
       |> clear_current()
@@ -167,6 +169,18 @@ defmodule Tractor.StatusAgent do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, state) do
+    shutdown_current(state)
+    :ok
+  end
+
+  defp shutdown_current(%{current: %{task: task}}) do
+    Task.shutdown(task, :brutal_kill)
+  end
+
+  defp shutdown_current(_state), do: :ok
 
   defp enqueue(%{queue_size: size} = state, payload) when size >= @max_queue do
     {{:value, dropped}, queue} = :queue.out(state.queue)

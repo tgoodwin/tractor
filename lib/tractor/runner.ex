@@ -308,6 +308,8 @@ defmodule Tractor.Runner do
 
   @impl true
   def terminate(reason, %{result: nil} = state) do
+    shutdown_frontier(state)
+
     if interrupted_shutdown?(reason) do
       finalize_interrupted(state)
     end
@@ -322,6 +324,12 @@ defmodule Tractor.Runner do
   end
 
   def terminate(_reason, _state), do: :ok
+
+  defp shutdown_frontier(%{frontier: frontier}) do
+    Enum.each(frontier, fn {_ref, entry} ->
+      Task.shutdown(entry.task, :brutal_kill)
+    end)
+  end
 
   defp via(run_id), do: {:via, Registry, {Tractor.RunRegistry, run_id}}
 

@@ -85,8 +85,21 @@ defmodule Tractor.RunWatcher.Tail do
   @impl true
   def terminate(_reason, state) do
     flush_offsets(%{state | flush_ref: nil})
+    stop_fs_watcher(state.watcher)
     :ok
   end
+
+  defp stop_fs_watcher(watcher) when is_pid(watcher) do
+    if Process.alive?(watcher) do
+      try do
+        GenServer.stop(watcher, :normal, 1_000)
+      catch
+        :exit, _reason -> :ok
+      end
+    end
+  end
+
+  defp stop_fs_watcher(_watcher), do: :ok
 
   defp discover_nodes(state) do
     node_entries =

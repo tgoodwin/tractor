@@ -17,3 +17,5 @@ docs/sprints/drafts/
 !/.tractor/config.toml
 test/browser/logs/
 .yaks
+
+.worktrees/

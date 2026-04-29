@@ -108,11 +108,21 @@ defmodule TestLauncher.Job do
         {:line, 4096},
         {:args, args},
         {:cd, cwd},
-        {:env, Enum.map(env, fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)}
+        {:env,
+         Enum.map(env, fn {key, value} -> {String.to_charlist(key), String.to_charlist(value)} end)}
       ])
 
     {:os_pid, os_pid} = Port.info(port, :os_pid)
-    state = %{token: token, port: port, os_pid: os_pid, log_path: log_path, run_id: nil, output: []}
+
+    state = %{
+      token: token,
+      port: port,
+      os_pid: os_pid,
+      log_path: log_path,
+      run_id: nil,
+      output: []
+    }
+
     loop_async(state, server_pid)
   end
 
@@ -133,7 +143,11 @@ defmodule TestLauncher.Job do
       {port, {:exit_status, status}} when port == state.port ->
         combined = state.output |> Enum.reverse() |> IO.iodata_to_binary()
 
-        send(server_pid, {:job_finished, state.token, state.run_id, status, combined, state.log_path})
+        send(
+          server_pid,
+          {:job_finished, state.token, state.run_id, status, combined, state.log_path}
+        )
+
         :ok
 
       :kill ->
@@ -221,6 +235,10 @@ defmodule TestLauncher.Server do
     GenServer.call(server, {:request, payload}, timeout)
   end
 
+  def last_activity_ms(server \\ __MODULE__) do
+    GenServer.call(server, :last_activity_ms)
+  end
+
   def handle_connection(server, socket) do
     response =
       with {:ok, line} <- :gen_tcp.recv(socket, 0),
@@ -278,14 +296,22 @@ defmodule TestLauncher.Server do
       next_token: 1,
       jobs: %{},
       stop_all: nil,
-      shutdown: nil
+      shutdown: nil,
+      last_activity_ms: System.monotonic_time(:millisecond),
+      lock_path: Keyword.get(opts, :lock_path)
     }
 
     {:ok, state}
   end
 
   @impl true
+  def handle_call(:last_activity_ms, _from, state) do
+    {:reply, state.last_activity_ms, state}
+  end
+
   def handle_call({:request, %{"op" => "reap"} = request}, _from, state) do
+    state = mark_activity(state)
+
     reply =
       request
       |> TestLauncher.Job.run_sync()
@@ -295,6 +321,7 @@ defmodule TestLauncher.Server do
   end
 
   def handle_call({:request, %{"op" => "reap_serve"} = request}, from, state) do
+    state = mark_activity(state)
     token = "job-#{state.next_token}"
     log_path = Path.join(Path.dirname(state.log_path), "#{token}.log")
     server_pid = self()
@@ -321,6 +348,8 @@ defmodule TestLauncher.Server do
   end
 
   def handle_call({:request, %{"op" => "wait", "token" => token}}, from, state) do
+    state = mark_activity(state)
+
     case Map.fetch(state.jobs, token) do
       {:ok, %{result: result} = job} when not is_nil(result) ->
         jobs = Map.put(state.jobs, token, %{job | waiters: []})
@@ -336,6 +365,8 @@ defmodule TestLauncher.Server do
   end
 
   def handle_call({:request, %{"op" => "kill", "token" => token}}, _from, state) do
+    state = mark_activity(state)
+
     case Map.fetch(state.jobs, token) do
       {:ok, %{task_pid: task_pid}} ->
         send(task_pid, :kill)
@@ -347,6 +378,8 @@ defmodule TestLauncher.Server do
   end
 
   def handle_call({:request, %{"op" => "stop_all"}}, from, state) do
+    state = mark_activity(state)
+
     running =
       state.jobs
       |> Enum.filter(fn {_token, job} -> job.state in [:starting, :running] end)
@@ -358,20 +391,33 @@ defmodule TestLauncher.Server do
     if running == [] do
       {:reply, %{"ok" => true, "count" => 0}, state}
     else
-      {:noreply, %{state | stop_all: %{from: from, tokens: MapSet.new(running), count: length(running)}}}
+      {:noreply,
+       %{state | stop_all: %{from: from, tokens: MapSet.new(running), count: length(running)}}}
     end
   end
 
   def handle_call({:request, %{"op" => "status"}}, _from, state) do
+    state = mark_activity(state)
+
     active_jobs =
       state.jobs
       |> Enum.filter(fn {_token, job} -> job.state in [:starting, :running] end)
-      |> Enum.map(fn {token, job} -> %{"token" => token, "run_id" => job.run_id, "log_path" => job.log_path} end)
+      |> Enum.map(fn {token, job} ->
+        %{"token" => token, "run_id" => job.run_id, "log_path" => job.log_path}
+      end)
 
-    {:reply, %{"ok" => true, "count" => length(active_jobs), "active_jobs" => active_jobs}, state}
+    {:reply,
+     %{
+       "ok" => true,
+       "count" => length(active_jobs),
+       "active_jobs" => active_jobs,
+       "os_pid" => System.pid()
+     }, state}
   end
 
   def handle_call({:request, %{"op" => "shutdown"}}, from, state) do
+    state = mark_activity(state)
+
     running =
       state.jobs
       |> Enum.filter(fn {_token, job} -> job.state in [:starting, :running] end)
@@ -380,7 +426,10 @@ defmodule TestLauncher.Server do
         token
       end)
 
-    state = %{state | shutdown: %{from: from, tokens: MapSet.new(running), count: length(running)}}
+    state = %{
+      state
+      | shutdown: %{from: from, tokens: MapSet.new(running), count: length(running)}
+    }
 
     if running == [] do
       {:reply, %{"ok" => true, "count" => 0}, state, {:continue, :halt}}
@@ -390,10 +439,13 @@ defmodule TestLauncher.Server do
   end
 
   def handle_call({:request, %{"op" => op}}, _from, state) do
+    state = mark_activity(state)
     {:reply, %{"ok" => false, "code" => 64, "error" => "unknown op: #{op}"}, state}
   end
 
   def handle_info({:job_started, token, run_id, log_path}, state) do
+    state = mark_activity(state)
+
     case Map.fetch(state.jobs, token) do
       {:ok, job} ->
         if job.start_from do
@@ -403,7 +455,9 @@ defmodule TestLauncher.Server do
           )
         end
 
-        jobs = Map.put(state.jobs, token, %{job | start_from: nil, run_id: run_id, state: :running})
+        jobs =
+          Map.put(state.jobs, token, %{job | start_from: nil, run_id: run_id, state: :running})
+
         {:noreply, %{state | jobs: jobs}}
 
       :error ->
@@ -412,6 +466,8 @@ defmodule TestLauncher.Server do
   end
 
   def handle_info({:job_finished, token, run_id, status, output, log_path}, state) do
+    state = mark_activity(state)
+
     result = %{
       "ok" => status == 0,
       "code" => status,
@@ -437,7 +493,17 @@ defmodule TestLauncher.Server do
           end
 
           Enum.each(job.waiters, &GenServer.reply(&1, result))
-          jobs = Map.put(state.jobs, token, %{job | start_from: nil, waiters: [], result: result, state: :done, run_id: run_id})
+
+          jobs =
+            Map.put(state.jobs, token, %{
+              job
+              | start_from: nil,
+                waiters: [],
+                result: result,
+                state: :done,
+                run_id: run_id
+            })
+
           %{state | jobs: jobs}
 
         :error ->
@@ -469,7 +535,16 @@ defmodule TestLauncher.Server do
 
           if job.start_from, do: GenServer.reply(job.start_from, reply)
           Enum.each(job.waiters, &GenServer.reply(&1, reply))
-          jobs = Map.put(state.jobs, token, %{job | start_from: nil, waiters: [], result: reply, state: :done})
+
+          jobs =
+            Map.put(state.jobs, token, %{
+              job
+              | start_from: nil,
+                waiters: [],
+                result: reply,
+                state: :done
+            })
+
           {:noreply, finish_pending(%{state | jobs: jobs})}
         end
 
@@ -567,6 +642,18 @@ defmodule TestLauncher.Server do
   defp cleanup_socket(state) do
     :gen_tcp.close(state.listen_socket)
     File.rm(state.socket_path)
+    release_lock(state.lock_path)
+  end
+
+  defp mark_activity(state) do
+    %{state | last_activity_ms: System.monotonic_time(:millisecond)}
+  end
+
+  defp release_lock(nil), do: :ok
+
+  defp release_lock(lock_path) do
+    File.rm(lock_path)
+    :ok
   end
 
   defp log_failures(%{"ok" => false, "error" => error} = reply, log_path) do
@@ -577,16 +664,98 @@ defmodule TestLauncher.Server do
   defp log_failures(reply, _log_path), do: reply
 end
 
+defmodule TestLauncher.ParentWatchdog do
+  use GenServer
+
+  @tick_ms 2_000
+  @inactivity_ms 5 * 60 * 1_000
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @impl true
+  def init(opts) do
+    state = %{
+      parent_pid: parent_pid(),
+      log_path: Keyword.fetch!(opts, :log_path),
+      server: Keyword.get(opts, :server, TestLauncher.Server)
+    }
+
+    {:ok, schedule_tick(state)}
+  end
+
+  @impl true
+  def handle_info(:tick, state) do
+    cond do
+      not os_pid_alive?(state.parent_pid) ->
+        halt(state, "parent pid #{state.parent_pid} is no longer alive")
+
+      inactive?(state) ->
+        halt(state, "launcher inactive for #{@inactivity_ms}ms")
+
+      true ->
+        {:noreply, schedule_tick(state)}
+    end
+  end
+
+  defp parent_pid do
+    case System.get_env("TRACTOR_BROWSER_LAUNCHER_PARENT_PID") do
+      nil -> :os.getppid() |> to_string()
+      "" -> :os.getppid() |> to_string()
+      pid -> pid
+    end
+  end
+
+  defp os_pid_alive?(pid) do
+    {_output, status} = System.cmd("kill", ["-0", to_string(pid)], stderr_to_stdout: true)
+    status == 0
+  rescue
+    _error -> false
+  end
+
+  defp inactive?(state) do
+    now_ms = System.monotonic_time(:millisecond)
+    last_activity_ms = TestLauncher.Server.last_activity_ms(state.server)
+    now_ms - last_activity_ms >= @inactivity_ms
+  rescue
+    _error -> false
+  end
+
+  defp halt(state, message) do
+    TestLauncher.Log.append(state.log_path, "watchdog halt: #{message}")
+    System.halt(0)
+  end
+
+  defp schedule_tick(state) do
+    Process.send_after(self(), :tick, @tick_ms)
+    state
+  end
+end
+
 defmodule TestLauncher.CLI do
   def main(_argv) do
     log_dir = System.get_env("TRACTOR_BROWSER_LOG_DIR") || Path.expand("test/browser/logs")
-    socket_path = System.get_env("TRACTOR_BROWSER_LAUNCHER_SOCK") || Path.join(log_dir, "launcher.sock")
+
+    socket_path =
+      System.get_env("TRACTOR_BROWSER_LAUNCHER_SOCK") || Path.join(log_dir, "launcher.sock")
+
     log_path = Path.join(log_dir, "launcher.log")
+    lock_path = Path.join(log_dir, "launcher.lock")
 
     File.mkdir_p!(log_dir)
+    claim_lock!(lock_path)
+    System.at_exit(fn _status -> release_lock(lock_path) end)
     start_apps()
 
-    {:ok, _pid} = TestLauncher.Server.start_link(socket_path: socket_path, log_path: log_path)
+    {:ok, _pid} =
+      TestLauncher.Server.start_link(
+        socket_path: socket_path,
+        log_path: log_path,
+        lock_path: lock_path
+      )
+
+    {:ok, _pid} = TestLauncher.ParentWatchdog.start_link(log_path: log_path)
     TestLauncher.Log.append(log_path, "launcher ready on #{socket_path}")
     watch_stdin()
     Process.sleep(:infinity)
@@ -613,6 +782,47 @@ defmodule TestLauncher.CLI do
         end
       end)
     end
+  end
+
+  defp claim_lock!(lock_path) do
+    case File.read(lock_path) do
+      {:ok, raw} ->
+        pid = String.trim(raw)
+
+        if os_pid_alive?(pid) do
+          IO.puts(:stderr, "launcher already running with pid #{pid}; lockfile: #{lock_path}")
+          System.halt(1)
+        end
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, _reason} ->
+        :ok
+    end
+
+    File.write!(lock_path, System.pid() <> "\n")
+  end
+
+  defp release_lock(lock_path) do
+    case File.read(lock_path) do
+      {:ok, raw} ->
+        if String.trim(raw) == System.pid() do
+          File.rm(lock_path)
+        end
+
+      {:error, _reason} ->
+        :ok
+    end
+
+    :ok
+  end
+
+  defp os_pid_alive?(pid) do
+    {_output, status} = System.cmd("kill", ["-0", to_string(pid)], stderr_to_stdout: true)
+    status == 0
+  rescue
+    _error -> false
   end
 end
 

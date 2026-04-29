@@ -183,6 +183,7 @@ defmodule Tractor.RunStore do
         "total_cost_usd" =>
           Map.get(attrs, :total_cost_usd, store.manifest["total_cost_usd"] || "0")
       })
+      |> maybe_put_reason(attrs)
 
     write_manifest(store, manifest)
     write_run_status(store, manifest)
@@ -216,6 +217,13 @@ defmodule Tractor.RunStore do
 
   defp timestamp(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
   defp timestamp(timestamp) when is_binary(timestamp), do: timestamp
+
+  defp maybe_put_reason(manifest, attrs) do
+    case Map.fetch(attrs, :reason) do
+      {:ok, reason} -> Map.put(manifest, "reason", reason)
+      :error -> manifest
+    end
+  end
 
   defp encode_json!(data) do
     Jason.encode_to_iodata!(data, pretty: true)

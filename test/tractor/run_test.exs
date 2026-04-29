@@ -611,6 +611,43 @@ defmodule Tractor.RunTest do
   end
 
   @tag :tmp_dir
+  test "stopping runner kills active handler tasks", %{tmp_dir: tmp_dir} do
+    test_pid = self()
+
+    pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("one", "codergen", provider: "codex", prompt: "First"),
+          node("exit", "exit")
+        ],
+        edges: [edge("start", "one"), edge("one", "exit")]
+      )
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Codex, _opts ->
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, "First", 600_000 ->
+      send(test_pid, {:handler_prompt_started, self()})
+      Process.sleep(:infinity)
+    end)
+
+    assert {:ok, run_id} = Run.start(pipeline, runs_dir: tmp_dir, run_id: "run-interrupted")
+    assert_receive {:handler_prompt_started, handler_pid}, 1_000
+    handler_ref = Process.monitor(handler_pid)
+
+    [{runner_pid, _value}] = Registry.lookup(Tractor.RunRegistry, run_id)
+    runner_ref = Process.monitor(runner_pid)
+
+    assert :ok = GenServer.stop(runner_pid, {:shutdown, :interrupt}, 1_000)
+    assert_receive {:DOWN, ^runner_ref, :process, ^runner_pid, {:shutdown, :interrupt}}, 2_000
+    assert_receive {:DOWN, ^handler_ref, :process, ^handler_pid, _reason}, 2_000
+
+    assert read_json(Path.join([tmp_dir, run_id, "manifest.json"]))["status"] == "interrupted"
+  end
+
+  @tag :tmp_dir
   test "runs claude, codex, then gemini providers in graph order", %{tmp_dir: tmp_dir} do
     test_pid = self()
 

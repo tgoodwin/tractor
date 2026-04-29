@@ -125,6 +125,7 @@ defmodule TestLauncherTest do
       {~c"MIX_ENV", ~c"test"},
       {~c"TRACTOR_BROWSER_LOG_DIR", String.to_charlist(log_dir)},
       {~c"TRACTOR_BROWSER_LAUNCHER_SOCK", String.to_charlist(socket_path)},
+      {~c"TRACTOR_BROWSER_LAUNCHER_PARENT_PID", String.to_charlist(System.pid())},
       {~c"TRACTOR_BROWSER_LAUNCHER_DISABLE_STDIN_WATCH", ~c"1"}
     ]
 
