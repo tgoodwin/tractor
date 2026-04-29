@@ -110,9 +110,17 @@ defmodule TractorWeb.GraphRenderer do
 
   defp quote_id(id), do: quote_attr(id)
 
-  defp quote_attr(value) do
+  defp quote_attr(value) when is_binary(value) or is_number(value) or is_atom(value) do
     value
     |> to_string()
+    |> String.replace("\\", "\\\\")
+    |> String.replace("\"", "\\\"")
+    |> then(&"\"#{&1}\"")
+  end
+
+  defp quote_attr(value) do
+    value
+    |> inspect(limit: :infinity, printable_limit: :infinity)
     |> String.replace("\\", "\\\\")
     |> String.replace("\"", "\\\"")
     |> then(&"\"#{&1}\"")
@@ -218,13 +226,20 @@ defmodule TractorWeb.GraphRenderer do
   defp edge_title(edge), do: "#{edge.from}->#{edge.to}"
 
   defp decode_edge_title(title) do
-    title
-    |> String.replace("&#45;", "-")
-    |> String.replace("&gt;", ">")
-    |> String.replace("&lt;", "<")
-    |> String.replace(":e->", "->")
-    |> String.replace("->", "->")
-    |> String.replace_suffix(":e", "")
+    decoded =
+      title
+      |> String.replace("&#45;", "-")
+      |> String.replace("&gt;", ">")
+      |> String.replace("&lt;", "<")
+
+    case String.split(decoded, "->", parts: 2) do
+      [from, to] -> "#{strip_edge_port(from)}->#{strip_edge_port(to)}"
+      _other -> decoded
+    end
+  end
+
+  defp strip_edge_port(endpoint) do
+    Regex.replace(~r/:(?:n|s|e|w|c|ne|nw|se|sw)$/, endpoint, "")
   end
 
   defp condition?(edge), do: edge_condition(edge) != ""

@@ -820,6 +820,10 @@ body {
   color: var(--tone-usage);
 }
 
+.tl-acp .tl-chip {
+  color: var(--tone-stderr);
+}
+
 .tl-success {
   background: rgba(63, 122, 60, 0.08);
 }
@@ -1642,4 +1646,3 @@ summary {
   opacity: 0.6;
   cursor: not-allowed;
 }
-

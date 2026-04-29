@@ -5,6 +5,10 @@ defmodule TractorWeb.RunLive.Timeline do
 
   alias TractorWeb.{Format, ToolCallFormatter}
 
+  @display_string_limit 4_000
+  @display_map_limit 40
+  @display_list_limit 40
+
   @type entry :: %{
           id: String.t(),
           ts: DateTime.t() | nil,
@@ -17,6 +21,7 @@ defmodule TractorWeb.RunLive.Timeline do
             | :message
             | :response
             | :stderr
+            | :acp
             | :lifecycle
             | :usage
             | :iteration_header
@@ -45,9 +50,24 @@ defmodule TractorWeb.RunLive.Timeline do
     |> sort_entries()
   end
 
-  @spec insert([entry()], map()) :: {non_neg_integer(), entry()} | nil
-  def insert(entries, event) do
-    case merge_event_entry(entries, event) do
+  @spec from_disk_many(Path.t(), [{String.t(), keyword()}]) :: [entry()]
+  def from_disk_many(run_dir, node_specs) do
+    scoped? = length(node_specs) > 1
+
+    node_specs
+    |> Enum.flat_map(fn {node_id, opts} ->
+      run_dir
+      |> from_disk(node_id, opts)
+      |> Enum.map(&scope_entry(&1, source_node_id(scoped?, node_id)))
+    end)
+    |> sort_entries()
+  end
+
+  @spec insert([entry()], map(), keyword()) :: {non_neg_integer(), entry()} | nil
+  def insert(entries, event, opts \\ []) do
+    source_node_id = Keyword.get(opts, :source_node_id)
+
+    case merge_event_entry(entries, event, source_node_id) do
       nil ->
         nil
 
@@ -117,26 +137,72 @@ defmodule TractorWeb.RunLive.Timeline do
   end
 
   defp maybe_add_stderr(entries, node_dir) do
-    case read_text(node_dir, "stderr.log") do
-      "" ->
-        entries
+    if Enum.any?(entries, &(&1.id == "stderr")) do
+      entries
+    else
+      case read_text(node_dir, "stderr.log") do
+        "" ->
+          entries
 
-      stderr ->
-        [
-          %{
-            id: "stderr",
-            ts: nil,
-            seq: 1_000_000,
-            type: :stderr,
-            title: "stderr",
-            summary: one_line(stderr),
-            body: tail(stderr),
-            collapsed_by_default?: true,
-            tone: :accent
-          }
-          | entries
-        ]
+        stderr ->
+          [
+            %{
+              id: "stderr",
+              ts: nil,
+              seq: 1_000_000,
+              type: :stderr,
+              title: "stderr",
+              summary: one_line(stderr),
+              body: tail(stderr),
+              collapsed_by_default?: true,
+              tone: :accent
+            }
+            | entries
+          ]
+      end
     end
+  end
+
+  defp stderr_entry(event, text) do
+    %{
+      id: "stderr",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :stderr,
+      title: "stderr",
+      summary: one_line(text),
+      body: text,
+      collapsed_by_default?: true,
+      tone: :accent
+    }
+  end
+
+  defp stdout_entry(event, text) do
+    %{
+      id: "stdout-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :stdout,
+      title: "stdout",
+      summary: one_line(text),
+      body: text,
+      collapsed_by_default?: true,
+      tone: :muted
+    }
+  end
+
+  defp acp_entry(event, title, summary, data) do
+    %{
+      id: "acp-#{event["seq"]}",
+      ts: parse_ts(event["ts"]),
+      seq: event["seq"],
+      type: :acp,
+      title: title,
+      summary: summary,
+      body: display_data(data),
+      collapsed_by_default?: true,
+      tone: :accent
+    }
   end
 
   defp maybe_add_terminal_status(entries, node_dir, events) do
@@ -177,9 +243,20 @@ defmodule TractorWeb.RunLive.Timeline do
     end)
   end
 
-  defp merge_event_entry(entries, event) do
+  defp source_node_id(false, _node_id), do: nil
+  defp source_node_id(true, node_id), do: node_id
+
+  defp scope_entry(nil, _source_node_id), do: nil
+  defp scope_entry(entry, nil), do: entry
+
+  defp scope_entry(%{id: id, summary: summary} = entry, source_node_id) do
+    %{entry | id: "#{source_node_id}:#{id}", summary: "#{source_node_id}: #{summary}"}
+  end
+
+  defp merge_event_entry(entries, event, source_node_id) do
     event
     |> event_entry()
+    |> scope_entry(source_node_id)
     |> merge_with_existing(entries, event)
   end
 
@@ -204,6 +281,24 @@ defmodule TractorWeb.RunLive.Timeline do
     }
   end
 
+  defp event_entry(%{"kind" => "stderr_chunk", "data" => data} = event) do
+    stderr_entry(event, data["text"] || "")
+  end
+
+  defp event_entry(%{"kind" => "acp_stdout_line", "data" => data} = event) do
+    stdout_entry(event, data["text"] || "")
+  end
+
+  defp event_entry(%{"kind" => "acp_unknown_update", "data" => data} = event) do
+    kind = data["updateKind"] || "unknown"
+    acp_entry(event, "ACP", "unknown update #{kind}", data)
+  end
+
+  defp event_entry(%{"kind" => "acp_unknown_message", "data" => data} = event) do
+    method = data["method"] || "message"
+    acp_entry(event, "ACP", "unknown #{method}", data)
+  end
+
   defp event_entry(%{"kind" => "tool_call", "data" => data} = event) do
     tool_call_entry(event, data)
   end
@@ -218,7 +313,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :tool_call_update,
       title: "[TOOL] update",
       summary: "tool update #{id}",
-      body: %{"call" => nil, "updates" => [data]},
+      body: %{"call" => nil, "updates" => [display_data(data)]},
       collapsed_by_default?: true,
       tone: :neutral
     }
@@ -285,7 +380,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :tool_runtime,
       title: "[TOOL] invoked",
       summary: "#{Enum.join(command, " ")} (exit #{exit_status})",
-      body: data,
+      body: display_data(data),
       collapsed_by_default?: true,
       tone: if(exit_status in [0, nil], do: :neutral, else: :accent)
     }
@@ -302,7 +397,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :tool_runtime,
       title: "[TOOL] output truncated",
       summary: "#{stream} limited to #{limit} bytes",
-      body: data,
+      body: display_data(data),
       collapsed_by_default?: true,
       tone: :accent
     }
@@ -319,7 +414,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :wait_runtime,
       title: "[WAIT] pending",
       summary: "#{prompt} (#{Enum.join(labels, ", ")})",
-      body: data,
+      body: display_data(data),
       collapsed_by_default?: false,
       tone: :accent
     }
@@ -336,7 +431,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :wait_runtime,
       title: "[WAIT] resolved",
       summary: "#{label} via #{source}",
-      body: data,
+      body: display_data(data),
       collapsed_by_default?: true,
       tone: :success
     }
@@ -359,7 +454,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :lifecycle,
       title: "Lifecycle",
       summary: String.replace(kind, "_", " "),
-      body: event["data"] || %{},
+      body: display_data(event["data"] || %{}),
       collapsed_by_default?: true,
       tone: lifecycle_tone(kind)
     }
@@ -378,7 +473,7 @@ defmodule TractorWeb.RunLive.Timeline do
       type: :tool_call,
       title: tag,
       summary: summary,
-      body: %{"call" => data, "updates" => []},
+      body: %{"call" => display_data(data), "updates" => []},
       collapsed_by_default?: not exec_tool?(data),
       tone: :neutral
     }
@@ -406,14 +501,16 @@ defmodule TractorWeb.RunLive.Timeline do
 
   defp merge_with_existing(nil, _entries, _event), do: nil
 
-  defp merge_with_existing(%{id: "response"} = entry, entries, _event) do
+  defp merge_with_existing(%{type: :response, id: id} = entry, entries, _event) do
     case Enum.find(entries, &(&1.id == "response")) do
       nil ->
-        entry
+        case Enum.find(entries, &(&1.id == id)) do
+          nil -> entry
+          existing -> merge_response(existing, entry)
+        end
 
       existing ->
-        body = existing.body <> entry.body
-        %{existing | body: body, summary: one_line(body)}
+        merge_response(existing, entry)
     end
   end
 
@@ -430,7 +527,31 @@ defmodule TractorWeb.RunLive.Timeline do
     end
   end
 
+  defp merge_with_existing(%{type: :stderr, id: "stderr"} = entry, entries, _event) do
+    case Enum.find(entries, &(&1.id == "stderr")) do
+      nil ->
+        entry
+
+      existing ->
+        body = existing.body <> entry.body
+        %{existing | body: body, summary: one_line(body), ts: entry.ts || existing.ts}
+    end
+  end
+
   defp merge_with_existing(entry, _entries, _event), do: entry
+
+  defp merge_response(existing, entry) do
+    body = existing.body <> entry.body
+    summary = response_summary(entry.summary, body)
+    %{existing | body: body, summary: summary}
+  end
+
+  defp response_summary(summary, body) do
+    case String.split(summary || "", ": ", parts: 2) do
+      [source, _text] -> "#{source}: #{one_line(body)}"
+      _other -> one_line(body)
+    end
+  end
 
   defp sort_entries(entries) do
     Enum.sort_by(entries, &sort_key/1)
@@ -559,6 +680,7 @@ defmodule TractorWeb.RunLive.Timeline do
 
   defp one_line(text) do
     text
+    |> Format.sanitize_text(printable_limit: @display_string_limit)
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
     |> Format.truncate(100)
@@ -566,8 +688,54 @@ defmodule TractorWeb.RunLive.Timeline do
 
   defp tail(text) do
     text
+    |> Format.sanitize_text(printable_limit: @display_string_limit)
     |> String.split("\n")
     |> Enum.take(-80)
     |> Enum.join("\n")
   end
+
+  defp display_data(value) when is_binary(value), do: display_text(value)
+
+  defp display_data(value) when is_map(value) do
+    value
+    |> Enum.take(@display_map_limit)
+    |> Map.new(fn {key, child} -> {key, display_data(child)} end)
+    |> maybe_put_omitted(map_size(value), @display_map_limit)
+  end
+
+  defp display_data(value) when is_list(value) do
+    displayed = value |> Enum.take(@display_list_limit) |> Enum.map(&display_data/1)
+    maybe_append_omitted(displayed, length(value), @display_list_limit)
+  end
+
+  defp display_data(value), do: value
+
+  defp display_text(text) do
+    text = Format.sanitize_text(text, printable_limit: @display_string_limit)
+
+    if byte_size(text) <= @display_string_limit do
+      text
+    else
+      truncate_display_text(text)
+    end
+  end
+
+  defp truncate_display_text(text) do
+    omitted = byte_size(text) - @display_string_limit
+
+    Format.truncate(text, @display_string_limit) <>
+      "\n\n[truncated #{omitted} bytes for browser display; full event is in events.jsonl]"
+  end
+
+  defp maybe_put_omitted(map, size, limit) when size > limit do
+    Map.put(map, "__tractor_omitted__", "#{size - limit} map entries omitted for browser display")
+  end
+
+  defp maybe_put_omitted(map, _size, _limit), do: map
+
+  defp maybe_append_omitted(list, size, limit) when size > limit do
+    list ++ ["#{size - limit} list entries omitted for browser display"]
+  end
+
+  defp maybe_append_omitted(list, _size, _limit), do: list
 end

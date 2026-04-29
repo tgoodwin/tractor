@@ -37,12 +37,33 @@ defmodule TractorWeb.Format do
   def humanize_bytes(bytes) when bytes < 1_073_741_824, do: compact_scaled(bytes, 1_048_576, "MB")
   def humanize_bytes(bytes), do: compact_scaled(bytes, 1_073_741_824, "GB")
 
+  @spec sanitize_text(binary() | nil, keyword()) :: String.t()
+  def sanitize_text(text, opts \\ [])
+  def sanitize_text(nil, _opts), do: ""
+
+  def sanitize_text(text, opts) when is_binary(text) do
+    if String.valid?(text) do
+      text
+    else
+      printable_limit = Keyword.get(opts, :printable_limit, 4_096)
+      inspect(text, binaries: :as_strings, printable_limit: printable_limit)
+    end
+  end
+
   @spec truncate(binary() | nil, pos_integer()) :: String.t()
   def truncate(nil, _max_length), do: ""
-  def truncate(text, max_length) when byte_size(text) <= max_length, do: text
   def truncate(_text, max_length) when max_length <= 0, do: ""
   def truncate(_text, max_length) when max_length <= 3, do: binary_part("...", 0, max_length)
-  def truncate(text, max_length), do: binary_part(text, 0, max_length - 3) <> "..."
+
+  def truncate(text, max_length) do
+    text = sanitize_text(text, printable_limit: max_length)
+
+    if byte_size(text) <= max_length do
+      text
+    else
+      utf8_prefix(text, max_length - 3) <> "..."
+    end
+  end
 
   @spec usd(String.t() | number() | nil) :: String.t()
   def usd(nil), do: "n/a"
@@ -72,6 +93,24 @@ defmodule TractorWeb.Format do
       Integer.to_string(trunc(rounded))
     else
       :erlang.float_to_binary(rounded, decimals: 1)
+    end
+  end
+
+  defp utf8_prefix(text, byte_limit) do
+    text
+    |> binary_part(0, min(byte_size(text), byte_limit))
+    |> trim_invalid_suffix()
+  end
+
+  defp trim_invalid_suffix(""), do: ""
+
+  defp trim_invalid_suffix(text) do
+    if String.valid?(text) do
+      text
+    else
+      text
+      |> binary_part(0, byte_size(text) - 1)
+      |> trim_invalid_suffix()
     end
   end
 end

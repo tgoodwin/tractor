@@ -58,4 +58,29 @@ defmodule TractorWeb.GraphRendererTest do
     assert svg =~ ~s(data-to="draft")
     assert svg =~ "tractor-edge-back"
   end
+
+  test "render tolerates structured node attributes" do
+    pipeline = %Pipeline{
+      path: "graph-renderer-structured-#{System.unique_integer([:positive])}.dot",
+      nodes:
+        Map.new(
+          [
+            %Node{
+              id: "setup",
+              type: "tool",
+              attrs: %{
+                "command" => ["bash", "scripts/setup.sh"],
+                "env" => %{"LC_ALL" => "C", "LANG" => "C"}
+              }
+            },
+            %Node{id: "exit", type: "exit"}
+          ],
+          &{&1.id, &1}
+        ),
+      edges: [%Edge{from: "setup", to: "exit"}]
+    }
+
+    assert {:ok, svg} = GraphRenderer.render(pipeline)
+    assert svg =~ ~s(data-testid="node-setup")
+  end
 end

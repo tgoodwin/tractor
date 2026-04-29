@@ -36,6 +36,15 @@ defmodule TractorWeb.FormatTest do
     assert Format.truncate("abcdef", 2) == ".."
   end
 
+  test "truncate and sanitize_text keep display text valid UTF-8" do
+    assert Format.truncate("aaaaa—tail", 9) == "aaaaa..."
+    assert String.valid?(Format.truncate("aaaaa—tail", 9))
+
+    sanitized = Format.sanitize_text(<<"ok", 0xE2>>)
+    assert String.valid?(sanitized)
+    refute sanitized == <<"ok", 0xE2>>
+  end
+
   test "usd formats decimal strings and missing values" do
     assert Format.usd(nil) == "n/a"
     assert Format.usd("0") == "$0"

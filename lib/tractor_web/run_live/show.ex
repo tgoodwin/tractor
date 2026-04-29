@@ -23,6 +23,7 @@ defmodule TractorWeb.RunLive.Show do
         run_status: :unknown,
         run_total_cost_usd: "0",
         selected_node_id: nil,
+        selected_activity_node_ids: [],
         selected_node: nil,
         pending_waits: %{},
         missing?: false,
@@ -223,6 +224,7 @@ defmodule TractorWeb.RunLive.Show do
      socket
      |> assign(
        selected_node_id: nil,
+       selected_activity_node_ids: [],
        selected_node: nil,
        timeline_entries: [],
        wait_form_error: nil
@@ -337,6 +339,7 @@ defmodule TractorWeb.RunLive.Show do
 
   defp format_assistant_error(:timeout), do: "Assistant timed out before responding."
   defp format_assistant_error(:empty_response), do: "Assistant returned an empty response."
+
   defp format_assistant_error({:missing_executable, exe}),
     do: "Provider command not found: #{exe}. Is the ACP bridge installed?"
 
@@ -345,23 +348,20 @@ defmodule TractorWeb.RunLive.Show do
   defp select_node(socket, nil), do: socket
 
   defp select_node(%{assigns: assigns} = socket, node_id) do
-    static_prompt =
-      case assigns[:pipeline] do
-        %Tractor.Pipeline{nodes: nodes} ->
-          case Map.get(nodes, node_id) do
-            %Tractor.Node{prompt: prompt} -> prompt
-            _ -> nil
-          end
+    activity_node_ids = activity_node_ids(assigns[:pipeline], node_id)
 
-        _ ->
-          nil
-      end
-
-    entries = Timeline.from_disk(assigns.run_dir, node_id, static_prompt: static_prompt)
+    entries =
+      Timeline.from_disk_many(
+        assigns.run_dir,
+        Enum.map(activity_node_ids, fn activity_node_id ->
+          {activity_node_id, [static_prompt: static_prompt(assigns[:pipeline], activity_node_id)]}
+        end)
+      )
 
     socket
     |> assign(
       selected_node_id: node_id,
+      selected_activity_node_ids: activity_node_ids,
       selected_node: selected_node(assigns, node_id),
       timeline_entries: entries,
       selected_plan: Map.get(assigns.latest_plans, node_id, []),
@@ -398,11 +398,24 @@ defmodule TractorWeb.RunLive.Show do
   defp maybe_update_plan(socket, _node_id, _event), do: socket
 
   defp maybe_insert_selected_event(
-         %{assigns: %{selected_node_id: node_id}} = socket,
+         %{assigns: %{selected_activity_node_ids: node_ids}} = socket,
          node_id,
          event
        ) do
-    case Timeline.insert(socket.assigns.timeline_entries, event) do
+    if node_id in node_ids do
+      insert_selected_timeline_event(socket, node_ids, node_id, event)
+    else
+      socket
+    end
+  end
+
+  defp insert_selected_timeline_event(socket, node_ids, node_id, event) do
+    source_node_id =
+      if length(node_ids) > 1 do
+        node_id
+      end
+
+    case Timeline.insert(socket.assigns.timeline_entries, event, source_node_id: source_node_id) do
       nil ->
         socket
 
@@ -418,7 +431,23 @@ defmodule TractorWeb.RunLive.Show do
     end
   end
 
-  defp maybe_insert_selected_event(socket, _node_id, _event), do: socket
+  defp activity_node_ids(%Tractor.Pipeline{parallel_blocks: parallel_blocks}, node_id) do
+    case Map.get(parallel_blocks, node_id) do
+      %{branches: branches} -> [node_id | branches]
+      _other -> [node_id]
+    end
+  end
+
+  defp activity_node_ids(_pipeline, node_id), do: [node_id]
+
+  defp static_prompt(%Tractor.Pipeline{nodes: nodes}, node_id) do
+    case Map.get(nodes, node_id) do
+      %Tractor.Node{prompt: prompt} -> prompt
+      _other -> nil
+    end
+  end
+
+  defp static_prompt(_pipeline, _node_id), do: nil
 
   defp load_node_states(pipeline, run_dir) do
     Map.new(pipeline.nodes, fn {node_id, _node} ->
@@ -772,8 +801,27 @@ defmodule TractorWeb.RunLive.Show do
     Calendar.strftime(datetime, "%-I:%M %p")
   end
 
-  defp entry_body(body) when is_binary(body), do: body
-  defp entry_body(body), do: Jason.encode!(body, pretty: true)
+  defp entry_body(body) when is_binary(body), do: Format.sanitize_text(body)
+
+  defp entry_body(body) do
+    body
+    |> sanitize_json_value()
+    |> Jason.encode!(pretty: true)
+  rescue
+    _error -> inspect(body, pretty: true, limit: 100, printable_limit: 4_000)
+  end
+
+  defp sanitize_json_value(value) when is_binary(value), do: Format.sanitize_text(value)
+
+  defp sanitize_json_value(value) when is_map(value) do
+    Map.new(value, fn {key, child} -> {sanitize_json_key(key), sanitize_json_value(child)} end)
+  end
+
+  defp sanitize_json_value(value) when is_list(value), do: Enum.map(value, &sanitize_json_value/1)
+  defp sanitize_json_value(value), do: value
+
+  defp sanitize_json_key(key) when is_binary(key), do: Format.sanitize_text(key)
+  defp sanitize_json_key(key), do: key
 
   defp node_pills(pipeline, node_id) do
     case pipeline.nodes[node_id] do

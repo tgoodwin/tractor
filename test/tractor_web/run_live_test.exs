@@ -137,6 +137,30 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
+  test "truncated multibyte tool updates keep the activity pane renderable", %{
+    conn: conn,
+    run_id: run_id
+  } do
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+    render_click(view, :select_node, %{"node-id" => "start"})
+
+    large_output = String.duplicate("a", 3_996) <> "—tail"
+
+    :ok =
+      RunEvents.emit(run_id, "start", :tool_call_update, %{
+        "toolCallId" => "tc_unicode",
+        "status" => "completed",
+        "rawOutput" => large_output
+      })
+
+    html = render(view)
+
+    assert html =~ "[TOOL] update"
+    assert html =~ "truncated"
+    assert html =~ "tl-entry"
+  end
+
+  @tag :tmp_dir
   test "late mount rebuilds complete state from disk", %{conn: conn, run_id: run_id} do
     assert {:ok, _result} = Run.await(run_id, 1_000)
     {:ok, view, _html} = live(conn, "/runs/#{run_id}")

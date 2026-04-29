@@ -88,6 +88,38 @@ defmodule TractorWeb.RunLive.TimelineTest do
     assert updated.body == "hello world"
   end
 
+  test "insert scopes entries when a source node is provided" do
+    first = event(1, "agent_message_chunk", %{"text" => "hello"}, "2026-04-19T10:00:01Z")
+    second = event(2, "agent_message_chunk", %{"text" => " world"}, "2026-04-19T10:00:02Z")
+
+    {0, response} = Timeline.insert([], first, source_node_id: "branch_a")
+    {0, updated} = Timeline.insert([response], second, source_node_id: "branch_a")
+
+    assert updated.id == "branch_a:response"
+    assert updated.summary == "branch_a: hello world"
+    assert updated.body == "hello world"
+  end
+
+  test "from_disk_many rolls up node timelines with source prefixes" do
+    parent_dir = node_dir()
+    root = Path.dirname(parent_dir)
+    child_dir = Path.join(root, "child")
+    File.mkdir_p!(child_dir)
+
+    write_events(parent_dir, [
+      event(1, "parallel_started", %{}, "2026-04-19T10:00:00Z")
+    ])
+
+    write_events(child_dir, [
+      event(1, "agent_message_chunk", %{"text" => "child output"}, "2026-04-19T10:00:01Z")
+    ])
+
+    entries = Timeline.from_disk_many(root, [{"node", []}, {"child", []}])
+
+    assert Enum.any?(entries, &(&1.id == "node:lifecycle-parallel_started-1"))
+    assert Enum.any?(entries, &(&1.id == "child:response" and &1.summary =~ "child:"))
+  end
+
   test "insert tie-breaks by timestamp then sequence" do
     entries = [
       lifecycle_entry("one", "2026-04-19T10:00:00Z", 1),
@@ -122,6 +154,63 @@ defmodule TractorWeb.RunLive.TimelineTest do
     assert updated.id == "tool-tc_1"
     assert updated.type == :tool_call
     assert updated.body["updates"] == [%{"toolCallId" => "tc_1", "status" => "done"}]
+  end
+
+  test "tool call display bodies truncate large raw payloads" do
+    large_output = String.duplicate("output ", 1_000)
+
+    call =
+      event(
+        1,
+        "tool_call",
+        %{
+          "kind" => "execute",
+          "toolCallId" => "tc_1",
+          "rawInput" => %{"command" => large_output}
+        },
+        "2026-04-19T10:00:00Z"
+      )
+
+    update =
+      event(
+        2,
+        "tool_call_update",
+        %{
+          "toolCallId" => "tc_1",
+          "status" => "completed",
+          "rawOutput" => large_output
+        },
+        "2026-04-19T10:00:01Z"
+      )
+
+    {0, entry} = Timeline.insert([], call)
+    {0, updated} = Timeline.insert([entry], update)
+
+    assert updated.body["call"]["rawInput"]["command"] =~ "truncated"
+    assert [display_update] = updated.body["updates"]
+    assert display_update["rawOutput"] =~ "truncated"
+    assert byte_size(display_update["rawOutput"]) < byte_size(large_output)
+  end
+
+  test "tool call display bodies keep truncated multibyte text valid" do
+    large_output = String.duplicate("a", 3_996) <> "—tail"
+
+    update =
+      event(
+        1,
+        "tool_call_update",
+        %{
+          "toolCallId" => "tc_unicode",
+          "status" => "completed",
+          "rawOutput" => large_output
+        },
+        "2026-04-19T10:00:01Z"
+      )
+
+    {0, entry} = Timeline.insert([], update)
+    assert [display_update] = entry.body["updates"]
+    assert display_update["rawOutput"] =~ "truncated"
+    assert String.valid?(display_update["rawOutput"])
   end
 
   test "insert renders token_usage runtime events as usage rows" do
@@ -188,6 +277,38 @@ defmodule TractorWeb.RunLive.TimelineTest do
     assert pending_entry.title == "[WAIT] pending"
     assert resolved_entry.type == :wait_runtime
     assert resolved_entry.title == "[WAIT] resolved"
+  end
+
+  test "stderr chunks merge into the live stderr entry" do
+    first = event(1, "stderr_chunk", %{"text" => "line one\n"}, "2026-04-19T10:00:00Z")
+    second = event(2, "stderr_chunk", %{"text" => "line two\n"}, "2026-04-19T10:00:01Z")
+
+    {0, entry} = Timeline.insert([], first)
+    {0, updated} = Timeline.insert([entry], second)
+
+    assert updated.id == "stderr"
+    assert updated.type == :stderr
+    assert updated.body == "line one\nline two\n"
+  end
+
+  test "renders ACP diagnostics as structured rows" do
+    update =
+      event(
+        1,
+        "acp_unknown_update",
+        %{"updateKind" => "provider_progress", "raw" => %{"type" => "provider_progress"}},
+        "2026-04-19T10:00:00Z"
+      )
+
+    stdout = event(2, "acp_stdout_line", %{"text" => "plain stdout"}, "2026-04-19T10:00:01Z")
+
+    {0, acp_entry} = Timeline.insert([], update)
+    {1, stdout_entry} = Timeline.insert([acp_entry], stdout)
+
+    assert acp_entry.type == :acp
+    assert acp_entry.summary == "unknown update provider_progress"
+    assert stdout_entry.type == :stdout
+    assert stdout_entry.title == "stdout"
   end
 
   defp node_dir(tmp_dir \\ nil) do

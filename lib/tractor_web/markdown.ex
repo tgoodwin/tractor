@@ -9,20 +9,25 @@ defmodule TractorWeb.Markdown do
   """
   @spec to_html(binary() | term()) :: {:safe, iodata()}
   def to_html(body) when is_binary(body) do
-    html =
-      case Earmark.as_html(body, earmark_opts()) do
-        {:ok, html, _warnings} -> html
-        {:error, html, _warnings} -> html
-      end
-
-    {:safe, html}
+    case Earmark.as_html(body, earmark_opts()) do
+      {:ok, html, _warnings} -> {:safe, html}
+      {:error, html, _warnings} -> {:safe, html}
+    end
+  rescue
+    _error -> raw_html(body)
   end
 
   def to_html(body) do
+    body
+    |> Jason.encode!(pretty: true)
+    |> raw_html()
+  end
+
+  defp raw_html(body) do
     {:safe,
      [
        "<pre class=\"tractor-raw-json\">",
-       Phoenix.HTML.html_escape(Jason.encode!(body, pretty: true)) |> elem(1),
+       Phoenix.HTML.html_escape(body) |> elem(1),
        "</pre>"
      ]}
   end
