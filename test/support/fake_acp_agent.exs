@@ -53,6 +53,14 @@ defmodule Tractor.FakeACPAgent do
         reply(message["id"], %{"sessionId" => state.session_id})
         state
 
+      "session/set_mode" ->
+        case System.get_env("TRACTOR_FAKE_ACP_SET_MODE", "ok") do
+          "method_not_found" -> error(message["id"], -32_601, "method not found")
+          _other -> reply(message["id"], %{})
+        end
+
+        state
+
       "session/prompt" ->
         handle_prompt(message, state)
 
@@ -83,6 +91,34 @@ defmodule Tractor.FakeACPAgent do
 
   defp handle_prompt(message, %{mode: "noisy_stdout"} = state) do
     IO.write("INFO fake provider stdout log\n")
+    handle_prompt(message, %{state | mode: "ok"})
+  end
+
+  defp handle_prompt(message, %{mode: "telemetry_stdout"} = state) do
+    IO.write(
+      ~s(2026-04-29T04:34:42Z  INFO codex_otel::otel_manager: event.name="codex.sse_event" user.account_id="abc" user.email="person@example.com"\n)
+    )
+
+    IO.write(
+      ~s(2026-04-29T04:34:43Z  INFO feedback_tags: model="gpt-5.5" approval_policy=OnRequest\n)
+    )
+
+    IO.write(
+      ~s(2026-04-29T04:34:44Z  INFO codex_core::stream_events_utils: ToolCall: shell {"command":["rg","TODO"]} user.email="person@example.com"\n)
+    )
+
+    IO.write("[... telemetry preview truncated ...]\n")
+
+    IO.write(
+      "2026-04-29T04:34:45Z  INFO codex_rmcp_client::rmcp_client: MCP server stderr (npx): noisy init\n"
+    )
+
+    IO.write("2026-04-29T04:34:46Z  INFO serve_inner: rmcp::service: Service initialized\n")
+
+    IO.write(
+      ~s(2026-04-29T04:34:47Z  INFO useful_provider_log: user.email="person@example.com" conversation.id=abc123\n)
+    )
+
     handle_prompt(message, %{state | mode: "ok"})
   end
 
@@ -145,6 +181,32 @@ defmodule Tractor.FakeACPAgent do
     ])
 
     handle_prompt(message, %{state | mode: "ok"})
+  end
+
+  defp handle_prompt(message, %{mode: "permission_request"} = state) do
+    request_permission(1000, state.session_id)
+
+    case read_response(1000) do
+      {:ok, %{"result" => %{"outcome" => %{"outcome" => "selected"}}}} ->
+        handle_prompt(message, %{state | mode: "ok"})
+
+      other ->
+        error(message["id"], -32_000, "permission not approved: #{inspect(other)}")
+        state
+    end
+  end
+
+  defp handle_prompt(message, %{mode: "unknown_client_request"} = state) do
+    request(1001, "client/unknown", %{"sessionId" => state.session_id})
+
+    case read_response(1001) do
+      {:ok, %{"error" => %{"code" => -32_601}}} ->
+        handle_prompt(message, %{state | mode: "ok"})
+
+      other ->
+        error(message["id"], -32_000, "unexpected unknown request response: #{inspect(other)}")
+        state
+    end
   end
 
   defp handle_prompt(message, state) do
@@ -305,6 +367,39 @@ defmodule Tractor.FakeACPAgent do
 
   defp notify(method, params) do
     write(%{"jsonrpc" => "2.0", "method" => method, "params" => params})
+  end
+
+  defp request_permission(id, session_id) do
+    request(id, "session/request_permission", %{
+      "sessionId" => session_id,
+      "options" => [
+        %{"kind" => "allow_always", "name" => "Allow All Edits", "optionId" => "proceed_always"},
+        %{"kind" => "allow_once", "name" => "Allow", "optionId" => "proceed_once"},
+        %{"kind" => "reject_once", "name" => "Reject", "optionId" => "cancel"}
+      ],
+      "toolCall" => %{
+        "toolCallId" => "write-file-1",
+        "title" => "Writing to DESIGN_B.md",
+        "kind" => "edit",
+        "status" => "pending",
+        "locations" => [%{"path" => "DESIGN_B.md"}],
+        "rawInput" => %{"path" => "DESIGN_B.md"}
+      }
+    })
+  end
+
+  defp request(id, method, params) do
+    write(%{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
+  end
+
+  defp read_response(id) do
+    case IO.read(:stdio, :line) do
+      line when is_binary(line) ->
+        {:ok, Jason.decode!(String.trim(line))}
+
+      other ->
+        {:error, {id, other}}
+    end
   end
 
   defp write(message) do

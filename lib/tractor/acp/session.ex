@@ -14,11 +14,20 @@ defmodule Tractor.ACP.Session do
   @default_timeout 300_000
   @default_init_timeout 30_000
   @line_length 1024 * 1024
+  @stderr_poll_ms 250
 
   defstruct agent_module: nil,
             opts: [],
+            owner_pid: nil,
+            owner_monitor: nil,
             port: nil,
             os_pid: nil,
+            janitor_port: nil,
+            janitor_os_pid: nil,
+            stderr_log: nil,
+            stderr_offset: 0,
+            stderr_poll_timer: nil,
+            wire_log: nil,
             next_id: 1,
             pending: %{},
             status: :starting,
@@ -45,12 +54,37 @@ defmodule Tractor.ACP.Session do
 
   @impl Tractor.AgentClient
   def start_session(agent_module, opts) do
-    start_link(agent_module, opts)
+    case Process.whereis(Tractor.ACP.SessionSup) do
+      nil ->
+        start_link(agent_module, opts)
+
+      _pid ->
+        DynamicSupervisor.start_child(
+          Tractor.ACP.SessionSup,
+          {__MODULE__, {agent_module, opts, self()}}
+        )
+    end
+  end
+
+  @spec child_spec({module(), keyword(), pid()}) :: Supervisor.child_spec()
+  def child_spec({agent_module, opts, owner_pid}) do
+    %{
+      id: {__MODULE__, make_ref()},
+      start: {__MODULE__, :start_link, [agent_module, opts, owner_pid]},
+      restart: :temporary,
+      shutdown: 5_000,
+      type: :worker
+    }
   end
 
   @spec start_link(module(), keyword()) :: GenServer.on_start()
   def start_link(agent_module, opts) do
-    GenServer.start_link(__MODULE__, {agent_module, opts})
+    start_link(agent_module, opts, self())
+  end
+
+  @spec start_link(module(), keyword(), pid()) :: GenServer.on_start()
+  def start_link(agent_module, opts, owner_pid) when is_pid(owner_pid) do
+    GenServer.start_link(__MODULE__, {agent_module, opts, owner_pid})
   end
 
   @impl Tractor.AgentClient
@@ -63,25 +97,44 @@ defmodule Tractor.ACP.Session do
   @spec stop(pid()) :: :ok
   def stop(pid) do
     GenServer.stop(pid, :normal)
+  catch
+    :exit, :normal -> :ok
+    :exit, {:normal, _stack} -> :ok
+    :exit, {{:normal, _details}, _stack} -> :ok
+    :exit, {:noproc, _stack} -> :ok
+    :exit, {{:noproc, _details}, _stack} -> :ok
   end
 
   @impl true
-  def init({agent_module, opts}) do
+  def init({agent_module, opts, owner_pid}) do
     Process.flag(:trap_exit, true)
 
     stderr_log = Keyword.get(opts, :stderr_log)
+    wire_log = Keyword.get(opts, :wire_log) || default_wire_log(stderr_log)
 
     with {:ok, {executable, args, env}} <- command(agent_module, opts),
          {:ok, port} <- open_port(executable, args, env, stderr_log) do
+      os_pid = os_pid(port)
+      janitor_port = start_process_janitor(os_pid)
+
       state = %__MODULE__{
         agent_module: agent_module,
         opts: opts,
+        owner_pid: owner_pid,
+        owner_monitor: Process.monitor(owner_pid),
         port: port,
-        os_pid: os_pid(port),
+        os_pid: os_pid,
+        janitor_port: janitor_port,
+        janitor_os_pid: os_pid(janitor_port),
+        stderr_log: stderr_log,
+        stderr_offset: file_size(stderr_log),
+        wire_log: wire_log,
         event_sink: Keyword.get(opts, :event_sink, fn _event -> :ok end)
       }
 
-      {:ok, state |> arm_init_timer() |> send_initialize()}
+      prepare_debug_log(wire_log)
+
+      {:ok, state |> arm_init_timer() |> arm_stderr_poll() |> send_initialize()}
     else
       {:error, reason} -> {:stop, reason}
     end
@@ -131,6 +184,7 @@ defmodule Tractor.ACP.Session do
     if String.starts_with?(line, "{") do
       handle_json_line(line, state)
     else
+      state = record_stdout_line(state, line)
       {:noreply, state}
     end
   end
@@ -151,23 +205,62 @@ defmodule Tractor.ACP.Session do
 
   def handle_info({:init_timeout, _ref}, state), do: {:noreply, state}
 
+  def handle_info(:poll_stderr, state) do
+    {:noreply, state |> drain_stderr() |> arm_stderr_poll()}
+  end
+
+  def handle_info(
+        {:DOWN, monitor_ref, :process, owner_pid, reason},
+        %{owner_monitor: monitor_ref, owner_pid: owner_pid} = state
+      ) do
+    {:stop, {:shutdown, {:owner_down, reason}}, fail_any_pending(state, :cancelled)}
+  end
+
+  def handle_info({:EXIT, owner_pid, reason}, %{owner_pid: owner_pid} = state) do
+    {:stop, {:shutdown, {:owner_exit, reason}}, fail_any_pending(state, :cancelled)}
+  end
+
+  def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
+
+  def handle_info({:EXIT, pid, reason}, state) do
+    Logger.warning("ACP session received unexpected :EXIT",
+      pid: inspect(pid),
+      reason: inspect(reason)
+    )
+
+    {:noreply, state}
+  end
+
   defp handle_json_line(line, state) do
     case Jason.decode(line) do
       {:ok, message} ->
+        write_wire(state, "in", message)
         {:noreply, handle_message(message, state)}
 
       {:error, reason} ->
+        write_wire(state, "in", %{"raw" => line, "decode_error" => Exception.message(reason)})
         {:noreply, fail_prompt(state, {:invalid_json, reason})}
     end
   end
 
   @impl true
   def terminate(_reason, state) do
+    demonitor_owner(state)
+    cancel_stderr_poll(state)
+    state = drain_stderr(state)
     pids = os_process_tree(state.os_pid)
     close_port(state.port)
     terminate_os_processes(pids)
+    close_port(state.janitor_port)
     :ok
   end
+
+  defp demonitor_owner(%{owner_monitor: monitor_ref}) when is_reference(monitor_ref) do
+    Process.demonitor(monitor_ref, [:flush])
+    :ok
+  end
+
+  defp demonitor_owner(_state), do: :ok
 
   defp command(agent_module, opts) do
     case agent_module.command(opts) do
@@ -292,14 +385,36 @@ defmodule Tractor.ACP.Session do
   defp send_request(state, kind, method, params) do
     id = state.next_id
 
-    send_message(state.port, %{
+    message = %{
       "jsonrpc" => "2.0",
       "id" => id,
       "method" => method,
       "params" => params
-    })
+    }
+
+    write_wire(state, "out", message)
+    send_message(state.port, message)
 
     %{state | next_id: id + 1, pending: Map.put(state.pending, id, kind)}
+  end
+
+  defp send_response(state, id, result) do
+    message = %{"jsonrpc" => "2.0", "id" => id, "result" => result}
+    write_wire(state, "out", message)
+    send_message(state.port, message)
+    state
+  end
+
+  defp send_error(state, id, code, message_text) do
+    message = %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "error" => %{"code" => code, "message" => message_text}
+    }
+
+    write_wire(state, "out", message)
+    send_message(state.port, message)
+    state
   end
 
   defp send_message(port, message) do
@@ -313,17 +428,18 @@ defmodule Tractor.ACP.Session do
 
       {:session_new, pending} ->
         session_id = result["sessionId"] || result["session_id"]
-        state =
-          %{state | pending: pending, session_id: session_id, status: :idle}
-          |> cancel_init_timer()
 
-        maybe_send_queued_prompt(state)
+        %{state | pending: pending, session_id: session_id}
+        |> maybe_send_session_mode()
+
+      {:session_set_mode, pending} ->
+        %{state | pending: pending} |> complete_session_start()
 
       {:prompt, pending} ->
         %{state | pending: pending} |> finish_prompt(result)
 
       {nil, _pending} ->
-        state
+        emit_unknown_message(state, %{"id" => id, "result" => result, "unmatched" => true})
     end
   end
 
@@ -331,6 +447,21 @@ defmodule Tractor.ACP.Session do
     case Map.pop(state.pending, id) do
       {:prompt, pending} ->
         %{state | pending: pending} |> fail_prompt({:jsonrpc_error, error})
+
+      {:session_set_mode, pending} ->
+        state = %{state | pending: pending}
+
+        if method_not_found?(error) do
+          emit_event(state, :acp_unknown_message, %{
+            "method" => "session/set_mode",
+            "error" => error,
+            "ignored" => true
+          })
+
+          complete_session_start(state)
+        else
+          fail_any_pending(state, {:jsonrpc_error, error})
+        end
 
       {nil, _pending} ->
         state
@@ -352,7 +483,94 @@ defmodule Tractor.ACP.Session do
     end
   end
 
-  defp handle_message(_message, state), do: state
+  defp handle_message(
+         %{"id" => id, "method" => "session/request_permission", "params" => params} = message,
+         state
+       ) do
+    {response, selected} = permission_response(params)
+
+    emit_event(state, :acp_unknown_message, %{
+      "method" => "session/request_permission",
+      "id" => id,
+      "autoApproved" => selected != nil,
+      "selectedOption" => selected,
+      "raw" => message
+    })
+
+    send_response(state, id, response)
+  end
+
+  defp handle_message(%{"id" => id, "method" => method} = message, state) do
+    emit_event(state, :acp_unknown_message, %{
+      "method" => method,
+      "id" => id,
+      "raw" => message,
+      "replied" => "method_not_found"
+    })
+
+    send_error(state, id, -32_601, "method not found")
+  end
+
+  defp handle_message(%{"method" => method} = message, state) do
+    emit_unknown_message(state, %{"method" => method, "raw" => message})
+  end
+
+  defp handle_message(message, state) do
+    emit_unknown_message(state, %{"raw" => message})
+  end
+
+  defp maybe_send_session_mode(state) do
+    case Tractor.Agent.session_mode(state.agent_module, state.opts) do
+      mode when is_binary(mode) and mode != "" ->
+        send_request(state, :session_set_mode, "session/set_mode", %{
+          "sessionId" => state.session_id,
+          "modeId" => mode
+        })
+
+      _other ->
+        complete_session_start(state)
+    end
+  end
+
+  defp complete_session_start(state) do
+    state
+    |> Map.put(:status, :idle)
+    |> cancel_init_timer()
+    |> maybe_send_queued_prompt()
+  end
+
+  defp method_not_found?(%{"code" => -32_601}), do: true
+
+  defp method_not_found?(%{"message" => message}) when is_binary(message) do
+    message |> String.downcase() |> String.contains?("method not found")
+  end
+
+  defp method_not_found?(_error), do: false
+
+  defp permission_response(params) do
+    options = List.wrap(params["options"])
+
+    selected =
+      Enum.find(options, &(Map.get(&1, "kind") == "allow_always")) ||
+        Enum.find(options, &(Map.get(&1, "kind") == "allow_once")) ||
+        Enum.find(options, &allowish_option?/1)
+
+    case selected do
+      %{"optionId" => option_id} ->
+        {%{"outcome" => %{"outcome" => "selected", "optionId" => option_id}}, selected}
+
+      _other ->
+        {%{"outcome" => %{"outcome" => "cancelled"}}, nil}
+    end
+  end
+
+  defp allowish_option?(%{"optionId" => option_id}) when is_binary(option_id) do
+    option_id
+    |> String.downcase()
+    |> then(&(String.contains?(&1, "allow") or String.contains?(&1, "proceed")))
+  end
+
+  defp allowish_option?(_option), do: false
 
   defp capture_update(state, update) do
     kind = update["type"] || update["sessionUpdate"]
@@ -399,6 +617,11 @@ defmodule Tractor.ACP.Session do
         %{state | turn: %{turn | plan: plan["entries"]}}
 
       _other ->
+        emit_event(state, :acp_unknown_update, %{
+          "updateKind" => kind || "unknown",
+          "raw" => update
+        })
+
         state
     end
   end
@@ -423,6 +646,132 @@ defmodule Tractor.ACP.Session do
   defp emit_event(state, kind, data) do
     state.event_sink.(%{kind: kind, data: data})
     :ok
+  end
+
+  defp emit_unknown_message(state, data) do
+    emit_event(state, :acp_unknown_message, data)
+    state
+  end
+
+  defp default_wire_log(nil), do: nil
+  defp default_wire_log(stderr_log), do: Path.join(Path.dirname(stderr_log), "acp-wire.jsonl")
+
+  defp prepare_debug_log(nil), do: :ok
+
+  defp prepare_debug_log(path) do
+    File.mkdir_p!(Path.dirname(path))
+    File.write(path, "", [:append])
+    :ok
+  rescue
+    _error -> :ok
+  end
+
+  defp write_wire(%{wire_log: nil}, _direction, _payload), do: :ok
+
+  defp write_wire(%{wire_log: path}, direction, payload) do
+    entry = %{
+      "ts" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "direction" => direction,
+      "payload" => payload
+    }
+
+    File.write(path, Jason.encode!(entry) <> "\n", [:append])
+    :ok
+  rescue
+    _error -> :ok
+  end
+
+  defp record_stdout_line(state, ""), do: state
+
+  defp record_stdout_line(state, line) do
+    write_wire(state, "stdout", %{"text" => redact_stdout_line(line)})
+
+    case visible_stdout_line(line) do
+      :drop -> :ok
+      text -> emit_event(state, :acp_stdout_line, %{"text" => text})
+    end
+
+    state
+  end
+
+  defp visible_stdout_line(line) do
+    cond do
+      telemetry_stdout_line?(line) -> :drop
+      true -> redact_stdout_line(line)
+    end
+  end
+
+  defp telemetry_stdout_line?(line) do
+    line == "[... telemetry preview truncated ...]" or
+      String.contains?(line, " codex_otel::otel_manager: ") or
+      String.contains?(line, " INFO feedback_tags: ") or
+      String.contains?(line, " codex_acp::") or
+      String.contains?(line, " codex_rmcp_client::") or
+      String.contains?(line, " codex_core::features:") or
+      String.contains?(line, " codex_core::config:") or
+      String.contains?(line, " codex_core::stream_events_utils:") or
+      String.contains?(line, " serve_inner:") or
+      String.contains?(line, " MCP server stderr ")
+  end
+
+  defp redact_stdout_line(line) do
+    line
+    |> then(&Regex.replace(~r/user\.email="[^"]+"/, &1, ~s(user.email="[redacted]")))
+    |> then(&Regex.replace(~r/user\.account_id="[^"]+"/, &1, ~s(user.account_id="[redacted]")))
+    |> then(&Regex.replace(~r/conversation\.id=[^ ]+/, &1, "conversation.id=[redacted]"))
+  end
+
+  defp arm_stderr_poll(%{stderr_log: nil} = state), do: state
+
+  defp arm_stderr_poll(state) do
+    timer = Process.send_after(self(), :poll_stderr, @stderr_poll_ms)
+    %{state | stderr_poll_timer: timer}
+  end
+
+  defp cancel_stderr_poll(%{stderr_poll_timer: timer}) when is_reference(timer) do
+    Process.cancel_timer(timer)
+    :ok
+  end
+
+  defp cancel_stderr_poll(_state), do: :ok
+
+  defp drain_stderr(%{stderr_log: nil} = state), do: state
+
+  defp drain_stderr(%{stderr_log: path, stderr_offset: offset} = state) do
+    case File.read(path) do
+      {:ok, body} ->
+        size = byte_size(body)
+
+        cond do
+          size > offset ->
+            chunk = binary_part(body, offset, size - offset)
+            write_wire(state, "stderr", %{"text" => chunk})
+            emit_event(state, :stderr_chunk, %{"text" => chunk})
+            %{state | stderr_offset: size}
+
+          size < offset ->
+            %{state | stderr_offset: size}
+
+          true ->
+            state
+        end
+
+      _other ->
+        state
+    end
+  rescue
+    _error -> state
+  end
+
+  defp file_size(nil), do: 0
+
+  defp file_size(path) do
+    case File.stat(path) do
+      {:ok, %{size: size}} -> size
+      _other -> 0
+    end
+  rescue
+    _error -> 0
   end
 
   defp chunk_text(%{"content" => %{"text" => text}}) when is_binary(text), do: text
@@ -622,6 +971,8 @@ defmodule Tractor.ACP.Session do
   end
 
   defp reply_prompt(state, reply) do
+    state = drain_stderr(state)
+
     if state.prompt_timer do
       Process.cancel_timer(state.prompt_timer)
     end
@@ -652,6 +1003,8 @@ defmodule Tractor.ACP.Session do
   defp call_timeout(nil), do: @default_timeout + 1_000
   defp call_timeout(timeout), do: timeout + 1_000
 
+  defp os_pid(nil), do: nil
+
   defp os_pid(port) do
     case Port.info(port, :os_pid) do
       {:os_pid, pid} -> pid
@@ -667,6 +1020,68 @@ defmodule Tractor.ACP.Session do
     end
   rescue
     _error -> :ok
+  end
+
+  defp start_process_janitor(nil), do: nil
+
+  defp start_process_janitor(target_pid) do
+    Port.open({:spawn_executable, "/bin/sh"}, [
+      :binary,
+      :exit_status,
+      :hide,
+      :nouse_stdio,
+      {:args,
+       ["-c", process_janitor_script(), "tractor-acp-janitor", System.pid(), "#{target_pid}"]}
+    ])
+  rescue
+    _error -> nil
+  end
+
+  defp process_janitor_script do
+    """
+    parent_pid=$1
+    target_pid=$2
+
+    alive() {
+      kill -0 "$1" 2>/dev/null
+    }
+
+    kill_tree() {
+      tree_pid=$1
+      signal=$2
+
+      for child_pid in $(pgrep -P "$tree_pid" 2>/dev/null); do
+        kill_tree "$child_pid" "$signal"
+      done
+
+      kill "$signal" "$tree_pid" 2>/dev/null || true
+    }
+
+    wait_for_exit() {
+      waited=0
+
+      while [ "$waited" -lt 20 ] && alive "$target_pid"; do
+        sleep 0.1
+        waited=$((waited + 1))
+      done
+
+      ! alive "$target_pid"
+    }
+
+    trap '' HUP
+
+    while alive "$parent_pid" && alive "$target_pid"; do
+      sleep 1
+    done
+
+    if ! alive "$parent_pid" && alive "$target_pid"; then
+      kill_tree "$target_pid" -TERM
+
+      if ! wait_for_exit; then
+        kill_tree "$target_pid" -KILL
+      fi
+    fi
+    """
   end
 
   defp os_process_tree(nil), do: []

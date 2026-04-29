@@ -24,6 +24,7 @@ defmodule Tractor.Handler.Codergen do
     agent_client = Application.get_env(:tractor, :agent_client, Tractor.ACP.Session)
     adapter = Map.fetch!(@provider_modules, node.llm_provider)
     {command, args, env} = adapter.command([])
+    env = merge_env(env, Node.env(node))
     prompt = Template.render(node.prompt || "", context)
     timeout = node.timeout || default_timeout_ms()
 
@@ -50,6 +51,7 @@ defmodule Tractor.Handler.Codergen do
            agent_client.start_session(adapter,
              cwd: run_dir,
              stderr_log: stderr_log,
+             env: env,
              event_sink: event_sink
            ) do
       case agent_client.prompt(session, prompt, timeout) do
@@ -132,4 +134,18 @@ defmodule Tractor.Handler.Codergen do
   end
 
   defp maybe_send_runtime_usage(_context, _node, _usage, _kind), do: :ok
+
+  defp merge_env(adapter_env, node_env) when is_map(node_env) do
+    adapter_map = Map.new(adapter_env)
+
+    node_env
+    |> Enum.reduce(adapter_map, fn
+      {key, false}, acc -> Map.put(acc, to_string(key), false)
+      {key, nil}, acc -> Map.put(acc, to_string(key), false)
+      {key, value}, acc -> Map.put(acc, to_string(key), to_string(value))
+    end)
+    |> Enum.sort()
+  end
+
+  defp merge_env(adapter_env, _node_env), do: adapter_env
 end

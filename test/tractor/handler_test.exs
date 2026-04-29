@@ -55,6 +55,29 @@ defmodule Tractor.HandlerTest do
     assert updates.provider_command.provider == "codex"
   end
 
+  test "codergen passes node env overrides to provider sessions and manifest metadata" do
+    node = %Node{
+      id: "ask",
+      type: "codergen",
+      llm_provider: "codex",
+      prompt: "Go",
+      attrs: %{"env" => %{"LC_ALL" => "C", "LANG" => "C"}}
+    }
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Codex, opts ->
+      assert {"LC_ALL", "C"} in opts[:env]
+      assert {"LANG", "C"} in opts[:env]
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, "Go", 600_000 -> {:ok, "done"} end)
+    expect(Tractor.AgentClientMock, :stop, fn _pid -> :ok end)
+
+    assert {:ok, "done", updates} = Handler.Codergen.run(node, %{}, "/tmp/run")
+    assert {"LC_ALL", "C"} in updates.provider_command.env
+    assert {"LANG", "C"} in updates.provider_command.env
+  end
+
   test "codergen preserves unresolved placeholders for artifact debugging" do
     node = %Node{
       id: "ask",

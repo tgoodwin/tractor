@@ -21,6 +21,11 @@ defmodule Tractor.ACP.SessionTest do
     end
   end
 
+  defmodule ModeAgent do
+    def command(opts), do: FakeAgent.command(opts)
+    def session_mode(_opts), do: "bypassPermissions"
+  end
+
   setup do
     System.put_env("TRACTOR_TEST_ELIXIR", System.find_executable("elixir"))
     ports_before = length(:erlang.ports())
@@ -40,6 +45,14 @@ defmodule Tractor.ACP.SessionTest do
 
     assert length(turn.agent_message_chunks) == 3
     assert turn.token_usage == nil
+    assert :ok = Session.stop(pid)
+  end
+
+  test "stop tolerates sessions that already exited normally" do
+    pid = spawn(fn -> :ok end)
+    ref = Process.monitor(pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+
     assert :ok = Session.stop(pid)
   end
 
@@ -77,6 +90,262 @@ defmodule Tractor.ACP.SessionTest do
     assert {:ok, %Turn{response_text: "fake response: hello"}} =
              Session.prompt(pid, "hello", 5_000)
 
+    assert :ok = Session.stop(pid)
+  end
+
+  @tag :tmp_dir
+  test "writes raw ACP wire traffic for postmortem debugging", %{tmp_dir: tmp_dir} do
+    wire_log = Path.join(tmp_dir, "acp-wire.jsonl")
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        wire_log: wire_log
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert :ok = Session.stop(pid)
+
+    entries =
+      wire_log
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+
+    assert Enum.any?(entries, fn entry ->
+             entry["direction"] == "out" and get_in(entry, ["payload", "method"]) == "initialize"
+           end)
+
+    assert Enum.any?(entries, fn entry ->
+             entry["direction"] == "in" and get_in(entry, ["payload", "result", "sessionId"])
+           end)
+  end
+
+  @tag :tmp_dir
+  test "sets provider session mode before sending queued prompts", %{tmp_dir: tmp_dir} do
+    wire_log = Path.join(tmp_dir, "acp-wire.jsonl")
+
+    {:ok, pid} =
+      Session.start_link(ModeAgent,
+        cwd: File.cwd!(),
+        wire_log: wire_log
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert :ok = Session.stop(pid)
+
+    outbound =
+      wire_log
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.filter(&(&1["direction"] == "out"))
+      |> Enum.map(& &1["payload"])
+
+    set_mode_index = Enum.find_index(outbound, &(&1["method"] == "session/set_mode"))
+    prompt_index = Enum.find_index(outbound, &(&1["method"] == "session/prompt"))
+
+    assert set_mode_index
+    assert prompt_index
+    assert set_mode_index < prompt_index
+
+    assert %{
+             "params" => %{
+               "modeId" => "bypassPermissions",
+               "sessionId" => "fake-session"
+             }
+           } = Enum.at(outbound, set_mode_index)
+  end
+
+  @tag :tmp_dir
+  test "continues when a bridge does not support session mode switching", %{tmp_dir: tmp_dir} do
+    test_pid = self()
+    wire_log = Path.join(tmp_dir, "acp-wire.jsonl")
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(ModeAgent,
+        cwd: File.cwd!(),
+        wire_log: wire_log,
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_SET_MODE", "method_not_found"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert_receive {:sink, :acp_unknown_message,
+                    %{
+                      "method" => "session/set_mode",
+                      "ignored" => true,
+                      "error" => %{"code" => -32_601}
+                    }}
+
+    assert :ok = Session.stop(pid)
+  end
+
+  @tag :tmp_dir
+  test "auto-approves provider permission requests and replies on the wire", %{tmp_dir: tmp_dir} do
+    test_pid = self()
+    wire_log = Path.join(tmp_dir, "acp-wire.jsonl")
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        wire_log: wire_log,
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "permission_request"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert_receive {:sink, :acp_unknown_message,
+                    %{
+                      "method" => "session/request_permission",
+                      "autoApproved" => true,
+                      "selectedOption" => %{"optionId" => "proceed_always"}
+                    }}
+
+    assert :ok = Session.stop(pid)
+
+    assert wire_log
+           |> File.stream!()
+           |> Enum.map(&Jason.decode!/1)
+           |> Enum.any?(fn entry ->
+             entry["direction"] == "out" and
+               get_in(entry, ["payload", "id"]) == 1000 and
+               get_in(entry, ["payload", "result", "outcome", "outcome"]) == "selected" and
+               get_in(entry, ["payload", "result", "outcome", "optionId"]) == "proceed_always"
+           end)
+  end
+
+  test "replies to unsupported provider requests so agents do not hang" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "unknown_client_request"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert_receive {:sink, :acp_unknown_message,
+                    %{
+                      "method" => "client/unknown",
+                      "replied" => "method_not_found"
+                    }}
+
+    assert :ok = Session.stop(pid)
+  end
+
+  test "streams provider stdout lines into the event sink" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "noisy_stdout"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert_receive {:sink, :acp_stdout_line, %{"text" => "INFO fake provider stdout log"}}
+    assert :ok = Session.stop(pid)
+  end
+
+  @tag :tmp_dir
+  test "filters high-volume telemetry stdout and redacts sensitive fields", %{tmp_dir: tmp_dir} do
+    test_pid = self()
+    wire_log = Path.join(tmp_dir, "acp-wire.jsonl")
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        wire_log: wire_log,
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "telemetry_stdout"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert_receive {:sink, :acp_stdout_line, %{"text" => visible}}
+    assert visible =~ "useful_provider_log"
+    assert visible =~ ~s(user.email="[redacted]")
+    assert visible =~ "conversation.id=[redacted]"
+    refute visible =~ "person@example.com"
+    refute_receive {:sink, :acp_stdout_line, _data}, 100
+
+    assert :ok = Session.stop(pid)
+
+    stdout_text =
+      wire_log
+      |> File.stream!()
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.filter(&(&1["direction"] == "stdout"))
+      |> Enum.map_join("\n", &get_in(&1, ["payload", "text"]))
+
+    assert stdout_text =~ ~s(user.email="[redacted]")
+    assert stdout_text =~ ~s(user.account_id="[redacted]")
+    assert stdout_text =~ "conversation.id=[redacted]"
+    refute stdout_text =~ "person@example.com"
+    refute stdout_text =~ ~s(user.account_id="abc")
+  end
+
+  @tag :tmp_dir
+  test "streams provider stderr into the event sink", %{tmp_dir: tmp_dir} do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        stderr_log: Path.join(tmp_dir, "stderr.log"),
+        event_sink: sink,
+        env: [{"TRACTOR_FAKE_ACP_MODE", "timeline_rich"}]
+      )
+
+    assert {:ok, %Turn{response_text: "fake response: hello"}} =
+             Session.prompt(pid, "hello", 5_000)
+
+    assert_receive {:sink, :stderr_chunk, %{"text" => stderr}}
+    assert stderr =~ "fake stderr line one"
     assert :ok = Session.stop(pid)
   end
 
@@ -192,7 +461,7 @@ defmodule Tractor.ACP.SessionTest do
     task =
       Task.async(fn ->
         {:ok, pid} =
-          Session.start_link(FakeAgent,
+          Session.start_session(FakeAgent,
             cwd: File.cwd!(),
             env: [
               {"TRACTOR_FAKE_ACP_MODE", "spawn_child"},
@@ -345,10 +614,18 @@ defmodule Tractor.ACP.SessionTest do
     assert :ok = Session.stop(pid)
   end
 
-  test "unknown discriminator is preserved for audit and otherwise ignored" do
+  test "unknown discriminator is preserved and emitted for live audit" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
     {:ok, pid} =
       Session.start_link(FakeAgent,
         cwd: File.cwd!(),
+        event_sink: sink,
         env: [{"TRACTOR_FAKE_ACP_MODE", "unknown_update"}]
       )
 
@@ -356,6 +633,7 @@ defmodule Tractor.ACP.SessionTest do
              Session.prompt(pid, "hello", 5_000)
 
     assert Enum.any?(events, &(&1["type"] == "unknown_shape"))
+    assert_receive {:sink, :acp_unknown_update, %{"updateKind" => "unknown_shape"}}
     assert :ok = Session.stop(pid)
   end
 

@@ -12,7 +12,20 @@ command = "claude-code-acp"
 args = []
 
 [agents.codex]
-# codex-acp on PATH is the default; nothing to override here.
+# Let Codex implementation nodes edit the audit worktree and associated Git
+# metadata without provider permission prompts. The adapter supplies
+# -a never --sandbox workspace-write by default.
+include_dirs = ["/Users/tgoodwin/projects/tractor"]
+
+[agents.codex.env]
+LC_ALL = "C"
+LANG = "C"
 
 [agents.gemini]
 args = ["--experimental-acp"]
+include_dirs = ["/Users/tgoodwin/projects/tractor/.worktrees/audit-fixes-2026-04-28"]
+mode = "yolo"
+
+[agents.gemini.env]
+LC_ALL = "C"
+LANG = "C"
