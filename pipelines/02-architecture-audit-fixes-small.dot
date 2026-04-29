@@ -1,0 +1,309 @@
+digraph {
+  graph [
+    label="Architecture audit fixes (2026-04-28) -- small / mixed-provider",
+    goal="Resolve all 10 Critical and High items from docs/audits/architecture-audit-2026-04-28.md on a sibling worktree at .worktrees/audit-fixes-2026-04-28. Each fix is a commit on chore/audit-fixes; full mix test suite green at end of every phase. EXCLUDED: Medium, Low/polish, and Cross-cutting items.",
+    status_agent=claude,
+    rankdir=TB
+  ]
+
+  start [shape=Mdiamond]
+
+  // ==========================================================
+  // Phase 0 -- Setup & design consensus
+  // ==========================================================
+
+  setup [
+    shape=parallelogram,
+    cwd="/Users/tgoodwin/projects/tractor",
+    command=["bash","scripts/setup_audit_worktree.sh"],
+    env={"LC_ALL":"C","LANG":"C"},
+    max_output_bytes=200000
+  ]
+
+  design_audit [shape=component, max_parallel=3]
+
+  design_audit_a [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    prompt="{{goal}}\n\nYou are independent design auditor A. You do not coordinate with the other auditors.\n\nWORKING DIRECTORY: {{setup.stdout}}\nUse absolute paths under this directory for all file reads. You are READ-ONLY in this phase -- do not modify any files or commit anything.\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{setup.stdout}}/docs/architecture.md\n- {{setup.stdout}}/docs/handlers.md\n\nThe audit calls out FOUR items where the suggested fix is open-ended. For each, study the relevant code in the worktree, weigh the trade-offs, and recommend ONE direction with reasoning. Do not hedge -- pick.\n\nOpen decisions:\n\n1. Runner.Failure.classify/1 -- kill the dead `if` (lib/tractor/runner/failure.ex:26-32). Pick:\n   (a) Unknown tuples default to :transient (keeps retry-by-default).\n   (b) Raise on unknown tuples (force every reason to be classified explicitly).\n\n2. RunEvents ownership -- pick:\n   (a) Keep RunEvents as a thin facade; emit/4 becomes a cast that fire-and-forgets to the per-node EventLog; EventLog itself broadcasts on PubSub after writing; Registry maps {run_id, node_id} -> EventLog PID.\n   (b) Per-run Tractor.RunEventBroker GenServer supervised under the Runner's lifetime, owning the event_log map for that run.\n\n3. FileSystem watcher supervision (lib/tractor/runner.ex:1673-1683, lib/tractor/run_watcher/tail.ex:376-393, lib/tractor/run_watcher.ex:158-172). Pick:\n   (a) Process.monitor + re-establish on :DOWN (cheap, defensive).\n   (b) Place under a Tractor.RunWatcher.TailSupervisor (cleaner long-term shape).\n\n4. Runner :EXIT handler observability (lib/tractor/runner.ex:287-293). Pick:\n   (a) Logger.debug the EXIT (minimum visibility).\n   (b) Track watcher PIDs explicitly; warn on unknown senders (full enumeration).\n\nFor each decision, your output must include:\n- Chosen option (a or b) with one-paragraph rationale rooted in the actual code you read.\n- Implementation sketch -- which modules change, what the new shape looks like, edge cases.\n- Risks of the chosen path and how to mitigate them.\n\nAim for a Pareto-optimal recommendation: pick the option whose marginal benefit clearly exceeds its marginal cost in the context of THIS codebase. Do not invent options c/d.\n\nOUTPUT: Write {{run_dir}}/DESIGN_A.md containing your four recommendations. Do not modify the worktree."
+  ]
+
+  design_audit_b [
+    shape=box,
+    llm_provider=gemini,
+    timeout="20m",
+    prompt="{{goal}}\n\nYou are independent design auditor B. You do not coordinate with the other auditors.\n\nWORKING DIRECTORY: {{setup.stdout}}\nUse absolute paths under this directory for all file reads. You are READ-ONLY in this phase -- do not modify any files or commit anything.\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{setup.stdout}}/docs/architecture.md\n- {{setup.stdout}}/docs/handlers.md\n\nThe audit calls out FOUR items where the suggested fix is open-ended. For each, study the relevant code in the worktree, weigh the trade-offs, and recommend ONE direction with reasoning. Do not hedge -- pick.\n\nOpen decisions:\n\n1. Runner.Failure.classify/1 -- kill the dead `if` (lib/tractor/runner/failure.ex:26-32). Pick:\n   (a) Unknown tuples default to :transient.\n   (b) Raise on unknown tuples.\n\n2. RunEvents ownership -- pick:\n   (a) Thin facade with cast + per-node EventLog broadcasts via Registry.\n   (b) Per-run Tractor.RunEventBroker GenServer supervised under the Runner's lifetime.\n\n3. FileSystem watcher supervision. Pick:\n   (a) Process.monitor + re-establish on :DOWN.\n   (b) Tractor.RunWatcher.TailSupervisor.\n\n4. Runner :EXIT handler observability (lib/tractor/runner.ex:287-293). Pick:\n   (a) Logger.debug only.\n   (b) Enumerate expected sources and warn on unknown.\n\nFor each decision, your output must include:\n- Chosen option (a or b) with one-paragraph rationale rooted in the actual code you read.\n- Implementation sketch -- which modules change, what the new shape looks like, edge cases.\n- Risks of the chosen path and how to mitigate them.\n\nAim for a Pareto-optimal recommendation. Do not invent options c/d.\n\nOUTPUT: Write {{run_dir}}/DESIGN_B.md containing your four recommendations. Do not modify the worktree."
+  ]
+
+  design_audit_c [
+    shape=box,
+    llm_provider=codex,
+    timeout="20m",
+    prompt="{{goal}}\n\nYou are independent design auditor C. You do not coordinate with the other auditors.\n\nWORKING DIRECTORY: {{setup.stdout}}\nUse absolute paths under this directory for all file reads. You are READ-ONLY in this phase -- do not modify any files or commit anything.\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{setup.stdout}}/docs/architecture.md\n- {{setup.stdout}}/docs/handlers.md\n\nThe audit calls out FOUR items where the suggested fix is open-ended. For each, study the relevant code in the worktree, weigh the trade-offs, and recommend ONE direction with reasoning. Do not hedge -- pick.\n\nOpen decisions:\n\n1. Runner.Failure.classify/1 -- kill the dead `if`. Pick:\n   (a) Unknown tuples default to :transient.\n   (b) Raise on unknown tuples.\n\n2. RunEvents ownership -- pick:\n   (a) Thin facade with cast + Registry.\n   (b) Per-run RunEventBroker GenServer.\n\n3. FileSystem watcher supervision. Pick:\n   (a) Process.monitor + re-establish.\n   (b) TailSupervisor.\n\n4. Runner :EXIT handler observability. Pick:\n   (a) Logger.debug only.\n   (b) Enumerate sources + warn on unknown.\n\nFor each decision, your output must include:\n- Chosen option with one-paragraph rationale rooted in the actual code.\n- Implementation sketch -- which modules change, what the new shape looks like.\n- Risks and mitigations.\n\nAim for a Pareto-optimal recommendation.\n\nOUTPUT: Write {{run_dir}}/DESIGN_C.md containing your four recommendations. Do not modify the worktree."
+  ]
+
+  design_fan_in [shape=tripleoctagon]
+
+  design_consolidate [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="15m",
+    prompt="{{goal}}\n\nYou are the design consolidator. Merge three independent design recommendations into a single decisions document that the implementation phases will follow.\n\nReference inputs:\n- {{run_dir}}/DESIGN_A.md\n- {{run_dir}}/DESIGN_B.md\n- {{run_dir}}/DESIGN_C.md\n\nFor EACH of the four open decisions, apply this rule:\n- If all three reviewers chose the same option: adopt that option, summarize the joint rationale.\n- If two of three agreed: adopt the majority choice unless the dissenter raised a concrete risk the majority did not address; in that case adopt the majority but document the risk and a mitigation.\n- If all three differed: pick the option whose risks are smallest given the actual code shape, and document why.\n\nFor every decision, the consolidated entry must contain:\n- Final choice (a or b).\n- One-paragraph rationale.\n- Concrete implementation directives -- file paths, module names, and the function signatures that the implementor in later phases must produce.\n- Test expectations -- what the test suite must continue to pass / what new tests (if any) the implementor should add.\n\nOUTPUT: Write {{run_dir}}/DESIGN_DECISIONS.md. The file should have one heading per decision (1 through 4). End the file with a single line:\n\nVERDICT: accept\n\n(There is no reject path here -- this node always produces decisions.)"
+  ]
+
+  // ==========================================================
+  // Phase 1 -- Critical pair (xs + xs)
+  // ==========================================================
+
+  fix_critical [
+    shape=box,
+    llm_provider=codex,
+    timeout="30m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are an implementation engineer. You handle BOTH the first-visit (build) and fix-iteration (repair) cases.\n\nWORKING DIRECTORY: {{setup.stdout}}\nALL file reads, writes, shell commands, and git operations must be inside this directory. Use absolute paths anchored on it. Do NOT touch any files outside this directory. The current branch is chore/audit-fixes -- verify with `git -C {{setup.stdout}} branch --show-current` before committing.\n\nDesign decisions you MUST follow: {{run_dir}}/DESIGN_DECISIONS.md (entries 1 only -- Failure.classify policy).\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (entries: Critical #1 and Critical #2)\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{setup.stdout}}/docs/architecture.md\n\nPrevious reviewer critique (empty on first visit): {{review_critical.last}}\n\nIf a critique exists above, this is a fix iteration: read it carefully and address every issue raised. Do NOT weaken or remove a requirement to make it pass.\n\nIf no critique exists, this is your first visit:\n\n  Implement BOTH critical fixes from the audit, in one logical pass:\n\n  1. lib/tractor/runner/failure.ex:26-32 -- kill the dead `if` per DESIGN_DECISIONS.md entry 1.\n\n  2. lib/tractor/run_events.ex:34-44 + lib/tractor/event_log.ex:37-50 -- change EventLog.append/3 to return {:ok, event} (event includes the seq+ts). Update RunEvents.handle_call/3 to use the returned event directly; remove the :sys.get_state/1 call.\n\nRequirements (every iteration must satisfy these):\n  R1. Runner.Failure.classify/1 no longer has both branches returning :permanent.\n  R2. Tuple reasons not in the explicit allowlist classify per DESIGN_DECISIONS.md entry 1.\n  R3. EventLog.append/3 returns {:ok, event} where event includes seq and ts.\n  R4. RunEvents.handle_call/3 does NOT call :sys.get_state/1.\n  R5. `mix test` is green from inside {{setup.stdout}} (run with: cd {{setup.stdout}} && mix test). Address every failure.\n  R6. Each fix is its own commit on chore/audit-fixes with a descriptive message.\n\nAnti-gaming clauses:\n- Do NOT skip, weaken, or remove any requirement to make tests pass.\n- Do NOT modify test files merely to silence failures unless DESIGN_DECISIONS.md explicitly required new test behavior.\n- Do NOT modify code outside the two files named above unless absolutely necessary for these fixes (e.g. call sites of EventLog.append/3 that must be updated).\n\nPRE-COMPLETION CHECKLIST:\n[ ] R1 through R6 all hold.\n[ ] Both fixes are committed on chore/audit-fixes (verify: cd {{setup.stdout}} && git log --oneline main..HEAD).\n[ ] No TODOs or placeholders remain in the changed files.\n[ ] You have actually run `mix test` from inside the worktree and seen it pass."
+  ]
+
+  review_critical [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a verification engineer. You only review and report -- you do NOT modify code, run fixes, or commit.\n\nWORKING DIRECTORY: {{setup.stdout}} (read-only access).\n\nImplementation under review: see {{setup.stdout}}/lib/tractor/runner/failure.ex, {{setup.stdout}}/lib/tractor/run_events.ex, {{setup.stdout}}/lib/tractor/event_log.ex, plus `git -C {{setup.stdout}} log --oneline main..HEAD` for the commits.\n\nDesign authority: {{run_dir}}/DESIGN_DECISIONS.md (entry 1).\n\nVerify each requirement with concrete evidence from the diff and test output:\n  R1. Runner.Failure.classify/1 no longer has if(do: :permanent, else: :permanent).\n  R2. Unknown tuple reasons classify per DESIGN_DECISIONS.md entry 1.\n  R3. EventLog.append/3 returns {:ok, event}.\n  R4. RunEvents.handle_call/3 does NOT call :sys.get_state/1.\n  R5. `cd {{setup.stdout}} && mix test` exits 0. Run it yourself; do not trust prior output.\n  R6. Two commits exist on chore/audit-fixes for these fixes.\n\nFor each requirement, record PASS or FAIL with specific evidence (file:line, command output, commit SHA).\n\nAim for a Pareto-optimal outcome: REJECT only on issues that materially affect correctness, completeness, or quality. Do NOT reject on stylistic, cosmetic, or trivial issues.\n\nOUTPUT: A short report with one section per requirement. End with exactly one of:\n\nVERDICT: accept\nVERDICT: reject\n\nIf you reject, follow with a one-line critique under 120 characters that names the worst remaining issue."
+  ]
+
+  gate_critical [shape=diamond]
+
+  // ==========================================================
+  // Phase 2 -- Streaming-path consolidation
+  // ==========================================================
+
+  fix_streaming [
+    shape=box,
+    llm_provider=codex,
+    timeout="45m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are an implementation engineer. You handle BOTH the first-visit and fix-iteration cases.\n\nWORKING DIRECTORY: {{setup.stdout}}\nALL file operations must be inside this directory. The branch is chore/audit-fixes.\n\nDesign decisions you MUST follow: {{run_dir}}/DESIGN_DECISIONS.md (entry 2 -- RunEvents ownership shape).\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (High items #3, #6, #7)\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{setup.stdout}}/docs/architecture.md (log-as-bus contract)\n\nPrevious reviewer critique (empty on first visit): {{review_streaming.last}}\n\nIf a critique exists, this is a fix iteration: address every issue.\n\nIf no critique, this is your first visit. Implement THREE coupled fixes:\n\n  1. Extend the PubSub event payload with iteration / cost / finished_at fields, in lib/tractor/run_events.ex emission and lib/tractor_web/run_live/show.ex:526-541 consumption. The LiveView should be able to trust the payload without re-reading status.json.\n\n  2. Stop re-reading disk in LiveView handle_info chunk path: badge_payload, cumulative_duration_badge, node_started_at must read from assigns, not disk. Track started_at_ms / finished_at_ms / latest token totals in assigns. Disk reads remain only on mount/3.\n\n  3. RunEvents ownership shape per DESIGN_DECISIONS.md entry 2. Apply the chosen option (a or b) faithfully to the directives in that document.\n\nRequirements:\n  R1. Event payload broadcast on chunk events contains iteration, cost (cumulative or delta as DESIGN_DECISIONS specifies), and finished_at when terminal.\n  R2. badge_payload, cumulative_duration_badge, and node_started_at do not read from disk after mount.\n  R3. RunEvents implements the option from DESIGN_DECISIONS.md entry 2 (matching its directives precisely).\n  R4. `cd {{setup.stdout}} && mix test` is green; the LiveView and run_events test suites pass.\n  R5. Each logical fix is a separate commit on chore/audit-fixes (target: 3 commits for this phase).\n\nAnti-gaming clauses:\n- Do NOT skip, weaken, or remove any requirement.\n- Do NOT modify tests merely to silence failures unless behavior genuinely changed per DESIGN_DECISIONS.md.\n- Do NOT touch unrelated files. Stay within run_events / event_log / run_bus / run_live/show / runner.ex (for reads only) and any RunEventBroker module DESIGN_DECISIONS.md introduces.\n\nPRE-COMPLETION CHECKLIST:\n[ ] R1-R5 all hold.\n[ ] All three fixes committed on chore/audit-fixes.\n[ ] `mix test` actually run and observed passing.\n[ ] No TODOs or placeholders."
+  ]
+
+  review_streaming [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a verification engineer. Read-only.\n\nWORKING DIRECTORY: {{setup.stdout}}.\n\nImplementation under review: lib/tractor/run_events.ex, lib/tractor/event_log.ex, lib/tractor/run_bus.ex, lib/tractor_web/run_live/show.ex, plus any new module introduced for the RunEvents ownership shape; plus `git -C {{setup.stdout}} log --oneline main..HEAD`.\n\nDesign authority: {{run_dir}}/DESIGN_DECISIONS.md (entry 2).\n\nVerify each requirement:\n  R1. Chunk events broadcast iteration/cost/finished_at in the payload (find the emission site; confirm fields).\n  R2. LiveView handle_info chunk path no longer reads disk; assigns track started_at_ms / finished_at_ms / token totals.\n  R3. RunEvents shape matches DESIGN_DECISIONS.md entry 2 directives precisely (file/module names, function signatures).\n  R4. `cd {{setup.stdout}} && mix test` exits 0. Run it. Pay attention to LiveView and run_events tests in particular.\n  R5. Three commits on chore/audit-fixes for this phase (one per logical fix).\n\nRecord PASS or FAIL per requirement with specific evidence.\n\nAim for Pareto-optimal outcome: reject only on material issues.\n\nOUTPUT: report ending with exactly one of:\n\nVERDICT: accept\nVERDICT: reject\n\nIf reject, one-line critique under 120 chars."
+  ]
+
+  gate_streaming [shape=diamond]
+
+  // ==========================================================
+  // Phase 3 -- Supervision + observability
+  // ==========================================================
+
+  fix_supervision [
+    shape=box,
+    llm_provider=codex,
+    timeout="30m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are an implementation engineer. First-visit and fix-iteration both handled here.\n\nWORKING DIRECTORY: {{setup.stdout}}. Branch: chore/audit-fixes.\n\nDesign decisions: {{run_dir}}/DESIGN_DECISIONS.md (entries 3 and 4).\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (High: FS-watcher supervision + :EXIT observability)\n- {{setup.stdout}}/docs/architecture.md\n\nPrevious reviewer critique (empty on first visit): {{review_supervision.last}}\n\nIf a critique exists, address every issue.\n\nIf no critique, first visit. Implement TWO fixes:\n\n  1. FS-watcher supervision per DESIGN_DECISIONS.md entry 3, touching lib/tractor/runner.ex:1673-1683, lib/tractor/run_watcher/tail.ex:376-393, lib/tractor/run_watcher.ex:158-172.\n\n  2. Runner :EXIT handler observability per DESIGN_DECISIONS.md entry 4, at lib/tractor/runner.ex:287-293.\n\nRequirements:\n  R1. FileSystem watchers cannot orphan-start; the chosen supervision approach (a or b per DESIGN_DECISIONS.md entry 3) is implemented and exercised by at least one test (existing or new).\n  R2. Runner :EXIT handler implements the depth chosen in DESIGN_DECISIONS.md entry 4.\n  R3. `cd {{setup.stdout}} && mix test` is green.\n  R4. One commit per logical fix on chore/audit-fixes.\n\nAnti-gaming clauses:\n- Do NOT delete tests merely to silence failures.\n- Do NOT add a TODO to defer test coverage of the watcher restart path -- it is a requirement (R1).\n- Stay within the named modules unless a small ripple is necessary.\n\nPRE-COMPLETION CHECKLIST:\n[ ] R1-R4 all hold.\n[ ] Both fixes committed.\n[ ] `mix test` actually run and observed passing."
+  ]
+
+  review_supervision [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a verification engineer. Read-only.\n\nWORKING DIRECTORY: {{setup.stdout}}.\n\nVerify each requirement:\n  R1. FS-watcher supervision matches DESIGN_DECISIONS.md entry 3 directives. Find evidence in source AND in a test that exercises restart/monitor.\n  R2. Runner :EXIT handler matches DESIGN_DECISIONS.md entry 4 directives.\n  R3. `cd {{setup.stdout}} && mix test` exits 0.\n  R4. Two commits on chore/audit-fixes for this phase.\n\nPASS/FAIL per requirement with concrete evidence.\n\nReject only on material issues (Pareto-optimal).\n\nOUTPUT: report ending with exactly one of:\n\nVERDICT: accept\nVERDICT: reject\n\nIf reject, one-line critique under 120 chars."
+  ]
+
+  gate_supervision [shape=diamond]
+
+  // ==========================================================
+  // Phase 4 -- Runner extractions (Cost -> Frontier -> Parallel)
+  // ==========================================================
+
+  extract_cost [
+    shape=box,
+    llm_provider=codex,
+    timeout="60m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are an implementation engineer specializing in module extraction. Both first-visit and fix-iteration handled here.\n\nWORKING DIRECTORY: {{setup.stdout}}. Branch: chore/audit-fixes.\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (High: Extract Runner.Cost)\n- {{setup.stdout}}/docs/architecture.md\n- {{setup.stdout}}/lib/tractor/runner.ex (the source)\n\nPrevious reviewer critique (empty on first visit): {{review_cost.last}}\n\nIf a critique exists, address every issue.\n\nIf no critique, first visit. Extract the cost-related state and helpers from Tractor.Runner into a new module Tractor.Runner.Cost at lib/tractor/runner/cost.ex.\n\nScope: the 7 cost-related struct fields and their helper functions identified in the audit. These are pure functions with no GenServer state of their own -- that's why this is the easiest of the three extractions and goes first.\n\nRequirements:\n  R1. New module lib/tractor/runner/cost.ex with @moduledoc false defines a struct (or pure-function module -- pick whichever fits the existing helpers) holding the 7 cost fields.\n  R2. Tractor.Runner no longer defines those 7 fields directly; it composes Cost (e.g. as a nested field on its state struct) and delegates cost computations to Cost functions.\n  R3. No duplication: every cost-related helper that moved must be deleted from runner.ex. No call site references the removed helpers.\n  R4. Public behavior unchanged: `cd {{setup.stdout}} && mix test` is green, including all runner tests.\n  R5. One commit on chore/audit-fixes with a descriptive message naming the extracted module.\n\nAnti-gaming clauses:\n- Do NOT leave wrapper functions in runner.ex that just delegate to Cost -- move the call sites.\n- Do NOT introduce new public API on Cost that doesn't correspond to existing runner.ex helpers.\n- Do NOT widen scope to other Runner refactors. Frontier and Parallel come in subsequent phases.\n\nPRE-COMPLETION CHECKLIST:\n[ ] R1-R5 hold.\n[ ] runner.ex line count is meaningfully reduced (the audit estimates ~7 fields' worth of code moves out).\n[ ] `mix test` actually run and observed passing."
+  ]
+
+  review_cost [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a verification engineer. Read-only.\n\nWORKING DIRECTORY: {{setup.stdout}}.\n\nVerify:\n  R1. lib/tractor/runner/cost.ex exists with @moduledoc false; cost-related struct fields and helpers live there.\n  R2. lib/tractor/runner.ex no longer defines the cost fields directly; uses Cost.\n  R3. No wrapper-only helpers remain in runner.ex; call sites use Cost directly.\n  R4. `cd {{setup.stdout}} && mix test` exits 0.\n  R5. One commit on chore/audit-fixes for the extraction.\n\nPASS/FAIL per requirement with concrete evidence (file:line, diff stats, test command output).\n\nReject only on material issues.\n\nOUTPUT: report ending with exactly one of:\n\nVERDICT: accept\nVERDICT: reject\n\nIf reject, one-line critique under 120 chars."
+  ]
+
+  gate_cost [shape=diamond]
+
+  extract_frontier [
+    shape=box,
+    llm_provider=codex,
+    timeout="60m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are an implementation engineer specializing in module extraction. First-visit and fix-iteration both handled here.\n\nWORKING DIRECTORY: {{setup.stdout}}. Branch: chore/audit-fixes.\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (High: Extract Runner.Frontier)\n- {{setup.stdout}}/docs/architecture.md\n- {{setup.stdout}}/lib/tractor/runner.ex\n- {{setup.stdout}}/lib/tractor/runner/cost.ex (the prior extraction; mimic its shape)\n\nPrevious reviewer critique (empty on first visit): {{review_frontier.last}}\n\nIf a critique exists, address every issue.\n\nIf no critique, first visit. Extract the frontier / retry_timers / wait_timers state and Task lifecycle from Tractor.Runner into Tractor.Runner.Frontier at lib/tractor/runner/frontier.ex. The audit estimates this removes ~400 lines from runner.ex.\n\nThis is harder than Cost: there is real GenServer-adjacent state (timers, Task PIDs) and the lifecycle interacts with the Runner's main loop.\n\nRequirements:\n  R1. New module lib/tractor/runner/frontier.ex with @moduledoc false owns frontier / retry_timers / wait_timers and the Task lifecycle helpers.\n  R2. Tractor.Runner state struct composes Frontier (e.g. nested field) instead of holding those fields flat.\n  R3. Task spawn/monitor/handle-:DOWN logic for handler tasks lives in Frontier with a clear API (e.g. `Frontier.spawn_task/3`, `Frontier.handle_task_down/2`).\n  R4. No duplication; no wrapper-only helpers in runner.ex.\n  R5. `cd {{setup.stdout}} && mix test` is green. Pay particular attention to runner_test, run_test, retry tests -- they exercise the moved code.\n  R6. One commit on chore/audit-fixes naming the extraction.\n\nAnti-gaming clauses:\n- Do NOT leave the moved logic partially behind in runner.ex.\n- Do NOT change behavior to make the extraction easier -- Frontier should preserve every existing semantic (retry timing, fallback routing, transient/permanent classification interaction).\n- Do NOT widen scope to Parallel; that's the next phase.\n\nPRE-COMPLETION CHECKLIST:\n[ ] R1-R6 hold.\n[ ] runner.ex line count meaningfully reduced (~400 lines target per audit).\n[ ] `mix test` actually run and observed passing."
+  ]
+
+  review_frontier [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a verification engineer. Read-only.\n\nWORKING DIRECTORY: {{setup.stdout}}.\n\nVerify:\n  R1. lib/tractor/runner/frontier.ex exists with @moduledoc false; owns frontier/retry_timers/wait_timers and Task lifecycle.\n  R2. runner.ex composes Frontier; does not hold those fields flat.\n  R3. Frontier exposes a clear API for Task lifecycle (spawn/monitor/handle :DOWN).\n  R4. No wrapper-only helpers remain in runner.ex.\n  R5. `cd {{setup.stdout}} && mix test` exits 0; runner_test, run_test, retry tests in particular pass.\n  R6. One commit on chore/audit-fixes.\n\nPASS/FAIL per requirement with evidence.\n\nReject only on material issues.\n\nOUTPUT: report ending with exactly one of:\n\nVERDICT: accept\nVERDICT: reject\n\nIf reject, one-line critique under 120 chars."
+  ]
+
+  gate_frontier [shape=diamond]
+
+  extract_parallel [
+    shape=box,
+    llm_provider=codex,
+    timeout="60m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are an implementation engineer specializing in module extraction. First-visit and fix-iteration both handled here.\n\nWORKING DIRECTORY: {{setup.stdout}}. Branch: chore/audit-fixes.\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (High: Extract Runner.Parallel)\n- {{setup.stdout}}/docs/architecture.md\n- {{setup.stdout}}/lib/tractor/runner.ex\n- {{setup.stdout}}/lib/tractor/runner/frontier.ex (prior extraction; mimic shape and any boundary conventions established there)\n- {{setup.stdout}}/lib/tractor/runner/cost.ex (prior extraction)\n\nPrevious reviewer critique (empty on first visit): {{review_parallel.last}}\n\nIf a critique exists, address every issue.\n\nIf no critique, first visit. Extract parallel_state and branch_contexts from Tractor.Runner into Tractor.Runner.Parallel at lib/tractor/runner/parallel.ex. The audit estimates ~300 lines.\n\nRequirements:\n  R1. New module lib/tractor/runner/parallel.ex with @moduledoc false owns parallel_state and branch_contexts.\n  R2. Runner state struct composes Parallel; does not hold those fields flat.\n  R3. Public Parallel API covers: starting a parallel block, recording a branch result, completing fan-in, and querying the current parallel state.\n  R4. No duplication; no wrapper-only helpers in runner.ex.\n  R5. `cd {{setup.stdout}} && mix test` is green; parallel/fan-in tests pass in particular.\n  R6. One commit on chore/audit-fixes.\n\nAnti-gaming clauses:\n- Do NOT change behavior to ease the extraction.\n- Do NOT leave parallel state partially in runner.ex.\n\nPRE-COMPLETION CHECKLIST:\n[ ] R1-R6 hold.\n[ ] runner.ex line count meaningfully reduced (~300 lines target per audit).\n[ ] `mix test` actually run and observed passing."
+  ]
+
+  review_parallel [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a verification engineer. Read-only.\n\nWORKING DIRECTORY: {{setup.stdout}}.\n\nVerify:\n  R1. lib/tractor/runner/parallel.ex exists with @moduledoc false; owns parallel_state and branch_contexts.\n  R2. runner.ex composes Parallel.\n  R3. Parallel API covers start / record branch result / fan-in / query.\n  R4. No wrapper-only helpers in runner.ex.\n  R5. `cd {{setup.stdout}} && mix test` exits 0; parallel and fan-in tests pass.\n  R6. One commit on chore/audit-fixes.\n\nPASS/FAIL with evidence.\n\nReject only on material issues.\n\nOUTPUT: report ending with exactly one of:\n\nVERDICT: accept\nVERDICT: reject\n\nIf reject, one-line critique under 120 chars."
+  ]
+
+  gate_parallel [shape=diamond]
+
+  // ==========================================================
+  // Phase 5 -- Final committee (completeness + idiomatic-OTP) + fix loop
+  // ==========================================================
+
+  final_prepare [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="30m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a preparer. You build the verification artifacts the final committee will read. You do NOT modify source code or commit anything in this node.\n\nWORKING DIRECTORY: {{setup.stdout}}.\n\nDo all of the following:\n\n1. Run `cd {{setup.stdout}} && mix test 2>&1 | tee {{run_dir}}/FINAL_TEST_RESULTS.md`. Make sure the file ends up containing the full test output.\n\n2. Compute the diff vs main: `cd {{setup.stdout}} && git log --stat main..HEAD > {{run_dir}}/FINAL_DIFF.md` and append `cd {{setup.stdout}} && git diff main..HEAD --stat >> {{run_dir}}/FINAL_DIFF.md`.\n\n3. Build a short summary at {{run_dir}}/FINAL_SUMMARY.md listing: branch (`git -C {{setup.stdout}} branch --show-current`), commit count (`git -C {{setup.stdout}} rev-list --count main..HEAD`), changed file count, and `mix test` result line (passed / failures count).\n\nNo VERDICT line needed; this node always succeeds and flows to the committee."
+  ]
+
+  final_audit_a [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="30m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are independent committee reviewer A -- completeness + idiomatic-OTP. You do not coordinate with reviewers B or C.\n\nWORKING DIRECTORY: {{setup.stdout}} (read-only).\n\nReference materials:\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md (10 Critical+High items)\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{run_dir}}/DESIGN_DECISIONS.md (the chosen directions)\n- {{run_dir}}/FINAL_TEST_RESULTS.md (test output from this run)\n- {{run_dir}}/FINAL_DIFF.md (full diff vs main)\n- {{run_dir}}/FINAL_SUMMARY.md\n- {{setup.stdout}}/lib/tractor/ (current source)\n\nProduce TWO sets of findings:\n\nSection 1 -- COMPLETENESS:\nFor each of the 10 Critical+High items in the audit, verify the fix landed and matches DESIGN_DECISIONS.md where applicable. Per-item: PASS or FAIL with evidence (file:line, commit SHA).\n\nSection 2 -- IDIOMATIC-OTP:\nReview the changes (focus on the diff, but read full files where context matters) for Elixir/OTP idiom. Check:\n- Supervision tree shape: are new GenServers / processes correctly supervised? Restart strategy appropriate?\n- GenServer call/cast discipline: are calls used where casts would do (and vice-versa)?\n- Error handling: let-it-crash vs defensive? Is the new code consistent with surrounding modules?\n- Pattern matching and `with` usage: are happy/unhappy paths clear?\n- Tagged tuples and struct discipline: consistent return shapes?\n- Process linking and monitoring: correct choice for each use site?\n- Module boundaries: do extracted modules expose minimal, sensible APIs?\n- Test ergonomics: do new tests follow existing async/Mox conventions?\n\nFor each idiomatic finding, classify severity: must-fix / should-fix / nice-to-have. ONLY must-fix and should-fix should drive a reject.\n\nAim for a Pareto-optimal outcome: do not nit-pick. FAIL only when an issue materially affects correctness, completeness, or quality.\n\nOUTPUT: write {{run_dir}}/FINAL_AUDIT_A.md with both sections; then a final overall verdict line:\n\nVERDICT: accept\nor\nVERDICT: reject\n\nReject if ANY completeness item is FAIL or any idiomatic finding is must-fix or there are multiple should-fix findings clustered in one area. If reject, follow the verdict line with a list of the failing items (one per line, prefix each with completeness: or idiomatic:)."
+  ]
+
+  final_audit_b [
+    shape=box,
+    llm_provider=gemini,
+    timeout="30m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are independent committee reviewer B -- completeness + idiomatic-OTP. You do NOT coordinate with reviewers A or C.\n\nIMPORTANT INDEPENDENCE RULE: do NOT read {{run_dir}}/FINAL_AUDIT_A.md or {{run_dir}}/FINAL_AUDIT_C.md. Do not search for or open those files. Form your own judgment from the source materials only.\n\nWORKING DIRECTORY: {{setup.stdout}} (read-only).\n\nReference materials (the only inputs you should read):\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{run_dir}}/DESIGN_DECISIONS.md\n- {{run_dir}}/FINAL_TEST_RESULTS.md\n- {{run_dir}}/FINAL_DIFF.md\n- {{run_dir}}/FINAL_SUMMARY.md\n- {{setup.stdout}}/lib/tractor/\n\nProduce TWO sets of findings (same structure as reviewer A would -- Completeness, then Idiomatic-OTP). Apply the same severity rules (must-fix / should-fix / nice-to-have) and the same Pareto-optimal guidance.\n\nOUTPUT: write {{run_dir}}/FINAL_AUDIT_B.md ending with:\n\nVERDICT: accept\nor\nVERDICT: reject\n\nIf reject, list failing items (one per line, prefixed completeness: or idiomatic:)."
+  ]
+
+  final_audit_c [
+    shape=box,
+    llm_provider=codex,
+    timeout="30m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are independent committee reviewer C -- completeness + idiomatic-OTP. You do NOT coordinate with reviewers A or B.\n\nIMPORTANT INDEPENDENCE RULE: do NOT read {{run_dir}}/FINAL_AUDIT_A.md or {{run_dir}}/FINAL_AUDIT_B.md. Do not search for or open those files. Form your own judgment from the source materials only.\n\nWORKING DIRECTORY: {{setup.stdout}} (read-only).\n\nReference materials (the only inputs you should read):\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28.md\n- {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-checklist.md\n- {{run_dir}}/DESIGN_DECISIONS.md\n- {{run_dir}}/FINAL_TEST_RESULTS.md\n- {{run_dir}}/FINAL_DIFF.md\n- {{run_dir}}/FINAL_SUMMARY.md\n- {{setup.stdout}}/lib/tractor/\n\nProduce TWO sets of findings (Completeness; Idiomatic-OTP). Severity rules and Pareto-optimal guidance as for A and B.\n\nOUTPUT: write {{run_dir}}/FINAL_AUDIT_C.md ending with:\n\nVERDICT: accept\nor\nVERDICT: reject\n\nIf reject, list failing items prefixed completeness: or idiomatic:."
+  ]
+
+  final_consolidate [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are the committee verdict consolidator.\n\nReference inputs:\n- {{run_dir}}/FINAL_AUDIT_A.md\n- {{run_dir}}/FINAL_AUDIT_B.md\n- {{run_dir}}/FINAL_AUDIT_C.md\n- {{run_dir}}/FINAL_DIFF.md\n- {{run_dir}}/DESIGN_DECISIONS.md\n\nApply these merge rules:\n\nCOMPLETENESS section: unanimity rule. ANY reviewer reporting FAIL on a completeness item -> that item is FAIL in the merged verdict.\n\nIDIOMATIC-OTP section: dedup overlapping findings (preserve unique evidence from each). Discard any finding that is `nice-to-have`. Escalate any finding that two or more reviewers raised. Apply Pareto-optimal: only must-fix and should-fix findings count.\n\nWrite {{run_dir}}/FINAL_AUDIT_MERGED.md with:\n  Section 1 -- COMPLETENESS: per-item PASS/FAIL with the evidence reviewers cited.\n  Section 2 -- IDIOMATIC-OTP: surviving findings, prioritized must-fix -> should-fix, each with a one-line repair sketch.\n\nEnd the file with one of:\n\nVERDICT: accept\nVERDICT: reject\n\nReject if ANY completeness item is FAIL, OR if any must-fix idiomatic finding survived, OR if multiple should-fix findings cluster in one module/area. If reject, follow the verdict with a one-line summary under 120 chars naming the worst issue."
+  ]
+
+  final_gate [shape=diamond]
+
+  final_fix [
+    shape=box,
+    llm_provider=codex,
+    timeout="60m",
+    max_iterations=3,
+    prompt="{{goal}}\n\nYou are a debugging engineer. Address the findings in the consolidated audit.\n\nWORKING DIRECTORY: {{setup.stdout}}. Branch: chore/audit-fixes.\n\nRead {{run_dir}}/FINAL_AUDIT_MERGED.md carefully.\n\nPrioritize: completeness FAILs first, then must-fix idiomatic, then should-fix idiomatic. Within each tier, pick the highest-impact finding and fully resolve it before moving to the next. It is better to fully resolve 3 findings than to partially address 10.\n\nAim for a Pareto-optimal outcome: do not chase nice-to-have findings; if remaining findings are all nice-to-have, the work is done.\n\nAfter your fixes:\n- Run `cd {{setup.stdout}} && mix test`. Confirm green.\n- Commit each substantive fix on chore/audit-fixes.\n\nAnti-gaming clauses:\n- Do NOT skip, weaken, or remove a finding to make it pass.\n- Do NOT modify tests merely to silence failures unless the finding explicitly required new test behavior.\n- Do NOT widen scope to issues outside the merged audit.\n\nThis node loops back through final_prepare so the next committee round sees fresh test output and a fresh diff.\n\nPRE-COMPLETION CHECKLIST:\n[ ] Every completeness FAIL has been addressed in code.\n[ ] Every must-fix idiomatic finding has been addressed.\n[ ] Should-fix idiomatic findings have been addressed unless DESIGN_DECISIONS.md justifies leaving them.\n[ ] `cd {{setup.stdout}} && mix test` actually run and observed passing.\n[ ] Each substantive fix is its own commit on chore/audit-fixes."
+  ]
+
+  retrospective [
+    shape=box,
+    llm_provider=claude,
+    reasoning_effort=high,
+    timeout="20m",
+    prompt="{{goal}}\n\nYou are the run retrospective author. Pipeline complete; the final committee accepted.\n\nInputs:\n- {{run_dir}}/events.jsonl (the append-only event log for this run)\n- {{run_dir}}/DESIGN_DECISIONS.md\n- {{run_dir}}/FINAL_AUDIT_MERGED.md\n- {{run_dir}}/FINAL_TEST_RESULTS.md\n- {{run_dir}}/FINAL_DIFF.md\n- {{setup.stdout}} (the worktree with the resulting branch chore/audit-fixes)\n\nProduce a retrospective covering:\n  1. What went well -- phases that converged cleanly, decisions that held up.\n  2. What looped -- iterations that took multiple cycles, where time/tokens went, root causes.\n  3. Recommendations for improving this pipeline next time it is run on a similar audit (prompt tweaks, phase boundaries, iteration budgets).\n  4. Resulting branch summary: commit count, changed file count, summary of each commit.\n\nWrite the retrospective to {{setup.stdout}}/docs/audits/architecture-audit-2026-04-28-retrospective.md and commit it on chore/audit-fixes (one final commit, message like 'docs(audit): post-run retrospective')."
+  ]
+
+  exit [shape=Msquare]
+
+  // ==========================================================
+  // Edges
+  // ==========================================================
+
+  start -> setup
+  setup -> design_audit
+  design_audit -> design_audit_a
+  design_audit -> design_audit_b
+  design_audit -> design_audit_c
+  design_audit_a -> design_fan_in
+  design_audit_b -> design_fan_in
+  design_audit_c -> design_fan_in
+  design_fan_in -> design_consolidate
+  design_consolidate -> fix_critical
+
+  fix_critical -> review_critical
+  review_critical -> gate_critical
+  gate_critical -> fix_critical  [condition="context.review_critical.last_output contains \"VERDICT: reject\""]
+  gate_critical -> fix_streaming [condition="context.review_critical.last_output contains \"VERDICT: accept\""]
+
+  fix_streaming -> review_streaming
+  review_streaming -> gate_streaming
+  gate_streaming -> fix_streaming   [condition="context.review_streaming.last_output contains \"VERDICT: reject\""]
+  gate_streaming -> fix_supervision [condition="context.review_streaming.last_output contains \"VERDICT: accept\""]
+
+  fix_supervision -> review_supervision
+  review_supervision -> gate_supervision
+  gate_supervision -> fix_supervision [condition="context.review_supervision.last_output contains \"VERDICT: reject\""]
+  gate_supervision -> extract_cost    [condition="context.review_supervision.last_output contains \"VERDICT: accept\""]
+
+  extract_cost -> review_cost
+  review_cost -> gate_cost
+  gate_cost -> extract_cost     [condition="context.review_cost.last_output contains \"VERDICT: reject\""]
+  gate_cost -> extract_frontier [condition="context.review_cost.last_output contains \"VERDICT: accept\""]
+
+  extract_frontier -> review_frontier
+  review_frontier -> gate_frontier
+  gate_frontier -> extract_frontier [condition="context.review_frontier.last_output contains \"VERDICT: reject\""]
+  gate_frontier -> extract_parallel [condition="context.review_frontier.last_output contains \"VERDICT: accept\""]
+
+  extract_parallel -> review_parallel
+  review_parallel -> gate_parallel
+  gate_parallel -> extract_parallel [condition="context.review_parallel.last_output contains \"VERDICT: reject\""]
+  gate_parallel -> final_prepare    [condition="context.review_parallel.last_output contains \"VERDICT: accept\""]
+
+  final_prepare -> final_audit_a
+  final_audit_a -> final_audit_b
+  final_audit_b -> final_audit_c
+  final_audit_c -> final_consolidate
+  final_consolidate -> final_gate
+  final_gate -> final_fix      [condition="context.final_consolidate.last_output contains \"VERDICT: reject\""]
+  final_gate -> retrospective  [condition="context.final_consolidate.last_output contains \"VERDICT: accept\""]
+  final_fix -> final_prepare
+
+  retrospective -> exit
+}

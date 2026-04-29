@@ -19,3 +19,5 @@ test/browser/logs/
 .yaks
 
 .worktrees/
+.playwright-mcp/
+.tractor-audit-setup.log
