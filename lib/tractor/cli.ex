@@ -17,7 +17,8 @@ defmodule Tractor.CLI do
 
   alias Tractor.{Diagnostic.Formatter, Init, Run, Validator}
 
-  @probe_timeout_ms 500
+  @probe_connect_timeout_ms 500
+  @probe_read_timeout_ms 2_000
   @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor validate PATH\n       tractor init [claude|codex|gemini] [--force]\n"
 
   @spec main([String.t()]) :: no_return()
@@ -91,7 +92,8 @@ defmodule Tractor.CLI do
 
             {:serve, fn -> serve_reap(pipeline, opts, timeout) end}
 
-          {:error, message} -> {2, "", message <> "\n"}
+          {:error, message} ->
+            {2, "", message <> "\n"}
         end
       else
         run_once(pipeline, opts, timeout, validation_output)
@@ -147,19 +149,11 @@ defmodule Tractor.CLI do
     if port == 0 do
       :own
     else
-      :ok = ensure_httpc_started()
-      url = ~c"http://127.0.0.1:" ++ Integer.to_charlist(port) ++ ~c"/api/health"
-
-      case :httpc.request(
-             :get,
-             {url, []},
-             [connect_timeout: @probe_timeout_ms, timeout: @probe_timeout_ms],
-             body_format: :binary
-           ) do
-        {:ok, {{_http_version, 200, _reason}, _headers, body}} ->
+      case request_observer_health(port) do
+        {:ok, 200, body} ->
           decode_probe_response(body, port, runs_dir)
 
-        {:ok, {{_http_version, status, _reason}, _headers, _body}} ->
+        {:ok, status, _body} ->
           {:error, :port_conflict, %{port: port, status: status}}
 
         {:error, reason} ->
@@ -376,10 +370,93 @@ defmodule Tractor.CLI do
     _error -> :ok
   end
 
-  defp ensure_httpc_started do
-    case Application.ensure_all_started(:inets) do
-      {:ok, _apps} -> :ok
-      {:error, reason} -> raise "failed to start :inets for observer probe: #{inspect(reason)}"
+  defp request_observer_health(port) do
+    with {:ok, socket} <-
+           :gen_tcp.connect(
+             {127, 0, 0, 1},
+             port,
+             [:binary, active: false],
+             @probe_connect_timeout_ms
+           ) do
+      try do
+        request = [
+          "GET /api/health HTTP/1.1\r\n",
+          "Host: 127.0.0.1:",
+          Integer.to_string(port),
+          "\r\n",
+          "Connection: close\r\n\r\n"
+        ]
+
+        with :ok <- :gen_tcp.send(socket, request),
+             {:ok, response} <- recv_http_response(socket, []) do
+          parse_http_response(response)
+        end
+      after
+        :gen_tcp.close(socket)
+      end
+    end
+  end
+
+  defp recv_http_response(socket, acc) do
+    case :gen_tcp.recv(socket, 0, @probe_read_timeout_ms) do
+      {:ok, chunk} ->
+        acc = [chunk | acc]
+        response = acc |> Enum.reverse() |> IO.iodata_to_binary()
+
+        if http_response_complete?(response) do
+          {:ok, response}
+        else
+          recv_http_response(socket, acc)
+        end
+
+      {:error, :closed} -> {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp http_response_complete?(response) do
+    case :binary.split(response, "\r\n\r\n") do
+      [head, body] ->
+        case content_length(head) do
+          nil -> false
+          length -> byte_size(body) >= length
+        end
+
+      _other ->
+        false
+    end
+  end
+
+  defp content_length(head) do
+    head
+    |> String.split("\r\n")
+    |> Enum.find_value(fn header ->
+      case String.split(header, ":", parts: 2) do
+        [name, value] ->
+          if String.downcase(name) == "content-length" do
+            value
+            |> String.trim()
+            |> Integer.parse()
+            |> case do
+              {length, ""} -> length
+              _other -> nil
+            end
+          end
+
+        _other ->
+          nil
+      end
+    end)
+  end
+
+  defp parse_http_response(response) do
+    with [head, body] <- :binary.split(response, "\r\n\r\n"),
+         [status_line | _headers] <- String.split(head, "\r\n"),
+         ["HTTP/" <> _version, status_text | _rest] <- String.split(status_line, " "),
+         {status, ""} <- Integer.parse(status_text) do
+      {:ok, status, body}
+    else
+      _other -> {:error, :invalid_http_response}
     end
   end
 

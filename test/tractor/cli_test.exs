@@ -417,12 +417,9 @@ defmodule Tractor.CLITest do
     {output, 0} =
       System.cmd("lsof", ["-tiTCP:#{port_number}", "-sTCP:LISTEN"], stderr_to_stdout: true)
 
-    pid =
-      output
-      |> String.split("\n", trim: true)
-      |> List.first()
-
-    System.cmd("kill", ["-TERM", pid], stderr_to_stdout: true)
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.each(&terminate_os_process/1)
   end
 
   defp assert_port_alive!(port) do
@@ -438,8 +435,48 @@ defmodule Tractor.CLITest do
   end
 
   defp close_port(port) do
+    os_pid =
+      case Port.info(port, :os_pid) do
+        {:os_pid, pid} -> pid
+        _other -> nil
+      end
+
     Port.close(port)
+
+    if os_pid do
+      terminate_os_process(os_pid)
+    end
   catch
     :error, :badarg -> :ok
+  end
+
+  defp terminate_os_process(pid) when is_integer(pid), do: terminate_os_process(Integer.to_string(pid))
+
+  defp terminate_os_process(pid) when is_binary(pid) do
+    System.cmd("kill", ["-TERM", pid], stderr_to_stdout: true)
+
+    unless wait_for_os_process_exit(pid) do
+      System.cmd("kill", ["-KILL", pid], stderr_to_stdout: true)
+      wait_for_os_process_exit(pid)
+    end
+
+    :ok
+  rescue
+    _error -> :ok
+  end
+
+  defp wait_for_os_process_exit(pid) do
+    Enum.any?(1..20, fn _attempt ->
+      case System.cmd("kill", ["-0", pid], stderr_to_stdout: true) do
+        {_output, 0} ->
+          Process.sleep(50)
+          false
+
+        _other ->
+          true
+      end
+    end)
+  rescue
+    _error -> true
   end
 end
