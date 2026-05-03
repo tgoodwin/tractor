@@ -1,0 +1,51 @@
+<main class="runs-index-shell">
+  <header class="top-bar" aria-label="Tractor">
+    <div class="top-bar-brand">
+      <span class="top-bar-icon" aria-hidden="true"></span>
+      <span class="top-bar-mark">Tractor</span>
+      <span :if={tractor_version() != ""} class="top-bar-version">{tractor_version()}</span>
+    </div>
+  </header>
+
+  <section class="runs-index" aria-label="Runs">
+    <div class="runs-index-heading">
+      <p class="eyebrow">Runs</p>
+      <h1>{length(@runs)} {if length(@runs) == 1, do: "run", else: "runs"}</h1>
+      <p class="runs-index-subtle mono">{@runs_dir}</p>
+    </div>
+
+    <ol :if={@runs != []} class="runs-index-list">
+      <li :for={entry <- @runs} class="runs-index-row">
+        <.link navigate={"/runs/#{entry.run_id}"} class="runs-index-link">
+          <div class="runs-index-row-top">
+            <span class="runs-index-pipeline">{entry.pipeline_name}</span>
+            <span class={"status-pill status-#{entry.status}"}>
+              {run_status_label(entry)}
+            </span>
+          </div>
+          <div class="runs-index-row-meta mono">
+            <span class="runs-index-id">{entry.run_id}</span>
+            <span class="runs-index-sep">·</span>
+            <%= if started = run_started_at_iso(entry) do %>
+              <span
+                id={"runs-index-started-#{entry.run_id}"}
+                phx-hook="LocalTime"
+                data-iso={started}
+                data-format="datetime"
+              >{run_started_at(entry)}</span>
+            <% else %>
+              <span>{run_started_at(entry)}</span>
+            <% end %>
+            <span class="runs-index-sep">·</span>
+            <span>{run_duration(entry)}</span>
+          </div>
+        </.link>
+      </li>
+    </ol>
+
+    <div :if={@runs == []} class="runs-index-empty">
+      <p>No runs yet.</p>
+      <p class="mono">tractor reap PATH/TO/PIPELINE.dot --serve</p>
+    </div>
+  </section>
+</main>

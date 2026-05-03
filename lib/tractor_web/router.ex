@@ -26,10 +26,9 @@ defmodule TractorWeb.Router do
   scope "/", TractorWeb do
     pipe_through(:browser)
 
+    live("/", RunLive.Index)
     live("/runs/:run_id", RunLive.Show)
 
-    # credo:disable-for-next-line Credo.Check.Design.TagTODO
-    # TODO(sprint-3): run history browser
     match(:*, "/*path", ErrorController, :not_found)
   end
 end

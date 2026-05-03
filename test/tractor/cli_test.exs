@@ -286,6 +286,40 @@ defmodule Tractor.CLITest do
   end
 
   @tag :tmp_dir
+  test "view boots observer endpoint without running a pipeline", %{tmp_dir: tmp_dir} do
+    assert {_output, 0} = System.cmd("mix", ["escript.build"])
+    tractor = Path.expand("bin/tractor")
+
+    port =
+      Port.open({:spawn_executable, tractor}, [
+        :binary,
+        :exit_status,
+        {:line, 4096},
+        {:args, ["view", "--port", "0", "--no-open", "--runs-dir", tmp_dir]},
+        :stderr_to_stdout
+      ])
+
+    {:os_pid, os_pid} = Port.info(port, :os_pid)
+    url = wait_for_view_url(port)
+
+    try do
+      assert url =~ ~r{http://127\.0\.0\.1:\d+}
+      assert {health, 0} = System.cmd("curl", ["-fsS", url <> "/api/health"])
+      assert health =~ "\"ok\":true"
+      assert {html, 0} = System.cmd("curl", ["-fsS", url <> "/"])
+      assert html =~ "tractor"
+      assert html =~ "Runs"
+    after
+      System.cmd("kill", ["-TERM", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    end
+  end
+
+  test "view rejects positional args", do: assert({2, "", _} = Tractor.CLI.run(["view", "extra"]))
+
+  test "view rejects unknown flag",
+    do: assert({2, "", _} = Tractor.CLI.run(["view", "--bogus"]))
+
+  @tag :tmp_dir
   test "--serve without dot on PATH returns actionable exit 2", %{tmp_dir: tmp_dir} do
     dot = Path.join(tmp_dir, "serve.dot")
 
@@ -335,6 +369,21 @@ defmodule Tractor.CLITest do
         flunk("serve process exited before URL with status #{status}")
     after
       5_000 -> flunk("serve process did not print URL")
+    end
+  end
+
+  defp wait_for_view_url(port) do
+    receive do
+      {^port, {:data, {:eol, line}}} ->
+        case Regex.run(~r{serving observer at (https?://127\.0\.0\.1:\d+)}, line) do
+          [_, url] -> url
+          _other -> wait_for_view_url(port)
+        end
+
+      {^port, {:exit_status, status}} ->
+        flunk("view process exited before URL with status #{status}")
+    after
+      5_000 -> flunk("view process did not print URL")
     end
   end
 

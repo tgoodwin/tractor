@@ -19,7 +19,7 @@ defmodule Tractor.CLI do
 
   @probe_connect_timeout_ms 500
   @probe_read_timeout_ms 2_000
-  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor validate PATH\n       tractor init [claude|codex|gemini] [--force]\n"
+  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor view [--runs-dir PATH] [--port N] [--no-open]\n       tractor validate PATH\n       tractor init [claude|codex|gemini] [--force]\n"
 
   @spec main([String.t()]) :: no_return()
   def main(args) do
@@ -105,6 +105,33 @@ defmodule Tractor.CLI do
       {:error, reason} -> {20, "", "agent runtime failure: #{inspect(reason)}\n"}
       {:resume, true} -> resume_once(opts, timeout_ms!(opts[:timeout]))
       _other -> {2, "", @usage}
+    end
+  end
+
+  def run(["view" | args]) do
+    {parsed, positional, invalid} =
+      OptionParser.parse(args,
+        strict: [
+          runs_dir: :string,
+          port: :integer,
+          no_open: :boolean
+        ]
+      )
+
+    cond do
+      invalid != [] ->
+        {2, "", @usage}
+
+      positional != [] ->
+        {2, "", @usage}
+
+      true ->
+        opts = normalize_opts(parsed)
+
+        case TractorWeb.GraphRenderer.probe_dot() do
+          :ok -> {:serve, fn -> serve_view(opts) end}
+          {:error, message} -> {2, "", message <> "\n"}
+        end
     end
   end
 
@@ -311,6 +338,72 @@ defmodule Tractor.CLI do
 
       {:error, reason} ->
         finish(2, "", "failed to start observer: #{inspect(reason)}\n")
+    end
+  end
+
+  defp serve_view(opts) do
+    port = Keyword.get(opts, :port, 4000)
+    runs_dir = opts[:runs_dir] || Tractor.Paths.runs_dir()
+
+    case probe_observer(port: port, runs_dir: runs_dir) do
+      {:adopt, observer} ->
+        announce_view(:adopt, observer.base_url)
+        maybe_open(observer.base_url <> "/", opts)
+        block_until_terminated(nil)
+
+      :own ->
+        with {:ok, endpoint_pid} <-
+               DynamicSupervisor.start_child(
+                 Tractor.WebSup,
+                 {TractorWeb.Server, port: port, runs_dir: runs_dir}
+               ),
+             {:ok, base_url} <- server_base_url() do
+          announce_view(:own, base_url)
+          maybe_open(base_url <> "/", opts)
+          block_until_terminated(endpoint_pid)
+        else
+          {:error, message} when is_binary(message) ->
+            finish(2, "", message <> "\n")
+
+          {:error, reason} ->
+            finish(2, "", "failed to start observer: #{inspect(reason)}\n")
+        end
+
+      {:error, :runs_dir_mismatch, %{expected: expected, observed: observed, port: port}} ->
+        finish(
+          6,
+          "",
+          "observer runs_dir mismatch on port #{port}: expected #{expected}, got #{observed}\n"
+        )
+
+      {:error, :port_conflict, %{port: port}} ->
+        finish(
+          4,
+          "",
+          "port #{port} busy, not a tractor observer; pass `--port N` or stop the other process.\n"
+        )
+    end
+  end
+
+  defp announce_view(:adopt, url),
+    do: IO.puts(:stderr, "adopting observer at #{url} (Ctrl-C to detach)")
+
+  defp announce_view(:own, url),
+    do: IO.puts(:stderr, "serving observer at #{url} (Ctrl-C to stop)")
+
+  defp block_until_terminated(nil), do: Process.sleep(:infinity)
+
+  defp block_until_terminated(endpoint_pid) when is_pid(endpoint_pid) do
+    ref = Process.monitor(endpoint_pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^endpoint_pid, reason} ->
+        case reason do
+          :normal -> finish(0, "", "")
+          :shutdown -> finish(0, "", "")
+          {:shutdown, _} -> finish(0, "", "")
+          other -> finish(20, "", "observer terminated: #{inspect(other)}\n")
+        end
     end
   end
 
