@@ -122,6 +122,84 @@ defmodule Tractor.ValidatorTest do
     )
   end
 
+  test "accepts the canonical Audit/Fix loop where the cycle goes through the parallel orchestrator" do
+    # preparer → fan_out → branch → fan_in → verdict → gate → fix → preparer (reject loop)
+    #                                                       gate → exit (accept)
+    assert :ok =
+             Validator.validate(
+               pipeline(
+                 nodes: [
+                   node("start", "start"),
+                   node("preparer", "codergen", llm_provider: "claude"),
+                   node("fan_out", "parallel"),
+                   node("branch", "codergen", llm_provider: "claude"),
+                   node("fan_in", "parallel.fan_in"),
+                   node("verdict", "codergen", llm_provider: "claude"),
+                   node("gate", "conditional"),
+                   node("fix", "codergen",
+                     llm_provider: "claude",
+                     attrs: %{"max_iterations" => "5"}
+                   ),
+                   node("exit", "exit")
+                 ],
+                 edges: [
+                   edge("start", "preparer"),
+                   edge("preparer", "fan_out"),
+                   edge("fan_out", "branch"),
+                   edge("branch", "fan_in"),
+                   edge("fan_in", "verdict"),
+                   edge("verdict", "gate"),
+                   edge("gate", "fix", condition: "reject"),
+                   edge("gate", "exit", condition: "accept"),
+                   edge("fix", "preparer")
+                 ],
+                 parallel_blocks: %{
+                   "fan_out" => %ParallelBlock{
+                     parallel_node_id: "fan_out",
+                     branches: ["branch"],
+                     fan_in_id: "fan_in"
+                   }
+                 }
+               )
+             )
+  end
+
+  test "rejects cycles that re-enter a parallel branch from outside the orchestrator" do
+    # Bad shape: a downstream node has an edge back to a branch directly,
+    # bypassing the parallel.
+    assert_codes(
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("fan_out", "parallel"),
+          node("branch", "codergen",
+            llm_provider: "claude",
+            attrs: %{"max_iterations" => "5"}
+          ),
+          node("fan_in", "parallel.fan_in"),
+          node("verdict", "codergen", llm_provider: "claude"),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "fan_out"),
+          edge("fan_out", "branch"),
+          edge("branch", "fan_in"),
+          edge("fan_in", "verdict"),
+          edge("verdict", "branch", condition: "reject"),
+          edge("verdict", "exit", condition: "accept")
+        ],
+        parallel_blocks: %{
+          "fan_out" => %ParallelBlock{
+            parallel_node_id: "fan_out",
+            branches: ["branch"],
+            fan_in_id: "fan_in"
+          }
+        }
+      ),
+      [:cycle_bypasses_parallel]
+    )
+  end
+
   test "rejects disconnected nodes" do
     assert_codes(
       pipeline(
@@ -704,6 +782,37 @@ defmodule Tractor.ValidatorTest do
       :agent_on_non_agent,
       "LLM attrs are ignored"
     )
+  end
+
+  test "does not warn when parallel.fan_in carries llm_provider (LLM consolidation)" do
+    pipeline =
+      pipeline(
+        nodes: [
+          node("start", "start"),
+          node("fan_out", "parallel"),
+          node("branch", "codergen", llm_provider: "claude"),
+          node("fan_in", "parallel.fan_in",
+            llm_provider: "claude",
+            attrs: %{"prompt" => "Consolidate {{branch_responses}}"}
+          ),
+          node("exit", "exit")
+        ],
+        edges: [
+          edge("start", "fan_out"),
+          edge("fan_out", "branch"),
+          edge("branch", "fan_in"),
+          edge("fan_in", "exit")
+        ],
+        parallel_blocks: %{
+          "fan_out" => %ParallelBlock{
+            parallel_node_id: "fan_out",
+            branches: ["branch"],
+            fan_in_id: "fan_in"
+          }
+        }
+      )
+
+    refute Enum.any?(Validator.warnings(pipeline), &(&1.code == :agent_on_non_agent))
   end
 
   test "warns for timeout on instant nodes and allow_partial without retries" do

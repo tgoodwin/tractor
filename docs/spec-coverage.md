@@ -67,7 +67,7 @@ Specs:
 - [x] Partial-success continuation is centralized in `Runner.Adjudication`, with a `parallel.fan_in` carveout. — `lib/tractor/runner/adjudication.ex`, `SPRINT-0007`
 - [x] Global budgets cover total iterations, wall clock, and total token cost. — `lib/tractor/runner/budget.ex`, `lib/tractor/runner.ex`, `SPRINT-0005`, `SPRINT-0006`, `SPRINT-0007`
 - [x] `exit` does not finalize the run while any `wait.human` node is still pending. — `lib/tractor/runner.ex`, `SPRINT-0008`
-- [x] Nested cycles and cycles that cross `parallel` / `parallel.fan_in` boundaries are rejected by validation. — `lib/tractor/validator.ex`, `SPRINT-0005`
+- [x] Nested cycles are rejected by validation; cycles through a parallel block are allowed when they enter via the `parallel` node (canonical Audit/Fix loop) but rejected (`cycle_bypasses_parallel`) when a branch is reached from outside without going through the orchestrator. — `lib/tractor/validator.ex`, `SPRINT-0005`
 
 ## Checkpoint / resume
 - [x] Runs persist JSON checkpoints with semantic-hash verification against the DOT graph. — `lib/tractor/checkpoint.ex`, `lib/tractor/run.ex`, `SPRINT-0005`

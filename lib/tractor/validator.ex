@@ -197,11 +197,11 @@ defmodule Tractor.Validator do
         trivial_acyclic_component?(component, component_edges) ->
           diagnostics
 
-        cycle_crosses_parallel?(nodes, component) ->
+        cycle_bypasses_parallel?(nodes, edges, component) ->
           diagnostic(
             diagnostics,
-            :cycle_crosses_parallel,
-            "cycle crosses parallel or parallel.fan_in boundary"
+            :cycle_bypasses_parallel,
+            "cycle re-enters a parallel branch without going through the parallel node"
           )
 
         unconditional_cycle?(component, component_edges) ->
@@ -231,10 +231,29 @@ defmodule Tractor.Validator do
     Enum.filter(edges, &(MapSet.member?(ids, &1.from) and MapSet.member?(ids, &1.to)))
   end
 
-  defp cycle_crosses_parallel?(nodes, component) do
+  # The canonical Audit/Fix loop (loop-patterns.md, Pattern 2) sends a fix node back
+  # through the parallel orchestrator, so the strong component legitimately includes
+  # `parallel`, the branches, and `parallel.fan_in`. The malformed shape we still
+  # want to reject is a cycle that re-enters a branch from outside the block — i.e.
+  # a branch is inside the cycle but the parallel that owns it is not, so the
+  # parallel orchestration is bypassed.
+  defp cycle_bypasses_parallel?(nodes, edges, component) do
+    component_set = MapSet.new(component)
+
     Enum.any?(component, fn node_id ->
-      get_in(nodes, [node_id, Access.key(:type)]) in ["parallel", "parallel.fan_in"]
+      case parallel_parents(nodes, edges, node_id) do
+        [] -> false
+        parents -> not Enum.any?(parents, &MapSet.member?(component_set, &1))
+      end
     end)
+  end
+
+  defp parallel_parents(nodes, edges, node_id) do
+    edges
+    |> Enum.filter(
+      &(&1.to == node_id and get_in(nodes, [&1.from, Access.key(:type)]) == "parallel")
+    )
+    |> Enum.map(& &1.from)
   end
 
   defp unconditional_cycle?(component, edges) do
@@ -1353,8 +1372,9 @@ defmodule Tractor.Validator do
   end
 
   # Moab's "agent" warnings map to tractor node types that can invoke an LLM handler.
-  # parallel.fan_in is excluded because whether it invokes an LLM depends on runtime config,
-  # which is not statically knowable from the lowered pipeline alone.
+  # parallel.fan_in counts when llm_provider is set: Tractor.Handler.FanIn dispatches to
+  # run_llm_fan_in/5 in that case, so llm_provider/llm_model are not ignored.
+  defp agent_capable?(%Node{type: "parallel.fan_in"} = node), do: not is_nil(node.llm_provider)
   defp agent_capable?(%Node{type: type}), do: type in ["codergen", "judge"]
 
   defp instant_only?(%Node{type: type}), do: type in ["start", "exit", "conditional", "parallel"]
