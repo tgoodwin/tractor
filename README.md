@@ -46,6 +46,14 @@ export TRACTOR_ACP_CLAUDE_ENV_JSON='{"ANTHROPIC_API_KEY":"…"}'
 
 Same shape for `CODEX` and `GEMINI`. Env values are redacted in run manifests.
 
+## Authoring pipelines
+
+Writing the DOT graph by hand can be tricky. `tractor init claude` (or
+`codex` / `gemini`) installs a `create-pipeline` skill into
+`.<agent>/skills/` in the current project; open your agent there and ask it
+to create a pipeline — the skill walks it through goal capture, topology
+choice, and validation.
+
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — three-plane architecture, supervision tree, log-as-bus contract.
