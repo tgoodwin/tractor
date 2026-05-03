@@ -19,6 +19,15 @@ Use the local observer UI for live inspection and post-mortems:
 The observer binds to `127.0.0.1`, prints a `/runs/<run_id>` URL before the run
 starts, and keeps serving after completion until Ctrl-C.
 
+To browse historical runs without re-running anything:
+
+```sh
+./bin/tractor view
+```
+
+`view` boots (or adopts) the observer against the local runs directory and
+opens a landing page at `/` listing every discoverable run.
+
 ## Install
 
 Tractor is an Elixir escript.
