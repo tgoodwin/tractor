@@ -1068,7 +1068,8 @@ defmodule Tractor.Validator do
 
       diagnostics
       |> maybe_add(
-        Map.has_key?(node.attrs, "type") and is_binary(implied_type) and node.type != implied_type,
+        Map.has_key?(node.attrs, "type") and is_binary(implied_type) and
+          node.type != implied_type,
         :type_shape_mismatch,
         "node '#{node_id}' has type='#{node.type}' but shape '#{node.attrs["shape"]}' implies type '#{implied_type}' - these disagree",
         node_id: node_id,
@@ -1138,7 +1139,8 @@ defmodule Tractor.Validator do
           "nodes '#{from}' and '#{to}' have edges in both directions",
           edge: {from, to},
           severity: :warning,
-          fix: "Two-way edges are a potential malformed loop; a node should not validate its own work."
+          fix:
+            "Two-way edges are a potential malformed loop; a node should not validate its own work."
         )
 
       _other, diagnostics ->
@@ -1156,7 +1158,8 @@ defmodule Tractor.Validator do
           "node '#{node_id}' is a human gate - pipelines should run autonomously",
           node_id: node_id,
           severity: :warning,
-          fix: "Human gates should only be used for debugging during pipeline development; replace with an agent node for production use."
+          fix:
+            "Human gates should only be used for debugging during pipeline development; replace with an agent node for production use."
         )
         |> maybe_add(
           tool?(node),

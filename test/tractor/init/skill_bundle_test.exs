@@ -5,6 +5,7 @@ defmodule Tractor.Init.SkillBundleTest do
 
   test "files/0 returns the four bundle entries with bare basenames" do
     assert files = SkillBundle.files()
+
     assert Map.keys(files) |> Enum.sort() ==
              ["SKILL.md", "loop-patterns.md", "pipeline-reference.md", "validate-prompt.md"]
 

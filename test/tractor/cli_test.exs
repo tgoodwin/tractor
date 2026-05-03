@@ -58,7 +58,9 @@ defmodule Tractor.CLITest do
   end
 
   @tag :tmp_dir
-  test "reap emits validation diagnostics on stderr and preserves runtime exits", %{tmp_dir: tmp_dir} do
+  test "reap emits validation diagnostics on stderr and preserves runtime exits", %{
+    tmp_dir: tmp_dir
+  } do
     invalid = Path.join(tmp_dir, "invalid.dot")
 
     File.write!(invalid, """
@@ -499,7 +501,8 @@ defmodule Tractor.CLITest do
     :error, :badarg -> :ok
   end
 
-  defp terminate_os_process(pid) when is_integer(pid), do: terminate_os_process(Integer.to_string(pid))
+  defp terminate_os_process(pid) when is_integer(pid),
+    do: terminate_os_process(Integer.to_string(pid))
 
   defp terminate_os_process(pid) when is_binary(pid) do
     System.cmd("kill", ["-TERM", pid], stderr_to_stdout: true)

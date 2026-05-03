@@ -47,8 +47,8 @@ defmodule Tractor.AgentTest do
               ]}
 
     assert Codex.command([]) ==
-             {"npx",
-              ["@zed-industries/codex-acp", "-a", "never", "--sandbox", "workspace-write"], []}
+             {"npx", ["@zed-industries/codex-acp", "-a", "never", "--sandbox", "workspace-write"],
+              []}
   end
 
   test "Claude sessions default to autonomous bypass mode" do

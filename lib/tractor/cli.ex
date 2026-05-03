@@ -502,8 +502,11 @@ defmodule Tractor.CLI do
           recv_http_response(socket, acc)
         end
 
-      {:error, :closed} -> {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
-      {:error, reason} -> {:error, reason}
+      {:error, :closed} ->
+        {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary()}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

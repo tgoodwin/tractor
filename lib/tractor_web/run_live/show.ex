@@ -133,7 +133,10 @@ defmodule TractorWeb.RunLive.Show do
   # Reuse the cached SVG when the new run shares the same DOT path (graphviz
   # rendering is the dominant cost on a run switch — ~150ms fork+exec). When
   # paths differ or no SVG is cached, re-render.
-  defp ensure_graph(%{pipeline: %Tractor.Pipeline{path: path}, graph_svg: svg, graph_key: key}, %Tractor.Pipeline{path: path})
+  defp ensure_graph(
+         %{pipeline: %Tractor.Pipeline{path: path}, graph_svg: svg, graph_key: key},
+         %Tractor.Pipeline{path: path}
+       )
        when is_binary(svg) and svg != "" and is_binary(key) do
     {svg, key}
   end
@@ -417,7 +420,9 @@ defmodule TractorWeb.RunLive.Show do
   # cache warm for nodes the user hasn't viewed yet.
   defp ensure_plan(latest_plans, run_dir, node_id) do
     case Map.fetch(latest_plans, node_id) do
-      {:ok, plan} -> {plan, latest_plans}
+      {:ok, plan} ->
+        {plan, latest_plans}
+
       :error ->
         plan = load_plan_for_node(run_dir, node_id)
         {plan, Map.put(latest_plans, node_id, plan)}
@@ -929,7 +934,8 @@ defmodule TractorWeb.RunLive.Show do
     TractorWeb.Markdown.to_html(body)
   end
 
-  defp render_entry_body(%{type: type, body: body}) when type in [:tool_call, :tool_call_update] do
+  defp render_entry_body(%{type: type, body: body})
+       when type in [:tool_call, :tool_call_update] do
     TractorWeb.RunLive.ToolCallView.render(body)
   end
 

@@ -39,6 +39,7 @@ defmodule Tractor.Context do
 
   defp maybe_put_string(context, _key, nil), do: context
   defp maybe_put_string(context, _key, ""), do: context
+
   defp maybe_put_string(context, key, value) when is_binary(value),
     do: Map.put(context, key, value)
 

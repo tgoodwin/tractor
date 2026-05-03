@@ -756,7 +756,12 @@ defmodule Tractor.ValidatorTest do
 
     assert_warning_diagnostic(pipeline, :two_way_edge, "have edges in both directions")
     assert_warning_diagnostic(pipeline, :human_gate_warning, "pipelines should run autonomously")
-    assert_warning_diagnostic(pipeline, :tool_node_warning, "tool node running a shell command directly")
+
+    assert_warning_diagnostic(
+      pipeline,
+      :tool_node_warning,
+      "tool node running a shell command directly"
+    )
   end
 
   test "splits retry target existence warnings from illegal retry target errors" do
@@ -798,8 +803,11 @@ defmodule Tractor.ValidatorTest do
         )
       )
 
-    assert Enum.count(diagnostics, &(&1.code == :retry_target_exists and &1.severity == :warning)) == 1
-    assert Enum.count(diagnostics, &(&1.code == :invalid_retry_target and &1.severity == :error)) == 3
+    assert Enum.count(diagnostics, &(&1.code == :retry_target_exists and &1.severity == :warning)) ==
+             1
+
+    assert Enum.count(diagnostics, &(&1.code == :invalid_retry_target and &1.severity == :error)) ==
+             3
   end
 
   test "validate and warnings wrappers match diagnostics on example graphs" do

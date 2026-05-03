@@ -24,16 +24,14 @@ defmodule Tractor.Init.SkillBundle do
   @validate File.read!(@validate_source)
   @loop File.read!(@loop_source)
 
-  @skill (
-           [
-             {"docs/usage/pipeline-reference.md", "pipeline-reference.md"},
-             {"docs/usage/validate-prompt.md", "validate-prompt.md"},
-             {"docs/usage/loop-patterns.md", "loop-patterns.md"}
-           ]
-           |> Enum.reduce(File.read!(@skill_source), fn {from, to}, acc ->
-             String.replace(acc, from, to)
-           end)
-         )
+  @skill [
+           {"docs/usage/pipeline-reference.md", "pipeline-reference.md"},
+           {"docs/usage/validate-prompt.md", "validate-prompt.md"},
+           {"docs/usage/loop-patterns.md", "loop-patterns.md"}
+         ]
+         |> Enum.reduce(File.read!(@skill_source), fn {from, to}, acc ->
+           String.replace(acc, from, to)
+         end)
 
   @doc """
   The map of bundle filename → file contents written by `tractor init`.
