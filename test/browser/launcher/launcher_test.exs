@@ -13,7 +13,7 @@ defmodule TestLauncherTest do
       sync =
         request!(launcher, %{
           "op" => "reap",
-          "args" => ["reap", "examples/haiku_feedback.dot", "--runs-dir", sync_runs_dir],
+          "args" => ["reap", "examples/three_agents.dot", "--runs-dir", sync_runs_dir],
           "env" => fake_acp_env(tmp_dir, launcher.root),
           "cwd" => launcher.root
         })
