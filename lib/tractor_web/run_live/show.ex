@@ -7,6 +7,7 @@ defmodule TractorWeb.RunLive.Show do
   alias TractorWeb.{Format, GraphRenderer, RunIndex}
   alias TractorWeb.RunLive.{StatusFeed, WaitForm}
   alias TractorWeb.RunLive.Timeline
+  alias TractorWeb.RunLive.ToolCallView
 
   @runs_refresh_ms 5_000
 
@@ -936,7 +937,7 @@ defmodule TractorWeb.RunLive.Show do
 
   defp render_entry_body(%{type: type, body: body})
        when type in [:tool_call, :tool_call_update] do
-    TractorWeb.RunLive.ToolCallView.render(body)
+    ToolCallView.render(body)
   end
 
   defp render_entry_body(%{body: body}) do

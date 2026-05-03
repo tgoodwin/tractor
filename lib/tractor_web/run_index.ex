@@ -150,14 +150,16 @@ defmodule TractorWeb.RunIndex do
     if File.exists?(path) do
       path
       |> File.stream!()
-      |> Enum.reduce(nil, fn line, acc ->
-        case Jason.decode(line) do
-          {:ok, %{"kind" => "run_interrupted"}} -> :run_interrupted
-          {:ok, %{"kind" => "run_failed"}} -> :run_failed
-          {:ok, %{"kind" => "run_completed"}} -> :run_completed
-          _ -> acc
-        end
-      end)
+      |> Enum.reduce(nil, &reduce_terminal_event/2)
+    end
+  end
+
+  defp reduce_terminal_event(line, acc) do
+    case Jason.decode(line) do
+      {:ok, %{"kind" => "run_interrupted"}} -> :run_interrupted
+      {:ok, %{"kind" => "run_failed"}} -> :run_failed
+      {:ok, %{"kind" => "run_completed"}} -> :run_completed
+      _ -> acc
     end
   end
 
@@ -179,20 +181,22 @@ defmodule TractorWeb.RunIndex do
   defp any_waiting_node?(run_dir) do
     case File.ls(run_dir) do
       {:ok, entries} ->
-        Enum.any?(entries, fn entry ->
-          path = Path.join([run_dir, entry, "status.json"])
-
-          with true <- File.regular?(path),
-               {:ok, body} <- File.read(path),
-               {:ok, json} <- Jason.decode(body) do
-            json["status"] == "waiting"
-          else
-            _ -> false
-          end
-        end)
+        Enum.any?(entries, &node_waiting?(run_dir, &1))
 
       _ ->
         false
+    end
+  end
+
+  defp node_waiting?(run_dir, entry) do
+    path = Path.join([run_dir, entry, "status.json"])
+
+    with true <- File.regular?(path),
+         {:ok, body} <- File.read(path),
+         {:ok, json} <- Jason.decode(body) do
+      json["status"] == "waiting"
+    else
+      _ -> false
     end
   end
 

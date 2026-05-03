@@ -527,30 +527,33 @@ defmodule TestLauncher.Server do
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
     case Enum.find(state.jobs, fn {_token, job} -> job.ref == ref end) do
+      {_token, %{result: result}} when not is_nil(result) ->
+        {:noreply, state}
+
       {token, job} ->
-        if job.result do
-          {:noreply, state}
-        else
-          reply = %{"ok" => false, "code" => 20, "error" => "job crashed: #{inspect(reason)}"}
-
-          if job.start_from, do: GenServer.reply(job.start_from, reply)
-          Enum.each(job.waiters, &GenServer.reply(&1, reply))
-
-          jobs =
-            Map.put(state.jobs, token, %{
-              job
-              | start_from: nil,
-                waiters: [],
-                result: reply,
-                state: :done
-            })
-
-          {:noreply, finish_pending(%{state | jobs: jobs})}
-        end
+        {:noreply, mark_job_crashed(state, token, job, reason)}
 
       nil ->
         {:noreply, state}
     end
+  end
+
+  defp mark_job_crashed(state, token, job, reason) do
+    reply = %{"ok" => false, "code" => 20, "error" => "job crashed: #{inspect(reason)}"}
+
+    if job.start_from, do: GenServer.reply(job.start_from, reply)
+    Enum.each(job.waiters, &GenServer.reply(&1, reply))
+
+    jobs =
+      Map.put(state.jobs, token, %{
+        job
+        | start_from: nil,
+          waiters: [],
+          result: reply,
+          state: :done
+      })
+
+    finish_pending(%{state | jobs: jobs})
   end
 
   @impl true
@@ -775,12 +778,14 @@ defmodule TestLauncher.CLI do
     if System.get_env("TRACTOR_BROWSER_LAUNCHER_DISABLE_STDIN_WATCH") == "1" do
       :ok
     else
-      spawn_link(fn ->
-        case IO.binread(:stdio, :eof) do
-          :eof -> TestLauncher.Server.request(%{"op" => "shutdown"}, 5_000)
-          _other -> :ok
-        end
-      end)
+      spawn_link(&watch_stdin_loop/0)
+    end
+  end
+
+  defp watch_stdin_loop do
+    case IO.binread(:stdio, :eof) do
+      :eof -> TestLauncher.Server.request(%{"op" => "shutdown"}, 5_000)
+      _other -> :ok
     end
   end
 

@@ -91,12 +91,10 @@ defmodule Tractor.Assistant do
 
   defp render_history(history) do
     rendered =
-      history
-      |> Enum.map(fn
+      Enum.map_join(history, "\n\n", fn
         %{role: :user, content: c} -> "User: #{c}"
         %{role: :assistant, content: c} -> "Assistant: #{c}"
       end)
-      |> Enum.join("\n\n")
 
     "## Conversation so far\n\n" <> rendered <> "\n\n"
   end

@@ -1723,26 +1723,28 @@ defmodule Tractor.Runner do
   defp consume_control_file(state, path) do
     with true <- File.exists?(path),
          {:ok, control} <- ControlFile.load(path) do
-      case apply_control_file(state, control) do
-        {:resolve, node_id, label} ->
-          case resolve_waiting_node(state, node_id, label, :operator) do
-            {:ok, next_state} ->
-              File.rm(path)
-              next_state
-
-            {:error, _reason} ->
-              archive_control_file(path)
-              state
-          end
-
-        {:archive, _reason} ->
-          archive_control_file(path)
-          state
-      end
+      apply_control_action(state, path, apply_control_file(state, control))
     else
       _other ->
         state
     end
+  end
+
+  defp apply_control_action(state, path, {:resolve, node_id, label}) do
+    case resolve_waiting_node(state, node_id, label, :operator) do
+      {:ok, next_state} ->
+        File.rm(path)
+        next_state
+
+      {:error, _reason} ->
+        archive_control_file(path)
+        state
+    end
+  end
+
+  defp apply_control_action(state, path, {:archive, _reason}) do
+    archive_control_file(path)
+    state
   end
 
   defp archive_control_file(path) do

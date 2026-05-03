@@ -223,9 +223,8 @@ defmodule Tractor.ACP.Session do
   def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
 
   def handle_info({:EXIT, pid, reason}, state) do
-    Logger.warning("ACP session received unexpected :EXIT",
-      pid: inspect(pid),
-      reason: inspect(reason)
+    Logger.warning(
+      "ACP session received unexpected :EXIT pid=#{inspect(pid)} reason=#{inspect(reason)}"
     )
 
     {:noreply, state}
@@ -576,54 +575,59 @@ defmodule Tractor.ACP.Session do
     kind = update["type"] || update["sessionUpdate"]
     turn = %{state.turn | events: state.turn.events ++ [update]}
     state = %{state | turn: turn} |> maybe_capture_usage(update)
+    dispatch_update(state, kind, update)
+  end
 
-    case kind do
-      "agent_message_chunk" ->
-        turn = state.turn
-        chunk = %{"text" => chunk_text(update), "raw" => update}
-        emit_event(state, :agent_message_chunk, chunk)
+  defp dispatch_update(state, "agent_message_chunk", update) do
+    turn = state.turn
+    chunk = %{"text" => chunk_text(update), "raw" => update}
+    emit_event(state, :agent_message_chunk, chunk)
 
-        %{
-          state
-          | turn: %{
-              turn
-              | response_text: turn.response_text <> (chunk["text"] || ""),
-                agent_message_chunks: turn.agent_message_chunks ++ [chunk]
-            }
+    %{
+      state
+      | turn: %{
+          turn
+          | response_text: turn.response_text <> (chunk["text"] || ""),
+            agent_message_chunks: turn.agent_message_chunks ++ [chunk]
         }
+    }
+  end
 
-      "agent_thought_chunk" ->
-        turn = state.turn
-        chunk = %{"text" => chunk_text(update), "raw" => update}
-        emit_event(state, :agent_thought_chunk, chunk)
-        %{state | turn: %{turn | agent_thought_chunks: turn.agent_thought_chunks ++ [chunk]}}
+  defp dispatch_update(state, "agent_thought_chunk", update) do
+    turn = state.turn
+    chunk = %{"text" => chunk_text(update), "raw" => update}
+    emit_event(state, :agent_thought_chunk, chunk)
+    %{state | turn: %{turn | agent_thought_chunks: turn.agent_thought_chunks ++ [chunk]}}
+  end
 
-      "tool_call" ->
-        turn = state.turn
-        tool_call = extract_tool_call(update)
-        emit_event(state, :tool_call, tool_call)
-        %{state | turn: %{turn | tool_calls: turn.tool_calls ++ [tool_call]}}
+  defp dispatch_update(state, "tool_call", update) do
+    turn = state.turn
+    tool_call = extract_tool_call(update)
+    emit_event(state, :tool_call, tool_call)
+    %{state | turn: %{turn | tool_calls: turn.tool_calls ++ [tool_call]}}
+  end
 
-      "tool_call_update" ->
-        turn = state.turn
-        update_data = extract_tool_call_update(update)
-        emit_event(state, :tool_call_update, update_data)
-        %{state | turn: %{turn | tool_call_updates: turn.tool_call_updates ++ [update_data]}}
+  defp dispatch_update(state, "tool_call_update", update) do
+    turn = state.turn
+    update_data = extract_tool_call_update(update)
+    emit_event(state, :tool_call_update, update_data)
+    %{state | turn: %{turn | tool_call_updates: turn.tool_call_updates ++ [update_data]}}
+  end
 
-      "plan" ->
-        turn = state.turn
-        plan = extract_plan(update)
-        emit_event(state, :plan_update, plan)
-        %{state | turn: %{turn | plan: plan["entries"]}}
+  defp dispatch_update(state, "plan", update) do
+    turn = state.turn
+    plan = extract_plan(update)
+    emit_event(state, :plan_update, plan)
+    %{state | turn: %{turn | plan: plan["entries"]}}
+  end
 
-      _other ->
-        emit_event(state, :acp_unknown_update, %{
-          "updateKind" => kind || "unknown",
-          "raw" => update
-        })
+  defp dispatch_update(state, kind, update) do
+    emit_event(state, :acp_unknown_update, %{
+      "updateKind" => kind || "unknown",
+      "raw" => update
+    })
 
-        state
-    end
+    state
   end
 
   defp maybe_capture_usage(state, payload) do
@@ -698,25 +702,31 @@ defmodule Tractor.ACP.Session do
     display_line = line |> strip_ansi_sequences() |> redact_stdout_line()
     classifier_line = stdout_classifier_line(display_line)
 
-    cond do
-      telemetry_stdout_line?(classifier_line) -> :drop
-      true -> display_line
+    if telemetry_stdout_line?(classifier_line) do
+      :drop
+    else
+      display_line
     end
   end
 
+  @telemetry_substrings [
+    " codex_otel::otel_manager: ",
+    " INFO feedback_tags: ",
+    " codex_acp::",
+    " codex_rmcp_client::",
+    " codex_core::features:",
+    " codex_core::config:",
+    " codex_core::stream_events_utils:",
+    " serve_inner:",
+    " rmcp::service:",
+    " Service initialized as client ",
+    " MCP server stderr "
+  ]
+
+  defp telemetry_stdout_line?("[... telemetry preview truncated ...]"), do: true
+
   defp telemetry_stdout_line?(line) do
-    line == "[... telemetry preview truncated ...]" or
-      String.contains?(line, " codex_otel::otel_manager: ") or
-      String.contains?(line, " INFO feedback_tags: ") or
-      String.contains?(line, " codex_acp::") or
-      String.contains?(line, " codex_rmcp_client::") or
-      String.contains?(line, " codex_core::features:") or
-      String.contains?(line, " codex_core::config:") or
-      String.contains?(line, " codex_core::stream_events_utils:") or
-      String.contains?(line, " serve_inner:") or
-      String.contains?(line, " rmcp::service:") or
-      String.contains?(line, " Service initialized as client ") or
-      String.contains?(line, " MCP server stderr ")
+    Enum.any?(@telemetry_substrings, &String.contains?(line, &1))
   end
 
   defp stdout_classifier_line(line) do

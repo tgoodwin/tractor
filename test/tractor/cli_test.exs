@@ -419,8 +419,9 @@ defmodule Tractor.CLITest do
   defp diagnostic_body(output) do
     output
     |> String.split("\n")
-    |> Enum.reject(&String.match?(&1, ~r/^\d+ diagnostic\(s\): /))
-    |> Enum.reject(&(&1 == ""))
+    |> Enum.reject(fn line ->
+      line == "" or String.match?(line, ~r/^\d+ diagnostic\(s\): /)
+    end)
     |> Enum.join("\n")
     |> Kernel.<>("\n")
   end

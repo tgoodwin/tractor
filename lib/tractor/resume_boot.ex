@@ -33,20 +33,26 @@ defmodule Tractor.ResumeBoot do
     runs_dir
     |> Path.join("*")
     |> Path.wildcard()
-    |> Enum.reduce(0, fn run_dir, resumed ->
-      if resumable_run?(run_dir) do
-        case Run.resume(run_dir) do
-          {:ok, _run_id} ->
-            resumed + 1
+    |> Enum.reduce(0, &maybe_resume_run/2)
+  end
 
-          {:error, reason} ->
-            Logger.warning("ResumeBoot failed for #{run_dir}: #{inspect(reason)}")
-            resumed
-        end
-      else
+  defp maybe_resume_run(run_dir, resumed) do
+    if resumable_run?(run_dir) do
+      try_resume_run(run_dir, resumed)
+    else
+      resumed
+    end
+  end
+
+  defp try_resume_run(run_dir, resumed) do
+    case Run.resume(run_dir) do
+      {:ok, _run_id} ->
+        resumed + 1
+
+      {:error, reason} ->
+        Logger.warning("ResumeBoot failed for #{run_dir}: #{inspect(reason)}")
         resumed
-      end
-    end)
+    end
   end
 
   defp resumable_run?(run_dir) do

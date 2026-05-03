@@ -40,9 +40,8 @@ defmodule Tractor.Runner.ControlFile do
 
   @spec load(Path.t()) :: {:ok, map()} | {:error, term()}
   def load(path) do
-    with {:ok, raw} <- File.read(path),
-         {:ok, json} <- Jason.decode(raw) do
-      {:ok, json}
+    with {:ok, raw} <- File.read(path) do
+      Jason.decode(raw)
     end
   end
 

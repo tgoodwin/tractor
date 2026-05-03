@@ -176,34 +176,39 @@ defmodule Tractor.RunWatcher.Tail do
   defp emit_events(state, node_id, complete, last_seq) do
     complete
     |> String.split("\n", trim: true)
-    |> Enum.reduce({last_seq, false}, fn line, {last_seq, terminal_sent?} ->
-      case Jason.decode(line) do
-        {:ok, %{"seq" => seq} = event} when is_integer(seq) and seq > last_seq ->
-          Tractor.RunBus.broadcast(state.run_id, node_id, event)
-
-          {
-            seq,
-            terminal_sent? or terminal_event?(node_id, event)
-          }
-
-        {:ok, %{"seq" => seq} = event} when is_integer(seq) ->
-          {
-            max(last_seq || 0, seq),
-            terminal_sent? or terminal_event?(node_id, event)
-          }
-
-        {:ok, event} ->
-          Tractor.RunBus.broadcast(state.run_id, node_id, event)
-          {last_seq, terminal_sent? or terminal_event?(node_id, event)}
-
-        {:error, reason} ->
-          Logger.warning(
-            "RunWatcher skipped malformed event line for #{state.run_id}/#{node_id}: #{inspect(reason)}"
-          )
-
-          {last_seq, terminal_sent?}
-      end
+    |> Enum.reduce({last_seq, false}, fn line, acc ->
+      reduce_event_line(state, node_id, line, acc)
     end)
+  end
+
+  defp reduce_event_line(state, node_id, line, {last_seq, terminal_sent?} = acc) do
+    case Jason.decode(line) do
+      {:ok, event} ->
+        apply_event(state, node_id, event, last_seq, terminal_sent?)
+
+      {:error, reason} ->
+        Logger.warning(
+          "RunWatcher skipped malformed event line for #{state.run_id}/#{node_id}: #{inspect(reason)}"
+        )
+
+        acc
+    end
+  end
+
+  defp apply_event(state, node_id, %{"seq" => seq} = event, last_seq, terminal_sent?)
+       when is_integer(seq) and seq > last_seq do
+    Tractor.RunBus.broadcast(state.run_id, node_id, event)
+    {seq, terminal_sent? or terminal_event?(node_id, event)}
+  end
+
+  defp apply_event(_state, node_id, %{"seq" => seq} = event, last_seq, terminal_sent?)
+       when is_integer(seq) do
+    {max(last_seq || 0, seq), terminal_sent? or terminal_event?(node_id, event)}
+  end
+
+  defp apply_event(state, node_id, event, last_seq, terminal_sent?) do
+    Tractor.RunBus.broadcast(state.run_id, node_id, event)
+    {last_seq, terminal_sent? or terminal_event?(node_id, event)}
   end
 
   defp terminal_event?("_run", %{"kind" => kind}), do: kind in @terminal_kinds
