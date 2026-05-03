@@ -19,14 +19,17 @@ Use the local observer UI for live inspection and post-mortems:
 The observer binds to `127.0.0.1`, prints a `/runs/<run_id>` URL before the run
 starts, and keeps serving after completion until Ctrl-C.
 
-To browse historical runs without re-running anything:
+To open the observer on its own — independent of any particular run:
 
 ```sh
 ./bin/tractor view
 ```
 
-`view` boots (or adopts) the observer against the local runs directory and
-opens a landing page at `/` listing every discoverable run.
+`view` lands on `/`, listing every run in the local runs directory, and picks
+up newly-started runs as they appear. A `tractor reap` running in another
+terminal (with or without `--serve`) shows up live; finished runs stay
+browsable. If an observer is already serving the same runs directory, `view`
+adopts it instead of starting a second one.
 
 ## Install
 
