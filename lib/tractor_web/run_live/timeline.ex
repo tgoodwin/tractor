@@ -35,64 +35,94 @@ defmodule TractorWeb.RunLive.Timeline do
           tone: :neutral | :accent | :success | :failure | :muted
         }
 
+  # The timeline preserves the order in which entries first appear:
+  # - Prompt sits at the front (synthesized before any event-derived rows).
+  # - Event-derived rows follow events.jsonl's seq order, which is the order
+  #   they were written by the runner.
+  # - Synthetic "fallback" rows (response.md, terminal lifecycle, stderr.log)
+  #   land at the tail when no event already covered them.
+  # Because events on disk are already in chronological order, we never
+  # re-sort. New live events arrive monotonically and append at the end.
   @spec from_disk(Path.t(), String.t(), keyword()) :: [entry()]
   def from_disk(run_dir, node_id, opts \\ []) do
     node_dir = Path.join(run_dir, node_id)
     events = read_events(node_dir)
     static_prompt = Keyword.get(opts, :static_prompt)
 
-    []
+    new_acc()
     |> maybe_add_prompt(node_dir, events, static_prompt)
     |> add_event_entries(events)
     |> maybe_add_response(node_dir, events)
-    |> maybe_add_stderr(node_dir)
     |> maybe_add_terminal_status(node_dir, events)
-    |> sort_entries()
+    |> maybe_add_stderr(node_dir)
+    |> finalize()
   end
 
-  @spec from_disk_many(Path.t(), [{String.t(), keyword()}]) :: [entry()]
-  def from_disk_many(run_dir, node_specs) do
-    scoped? = length(node_specs) > 1
-
-    node_specs
-    |> Enum.flat_map(fn {node_id, opts} ->
-      run_dir
-      |> from_disk(node_id, opts)
-      |> Enum.map(&scope_entry(&1, source_node_id(scoped?, node_id)))
-    end)
-    |> sort_entries()
-  end
-
-  @spec insert([entry()], map(), keyword()) :: {non_neg_integer(), entry()} | nil
-  def insert(entries, event, opts \\ []) do
-    source_node_id = Keyword.get(opts, :source_node_id)
-
-    case merge_event_entry(entries, event, source_node_id) do
+  @spec insert([entry()], map()) :: {non_neg_integer(), entry()} | nil
+  def insert(entries, event) do
+    case event_entry(event) do
       nil ->
         nil
 
-      entry ->
-        entries = upsert_entry(entries, entry)
-        {position(entries, entry.id), entry}
+      new_entry ->
+        case Enum.find_index(entries, &(&1.id == new_entry.id)) do
+          nil ->
+            {length(entries), new_entry}
+
+          idx ->
+            existing = Enum.at(entries, idx)
+            {idx, merge_existing(existing, new_entry)}
+        end
     end
   end
 
-  defp maybe_add_prompt(entries, node_dir, events, static_prompt) do
+  defp new_acc, do: %{by_id: %{}, ids_rev: []}
+
+  defp finalize(%{by_id: by_id, ids_rev: ids_rev}) do
+    ids_rev
+    |> Enum.reverse()
+    |> Enum.map(&Map.fetch!(by_id, &1))
+  end
+
+  defp upsert(acc, nil), do: acc
+
+  defp upsert(%{by_id: by_id, ids_rev: ids_rev} = acc, %{id: id} = entry) do
+    case Map.get(by_id, id) do
+      nil ->
+        %{acc | by_id: Map.put(by_id, id, entry), ids_rev: [id | ids_rev]}
+
+      existing ->
+        %{acc | by_id: Map.put(by_id, id, merge_existing(existing, entry))}
+    end
+  end
+
+  # Put without merging — used by file-based synthetic fallbacks (response.md,
+  # stderr.log, terminal status.json) where the file content is authoritative
+  # and should replace any chunk-derived entry under the same id.
+  defp put(%{by_id: by_id, ids_rev: ids_rev} = acc, %{id: id} = entry) do
+    if Map.has_key?(by_id, id) do
+      %{acc | by_id: Map.put(by_id, id, entry)}
+    else
+      %{acc | by_id: Map.put(by_id, id, entry), ids_rev: [id | ids_rev]}
+    end
+  end
+
+  defp maybe_add_prompt(acc, node_dir, events, static_prompt) do
     # Prefer the on-disk prompt (post-interpolation) once the node has run;
     # fall back to the static template from the DOT source so pending nodes
     # still surface their prompt to the sidebar.
     case {read_text(node_dir, "prompt.md"), static_prompt} do
       {"", nil} ->
-        entries
+        acc
 
       {"", ""} ->
-        entries
+        acc
 
       {prompt, _static} when prompt != "" ->
-        [prompt_entry(prompt, node_started_ts(events) || first_event_ts(events)) | entries]
+        upsert(acc, prompt_entry(prompt, node_started_ts(events) || first_event_ts(events)))
 
       {"", static} when is_binary(static) ->
-        [prompt_entry(static, nil) | entries]
+        upsert(acc, prompt_entry(static, nil))
     end
   end
 
@@ -110,55 +140,46 @@ defmodule TractorWeb.RunLive.Timeline do
     }
   end
 
-  defp add_event_entries(entries, events) do
-    events
-    |> Enum.reduce(entries, fn event, entries ->
-      case event_entry(event) do
-        nil -> entries
-        entry -> upsert_entry(entries, merge_with_existing(entry, entries, event))
-      end
-    end)
+  defp add_event_entries(acc, events) do
+    Enum.reduce(events, acc, fn event, acc -> upsert(acc, event_entry(event)) end)
   end
 
-  defp maybe_add_response(entries, node_dir, events) do
+  defp maybe_add_response(acc, node_dir, events) do
     response = read_text(node_dir, "response.md")
     chunks = response_chunks(events)
 
     cond do
       response != "" ->
-        upsert_entry(entries, response_entry(response, response_ts(events), response_seq(events)))
+        put(acc, response_entry(response, response_ts(events), response_seq(events)))
 
-      chunks != "" ->
-        upsert_entry(entries, response_entry(chunks, response_ts(events), response_seq(events)))
+      chunks != "" and not Map.has_key?(acc.by_id, "response") ->
+        put(acc, response_entry(chunks, response_ts(events), response_seq(events)))
 
       true ->
-        entries
+        acc
     end
   end
 
-  defp maybe_add_stderr(entries, node_dir) do
-    if Enum.any?(entries, &(&1.id == "stderr")) do
-      entries
+  defp maybe_add_stderr(%{by_id: by_id} = acc, node_dir) do
+    if Map.has_key?(by_id, "stderr") do
+      acc
     else
       case read_text(node_dir, "stderr.log") do
         "" ->
-          entries
+          acc
 
         stderr ->
-          [
-            %{
-              id: "stderr",
-              ts: nil,
-              seq: 1_000_000,
-              type: :stderr,
-              title: "stderr",
-              summary: one_line(stderr),
-              body: tail(stderr),
-              collapsed_by_default?: true,
-              tone: :accent
-            }
-            | entries
-          ]
+          upsert(acc, %{
+            id: "stderr",
+            ts: nil,
+            seq: 1_000_000,
+            type: :stderr,
+            title: "stderr",
+            summary: one_line(stderr),
+            body: tail(stderr),
+            collapsed_by_default?: true,
+            tone: :accent
+          })
       end
     end
   end
@@ -205,34 +226,31 @@ defmodule TractorWeb.RunLive.Timeline do
     }
   end
 
-  defp maybe_add_terminal_status(entries, node_dir, events) do
+  defp maybe_add_terminal_status(acc, node_dir, events) do
     # If the event stream already has a node_succeeded / node_failed entry,
     # trust that and skip the synthesized status.json fallback — otherwise
     # the sidebar renders two "node succeeded" rows.
     if has_terminal_event?(events) do
-      entries
+      acc
     else
       status = read_json(node_dir, "status.json")
 
       case normalize_terminal_status(status["status"]) do
         nil ->
-          entries
+          acc
 
         {state, tone} ->
-          [
-            %{
-              id: "lifecycle-status",
-              ts: parse_ts(status["finished_at"]) || last_event_ts(events),
-              seq: 1_000_001,
-              type: :lifecycle,
-              title: "Lifecycle",
-              summary: "node #{state}",
-              body: status,
-              collapsed_by_default?: true,
-              tone: tone
-            }
-            | entries
-          ]
+          upsert(acc, %{
+            id: "lifecycle-status",
+            ts: parse_ts(status["finished_at"]) || last_event_ts(events),
+            seq: 1_000_001,
+            type: :lifecycle,
+            title: "Lifecycle",
+            summary: "node #{state}",
+            body: status,
+            collapsed_by_default?: true,
+            tone: tone
+          })
       end
     end
   end
@@ -241,23 +259,6 @@ defmodule TractorWeb.RunLive.Timeline do
     Enum.any?(events, fn event ->
       event["kind"] in ["node_succeeded", "node_failed", "parallel_completed"]
     end)
-  end
-
-  defp source_node_id(false, _node_id), do: nil
-  defp source_node_id(true, node_id), do: node_id
-
-  defp scope_entry(nil, _source_node_id), do: nil
-  defp scope_entry(entry, nil), do: entry
-
-  defp scope_entry(%{id: id, summary: summary} = entry, source_node_id) do
-    %{entry | id: "#{source_node_id}:#{id}", summary: "#{source_node_id}: #{summary}"}
-  end
-
-  defp merge_event_entry(entries, event, source_node_id) do
-    event
-    |> event_entry()
-    |> scope_entry(source_node_id)
-    |> merge_with_existing(entries, event)
   end
 
   defp event_entry(%{"kind" => "agent_message_chunk"} = event) do
@@ -499,85 +500,33 @@ defmodule TractorWeb.RunLive.Timeline do
     }
   end
 
-  defp merge_with_existing(nil, _entries, _event), do: nil
-
-  defp merge_with_existing(%{type: :response, id: id} = entry, entries, _event) do
-    case Enum.find(entries, &(&1.id == "response")) do
-      nil ->
-        case Enum.find(entries, &(&1.id == id)) do
-          nil -> entry
-          existing -> merge_response(existing, entry)
-        end
-
-      existing ->
-        merge_response(existing, entry)
-    end
+  # Merge a freshly-built entry into the existing one for the same id. Keeps
+  # the existing entry's identity (id/position) and folds in fields from the
+  # new one — body deltas for streamed types, update lists for tool calls.
+  defp merge_existing(%{type: :response} = existing, %{type: :response} = new) do
+    body = existing.body <> new.body
+    %{existing | body: body, summary: response_summary(new.summary, body)}
   end
 
-  defp merge_with_existing(%{type: :tool_call_update, id: id} = entry, entries, _event) do
-    case Enum.find(entries, &(&1.id == id)) do
-      nil ->
-        entry
-
-      existing ->
-        updates = get_in(existing, [:body, "updates"]) || []
-        update = entry.body["updates"] |> List.first()
-        body = Map.put(existing.body, "updates", updates ++ [update])
-        %{existing | body: body}
-    end
+  defp merge_existing(%{type: :stderr} = existing, %{type: :stderr} = new) do
+    body = existing.body <> new.body
+    %{existing | body: body, summary: one_line(body), ts: new.ts || existing.ts}
   end
 
-  defp merge_with_existing(%{type: :stderr, id: "stderr"} = entry, entries, _event) do
-    case Enum.find(entries, &(&1.id == "stderr")) do
-      nil ->
-        entry
-
-      existing ->
-        body = existing.body <> entry.body
-        %{existing | body: body, summary: one_line(body), ts: entry.ts || existing.ts}
-    end
+  defp merge_existing(%{body: %{"updates" => updates}} = existing, %{
+         type: :tool_call_update,
+         body: %{"updates" => new_updates}
+       }) do
+    %{existing | body: Map.put(existing.body, "updates", updates ++ new_updates)}
   end
 
-  defp merge_with_existing(entry, _entries, _event), do: entry
-
-  defp merge_response(existing, entry) do
-    body = existing.body <> entry.body
-    summary = response_summary(entry.summary, body)
-    %{existing | body: body, summary: summary}
-  end
+  defp merge_existing(_existing, new), do: new
 
   defp response_summary(summary, body) do
     case String.split(summary || "", ": ", parts: 2) do
       [source, _text] -> "#{source}: #{one_line(body)}"
       _other -> one_line(body)
     end
-  end
-
-  defp sort_entries(entries) do
-    Enum.sort_by(entries, &sort_key/1)
-  end
-
-  defp upsert_entry(entries, nil), do: entries
-
-  defp upsert_entry(entries, %{id: id} = entry) do
-    entries
-    |> Enum.reject(&(&1.id == id))
-    |> Kernel.++([entry])
-    |> sort_entries()
-  end
-
-  defp position(entries, id) do
-    Enum.find_index(entries, &(&1.id == id)) || length(entries)
-  end
-
-  defp sort_key(entry) do
-    ts =
-      case entry.ts do
-        %DateTime{} = datetime -> DateTime.to_unix(datetime, :microsecond)
-        nil -> 9_999_999_999_999_999
-      end
-
-    {ts, entry.seq || 0, entry.id}
   end
 
   defp read_events(node_dir) do

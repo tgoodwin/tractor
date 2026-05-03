@@ -88,47 +88,15 @@ defmodule TractorWeb.RunLive.TimelineTest do
     assert updated.body == "hello world"
   end
 
-  test "insert scopes entries when a source node is provided" do
-    first = event(1, "agent_message_chunk", %{"text" => "hello"}, "2026-04-19T10:00:01Z")
-    second = event(2, "agent_message_chunk", %{"text" => " world"}, "2026-04-19T10:00:02Z")
-
-    {0, response} = Timeline.insert([], first, source_node_id: "branch_a")
-    {0, updated} = Timeline.insert([response], second, source_node_id: "branch_a")
-
-    assert updated.id == "branch_a:response"
-    assert updated.summary == "branch_a: hello world"
-    assert updated.body == "hello world"
-  end
-
-  test "from_disk_many rolls up node timelines with source prefixes" do
-    parent_dir = node_dir()
-    root = Path.dirname(parent_dir)
-    child_dir = Path.join(root, "child")
-    File.mkdir_p!(child_dir)
-
-    write_events(parent_dir, [
-      event(1, "parallel_started", %{}, "2026-04-19T10:00:00Z")
-    ])
-
-    write_events(child_dir, [
-      event(1, "agent_message_chunk", %{"text" => "child output"}, "2026-04-19T10:00:01Z")
-    ])
-
-    entries = Timeline.from_disk_many(root, [{"node", []}, {"child", []}])
-
-    assert Enum.any?(entries, &(&1.id == "node:lifecycle-parallel_started-1"))
-    assert Enum.any?(entries, &(&1.id == "child:response" and &1.summary =~ "child:"))
-  end
-
-  test "insert tie-breaks by timestamp then sequence" do
+  test "insert appends new events at the end of the timeline" do
     entries = [
-      lifecycle_entry("one", "2026-04-19T10:00:00Z", 1),
-      lifecycle_entry("three", "2026-04-19T10:00:00Z", 3)
+      lifecycle_entry("first", "2026-04-19T10:00:00Z", 1),
+      lifecycle_entry("second", "2026-04-19T10:00:01Z", 2)
     ]
 
-    new_event = event(2, "branch_started", %{}, "2026-04-19T10:00:00Z")
+    new_event = event(3, "branch_started", %{}, "2026-04-19T10:00:02Z")
 
-    assert {1, %{seq: 2}} = Timeline.insert(entries, new_event)
+    assert {2, %{seq: 3}} = Timeline.insert(entries, new_event)
   end
 
   test "insert groups tool call updates under the original tool call" do
