@@ -116,6 +116,10 @@ defmodule Tractor.FakeACPAgent do
     IO.write("2026-04-29T04:34:46Z  INFO serve_inner: rmcp::service: Service initialized\n")
 
     IO.write(
+      "\e[2m2026-04-29T17:02:23.848630Z\e[0m \e[32m INFO\e[0m \e[1mserve_inner\e[0m \e[2m:\e[0m \e[2mrmcp::service\e[0m \e[2m:\e[0m Service initialized as client\n"
+    )
+
+    IO.write(
       ~s(2026-04-29T04:34:47Z  INFO useful_provider_log: user.email="person@example.com" conversation.id=abc123\n)
     )
 

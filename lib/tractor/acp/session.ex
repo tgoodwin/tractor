@@ -695,9 +695,12 @@ defmodule Tractor.ACP.Session do
   end
 
   defp visible_stdout_line(line) do
+    display_line = line |> strip_ansi_sequences() |> redact_stdout_line()
+    classifier_line = stdout_classifier_line(display_line)
+
     cond do
-      telemetry_stdout_line?(line) -> :drop
-      true -> redact_stdout_line(line)
+      telemetry_stdout_line?(classifier_line) -> :drop
+      true -> display_line
     end
   end
 
@@ -711,7 +714,22 @@ defmodule Tractor.ACP.Session do
       String.contains?(line, " codex_core::config:") or
       String.contains?(line, " codex_core::stream_events_utils:") or
       String.contains?(line, " serve_inner:") or
+      String.contains?(line, " rmcp::service:") or
+      String.contains?(line, " Service initialized as client ") or
       String.contains?(line, " MCP server stderr ")
+  end
+
+  defp stdout_classifier_line(line) do
+    line
+    |> String.replace(~r/\s+/, " ")
+    |> String.replace(~r/\s+:\s+/, ": ")
+    |> String.trim()
+  end
+
+  defp strip_ansi_sequences(line) do
+    line
+    |> then(&Regex.replace(~r/\x1B\[[0-?]*[ -\/]*[@-~]/, &1, ""))
+    |> then(&Regex.replace(~r/\[(?:\d{1,3})(?:;\d{1,3})*m/, &1, ""))
   end
 
   defp redact_stdout_line(line) do
