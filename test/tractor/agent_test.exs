@@ -39,7 +39,7 @@ defmodule Tractor.AgentTest do
     assert Gemini.command([]) == {"gemini", ["--acp", @gemini_block], []}
 
     assert Claude.command([]) ==
-             {"npx", ["acp-claude-code"],
+             {"npx", ["@zed-industries/claude-code-acp"],
               [
                 {"CLAUDE_CODE_SIMPLE", "1"},
                 {"ACP_PERMISSION_MODE", "bypassPermissions"},

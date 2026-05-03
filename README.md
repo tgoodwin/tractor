@@ -25,23 +25,19 @@ mix cli                  # builds bin/tractor
 brew install graphviz    # the observer renders graphs with `dot`
 ```
 
-You bring your own agent CLIs. Defaults:
+You bring your own agent CLIs. Defaults all point at maintained ACP bridges:
 
 | Provider | Command |
 | --- | --- |
-| Claude | `npx acp-claude-code` |
-| Codex | `codex-acp` |
+| Claude | `npx @zed-industries/claude-code-acp` |
+| Codex | `codex-acp` ([cola-io/codex-acp](https://github.com/cola-io/codex-acp)) |
 | Gemini | `gemini --acp` |
 
-The Claude default is archived upstream; if you can, swap to the
-actively-maintained `@zed-industries/claude-code-acp` via the override below.
-
-Each provider takes `_COMMAND`, `_ARGS`, and `_ENV_JSON` overrides:
+Override per provider with `_COMMAND`, `_ARGS`, and `_ENV_JSON` env vars:
 
 ```sh
-export TRACTOR_ACP_CLAUDE_COMMAND=npx
-export TRACTOR_ACP_CLAUDE_ARGS='["@zed-industries/claude-code-acp"]'
 export TRACTOR_ACP_CLAUDE_ENV_JSON='{"ANTHROPIC_API_KEY":"…"}'
+export TRACTOR_ACP_CODEX_COMMAND=/path/to/codex-acp
 ```
 
 Same shape for `CODEX` and `GEMINI`. Env values are redacted in run manifests.

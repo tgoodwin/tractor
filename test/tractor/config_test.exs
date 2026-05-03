@@ -80,6 +80,6 @@ defmodule Tractor.ConfigTest do
 
     {exe, args, _env} = Claude.command([])
     assert exe == "npx"
-    assert args == ["acp-claude-code"]
+    assert args == ["@zed-industries/claude-code-acp"]
   end
 end

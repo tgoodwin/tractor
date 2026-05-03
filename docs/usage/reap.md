@@ -320,14 +320,14 @@ export TRACTOR_ACP_GEMINI_ARGS='["--experimental-acp"]'
 Default:
 
 ```sh
-npx acp-claude-code
+npx @zed-industries/claude-code-acp
 ```
 
-`Xuanwo/acp-claude-code` is archived. To use the Zed bridge package instead:
+To swap to a different bridge (for example, the now-archived `acp-claude-code`):
 
 ```sh
 export TRACTOR_ACP_CLAUDE_COMMAND=npx
-export TRACTOR_ACP_CLAUDE_ARGS='["@zed-industries/claude-code-acp"]'
+export TRACTOR_ACP_CLAUDE_ARGS='["acp-claude-code"]'
 ```
 
 ## Codex
