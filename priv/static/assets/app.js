@@ -75,16 +75,7 @@ const GraphBoard = {
 
   handleKeydown(event) {
     if (event.key === "Escape") {
-      if (document.querySelector(".help-overlay")) {
-        this.pushEvent("toggle_help", {});
-      }
       this.pushEvent("clear_selection", {});
-      return;
-    }
-
-    if (event.key === "?" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      event.preventDefault();
-      this.pushEvent("toggle_help", {});
     }
   },
 
@@ -369,7 +360,7 @@ const VerticalResizer = {
 
 const StickyTimeline = {
   mounted() {
-    this.scroller = this.el.closest(".node-panel");
+    this.scroller = this.el;
     this.wasAtBottom = true;
   },
 
@@ -388,19 +379,48 @@ const StickyTimeline = {
   }
 };
 
+// The right-hand panel is split into a fixed header (.node-panel-fixed) and a
+// scrolling activity timeline (#timeline). Without this hook, mouse-wheel
+// events landing on the header would be eaten by overflow:hidden on .node-panel
+// and feel like the panel "lost the ability to scroll". Forward those events
+// onto the timeline.
+const NodePanelScroll = {
+  mounted() {
+    this.onWheel = this.onWheel.bind(this);
+    this.el.addEventListener("wheel", this.onWheel, { passive: false });
+  },
+
+  destroyed() {
+    this.el.removeEventListener("wheel", this.onWheel);
+  },
+
+  onWheel(event) {
+    const timeline = this.el.querySelector("#timeline");
+    if (!timeline) return;
+    if (timeline.contains(event.target)) return;
+
+    event.preventDefault();
+    timeline.scrollTop += event.deltaY;
+    timeline.scrollLeft += event.deltaX;
+  }
+};
+
+// Bring the current row into view on first mount only — once the user is on
+// the page we don't want clicking another run to reflow the list. If the row
+// is already visible on initial mount, leave the scroll position alone.
 const RunsListScroll = {
   mounted() {
-    this.scrollCurrentIntoView();
+    this.scrollCurrentIntoViewIfNeeded();
   },
-  updated() {
-    this.scrollCurrentIntoView();
-  },
-  scrollCurrentIntoView() {
+  scrollCurrentIntoViewIfNeeded() {
     const row = this.el.querySelector(".runs-row.is-current");
     if (!row) return;
-    const containerTop = this.el.getBoundingClientRect().top;
-    const rowTop = row.getBoundingClientRect().top;
-    const offset = rowTop - containerTop + this.el.scrollTop;
+    const containerRect = this.el.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const fullyVisible =
+      rowRect.top >= containerRect.top && rowRect.bottom <= containerRect.bottom;
+    if (fullyVisible) return;
+    const offset = rowRect.top - containerRect.top + this.el.scrollTop;
     this.el.scrollTop = Math.max(0, offset - 8);
   }
 };
@@ -578,9 +598,41 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+const LocalTime = {
+  mounted() { this.render(); },
+  updated() { this.render(); },
+  render() {
+    const iso = this.el.dataset.iso;
+    if (!iso) return;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return;
+    const format = this.el.dataset.format || "datetime";
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const monthDay = d.toLocaleDateString([], { month: "short", day: "numeric" });
+
+    let text;
+    if (format === "time") {
+      text = sameDay ? time : `${monthDay}, ${time}`;
+    } else {
+      const sameYear = d.getFullYear() === now.getFullYear();
+      const date = sameYear
+        ? monthDay
+        : d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+      text = `${date}, ${time}`;
+    }
+    this.el.textContent = text;
+  }
+};
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").content;
 const liveSocket = new LiveSocket("/live", Socket, {
-  hooks: { AssistantInput, AssistantResize, AssistantScroll, GraphBoard, LiveRunDuration, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
+  hooks: { AssistantInput, AssistantResize, AssistantScroll, GraphBoard, LiveRunDuration, LocalTime, NodePanelScroll, Resizer, RunsListScroll, StickyTimeline, ThemeToggle, VerticalResizer },
   params: { _csrf_token: csrfToken }
 });
 

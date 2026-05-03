@@ -13,85 +13,134 @@ defmodule TractorWeb.RunLive.Show do
   embed_templates("../templates/run_live/*")
 
   @impl true
-  def mount(%{"run_id" => run_id}, _session, socket) do
-    socket =
-      socket
-      |> assign(
-        run_id: run_id,
-        graph_svg: "",
-        node_states: %{},
-        run_status: :unknown,
-        run_total_cost_usd: "0",
-        selected_node_id: nil,
-        selected_activity_node_ids: [],
-        selected_node: nil,
-        pending_waits: %{},
-        missing?: false,
-        show_help?: false,
-        timeline_entries: [],
-        latest_plans: %{},
-        selected_plan: [],
-        wait_form_error: nil,
-        load_error: nil,
-        status_agent: "off",
-        status_feed_empty?: true,
-        assistant_open?: false,
-        assistant_messages: [],
-        assistant_pending?: false,
-        assistant_error: nil
-      )
-      |> stream(:timeline, [])
-      |> stream(:status_updates, [])
+  def mount(_params, _session, socket) do
+    if connected?(socket), do: :timer.send_interval(@runs_refresh_ms, :refresh_runs)
+
+    {:ok,
+     socket
+     |> assign(
+       run_id: nil,
+       pipeline: nil,
+       run_dir: nil,
+       graph_svg: "",
+       graph_key: nil,
+       node_states: %{},
+       run_status: :unknown,
+       run_total_cost_usd: "0",
+       runs: [],
+       selected_node_id: nil,
+       selected_node: nil,
+       pending_waits: %{},
+       missing?: false,
+       timeline_entries: [],
+       latest_plans: %{},
+       selected_plan: [],
+       wait_form_error: nil,
+       load_error: nil,
+       status_agent: "off",
+       status_feed_empty?: true,
+       assistant_open?: false,
+       assistant_messages: [],
+       assistant_pending?: false,
+       assistant_error: nil
+     )
+     |> stream(:timeline, [])
+     |> stream(:status_updates, [])}
+  end
+
+  # Run-specific state lives here so navigating between runs via `<.link patch>`
+  # swaps state in place — the LiveView never dismounts. Re-running the heavy
+  # disk loads stays on this path; the sidebar list, timer, and assistant state
+  # are preserved across run switches.
+  @impl true
+  def handle_params(%{"run_id" => run_id}, _uri, socket) do
+    prior_run_id = socket.assigns.run_id
+
+    if connected?(socket) and prior_run_id != nil and prior_run_id != run_id do
+      RunBus.unsubscribe(prior_run_id)
+    end
 
     case resolve_run(run_id) do
       {:ok, %{pipeline: pipeline, run_dir: run_dir}} ->
-        if connected?(socket) do
-          RunBus.subscribe(run_id)
-          :timer.send_interval(@runs_refresh_ms, :refresh_runs)
-        end
+        if connected?(socket) and prior_run_id != run_id, do: RunBus.subscribe(run_id)
 
-        {:ok, svg} = GraphRenderer.render(pipeline)
+        {svg, graph_key} = ensure_graph(socket.assigns, pipeline)
         node_states = load_node_states(pipeline, run_dir)
         selected = first_node_id(pipeline)
         runs = list_runs(run_dir)
         status_agent = Map.get(pipeline.graph_attrs, "status_agent", "off")
         status_updates = load_status_updates(run_dir)
-        latest_plans = load_latest_plans(pipeline, run_dir)
         run_meta = load_run_meta(run_dir)
         pending_waits = load_pending_waits(run_dir)
 
-        {:ok,
-         socket
-         |> assign(
-           pipeline: pipeline,
-           run_dir: run_dir,
-           graph_svg: svg,
-           node_states: node_states,
-           runs: runs,
-           run_status: run_meta.status,
-           run_total_cost_usd: run_meta.total_cost_usd,
-           status_agent: status_agent,
-           latest_plans: latest_plans,
-           pending_waits: pending_waits,
-           status_feed_empty?: status_updates == []
-         )
-         |> stream(:status_updates, status_updates, reset: true)
-         |> push_graph_node_states(node_states)
-         |> push_all_graph_badges(pipeline, run_dir, node_states)
-         |> select_node(selected)}
+        socket =
+          socket
+          |> assign(
+            run_id: run_id,
+            pipeline: pipeline,
+            run_dir: run_dir,
+            graph_svg: svg,
+            graph_key: graph_key,
+            node_states: node_states,
+            runs: runs,
+            run_status: run_meta.status,
+            run_total_cost_usd: run_meta.total_cost_usd,
+            status_agent: status_agent,
+            latest_plans: %{},
+            pending_waits: pending_waits,
+            status_feed_empty?: status_updates == [],
+            missing?: false,
+            load_error: nil
+          )
+          |> stream(:status_updates, status_updates, reset: true)
+          |> push_graph_node_states(node_states)
+          |> push_all_graph_badges(pipeline, run_dir, node_states)
+          |> select_node(selected)
+
+        {:noreply, socket}
 
       {:error, {:source_dot_unreachable, run_dir, path}} ->
-        {:ok,
+        {:noreply,
          socket
          |> assign(
+           run_id: run_id,
            missing?: true,
            runs: list_runs(run_dir),
            load_error: "source DOT not reachable; path was `#{path}`"
          )}
 
       {:error, _reason} ->
-        {:ok, assign(socket, missing?: true, runs: [], load_error: nil)}
+        {:noreply,
+         assign(socket,
+           run_id: run_id,
+           missing?: true,
+           runs: [],
+           load_error: nil
+         )}
     end
+  end
+
+  # Stable per-pipeline DOM key — included on the graph element so LiveView
+  # remounts the GraphBoard hook (and replaces the SVG) only when switching to
+  # a different pipeline. Same-pipeline run switches keep the SVG (and any
+  # pan/zoom state) intact.
+  defp graph_key_for(%Tractor.Pipeline{path: path}) when is_binary(path) do
+    "graph-" <> Integer.to_string(:erlang.phash2(path))
+  end
+
+  defp graph_key_for(_), do: "graph"
+
+  # Reuse the cached SVG when the new run shares the same DOT path (graphviz
+  # rendering is the dominant cost on a run switch — ~150ms fork+exec). When
+  # paths differ or no SVG is cached, re-render.
+  defp ensure_graph(%{pipeline: %Tractor.Pipeline{path: path}, graph_svg: svg, graph_key: key}, %Tractor.Pipeline{path: path})
+       when is_binary(svg) and svg != "" and is_binary(key) do
+    {svg, key}
+  end
+
+  defp ensure_graph(_assigns, %Tractor.Pipeline{} = pipeline) do
+    {:ok, svg} = GraphRenderer.render(pipeline)
+    {svg, graph_key_for(pipeline)}
   end
 
   defp list_runs(run_dir) do
@@ -224,17 +273,12 @@ defmodule TractorWeb.RunLive.Show do
      socket
      |> assign(
        selected_node_id: nil,
-       selected_activity_node_ids: [],
        selected_node: nil,
        timeline_entries: [],
        wait_form_error: nil
      )
      |> stream(:timeline, [], reset: true)
      |> push_event("graph:selected", %{node_id: nil})}
-  end
-
-  def handle_event("toggle_help", _params, socket) do
-    {:noreply, update(socket, :show_help?, &(!&1))}
   end
 
   def handle_event("submit_wait_choice", %{"label" => label}, socket) do
@@ -348,27 +392,47 @@ defmodule TractorWeb.RunLive.Show do
   defp select_node(socket, nil), do: socket
 
   defp select_node(%{assigns: assigns} = socket, node_id) do
-    activity_node_ids = activity_node_ids(assigns[:pipeline], node_id)
-
     entries =
-      Timeline.from_disk_many(
-        assigns.run_dir,
-        Enum.map(activity_node_ids, fn activity_node_id ->
-          {activity_node_id, [static_prompt: static_prompt(assigns[:pipeline], activity_node_id)]}
-        end)
+      Timeline.from_disk(assigns.run_dir, node_id,
+        static_prompt: static_prompt(assigns[:pipeline], node_id)
       )
+
+    {plan, latest_plans} = ensure_plan(assigns.latest_plans, assigns.run_dir, node_id)
 
     socket
     |> assign(
       selected_node_id: node_id,
-      selected_activity_node_ids: activity_node_ids,
       selected_node: selected_node(assigns, node_id),
       timeline_entries: entries,
-      selected_plan: Map.get(assigns.latest_plans, node_id, []),
+      latest_plans: latest_plans,
+      selected_plan: plan,
       wait_form_error: nil
     )
     |> stream(:timeline, entries, reset: true)
     |> push_event("graph:selected", %{node_id: node_id})
+  end
+
+  # Lazily load the plan for the node being selected. Cached on the socket so
+  # subsequent selections are O(1); live plan_update events also keep this
+  # cache warm for nodes the user hasn't viewed yet.
+  defp ensure_plan(latest_plans, run_dir, node_id) do
+    case Map.fetch(latest_plans, node_id) do
+      {:ok, plan} -> {plan, latest_plans}
+      :error ->
+        plan = load_plan_for_node(run_dir, node_id)
+        {plan, Map.put(latest_plans, node_id, plan)}
+    end
+  end
+
+  defp load_plan_for_node(run_dir, node_id) do
+    run_dir
+    |> read_node_events(node_id)
+    |> Enum.filter(&(&1["kind"] == "plan_update"))
+    |> List.last()
+    |> case do
+      nil -> []
+      event -> get_in(event, ["data", "entries"]) || []
+    end
   end
 
   defp maybe_insert_status_update(socket, "_run", %{"kind" => "status_update"} = event) do
@@ -398,24 +462,12 @@ defmodule TractorWeb.RunLive.Show do
   defp maybe_update_plan(socket, _node_id, _event), do: socket
 
   defp maybe_insert_selected_event(
-         %{assigns: %{selected_activity_node_ids: node_ids}} = socket,
+         %{assigns: %{selected_node_id: selected_id}} = socket,
          node_id,
          event
-       ) do
-    if node_id in node_ids do
-      insert_selected_timeline_event(socket, node_ids, node_id, event)
-    else
-      socket
-    end
-  end
-
-  defp insert_selected_timeline_event(socket, node_ids, node_id, event) do
-    source_node_id =
-      if length(node_ids) > 1 do
-        node_id
-      end
-
-    case Timeline.insert(socket.assigns.timeline_entries, event, source_node_id: source_node_id) do
+       )
+       when selected_id == node_id do
+    case Timeline.insert(socket.assigns.timeline_entries, event) do
       nil ->
         socket
 
@@ -431,14 +483,7 @@ defmodule TractorWeb.RunLive.Show do
     end
   end
 
-  defp activity_node_ids(%Tractor.Pipeline{parallel_blocks: parallel_blocks}, node_id) do
-    case Map.get(parallel_blocks, node_id) do
-      %{branches: branches} -> [node_id | branches]
-      _other -> [node_id]
-    end
-  end
-
-  defp activity_node_ids(_pipeline, node_id), do: [node_id]
+  defp maybe_insert_selected_event(socket, _node_id, _event), do: socket
 
   defp static_prompt(%Tractor.Pipeline{nodes: nodes}, node_id) do
     case Map.get(nodes, node_id) do
@@ -676,22 +721,6 @@ defmodule TractorWeb.RunLive.Show do
     }
   end
 
-  defp load_latest_plans(pipeline, run_dir) do
-    Map.new(pipeline.nodes, fn {node_id, _node} ->
-      plan =
-        run_dir
-        |> read_node_events(node_id)
-        |> Enum.filter(&(&1["kind"] == "plan_update"))
-        |> List.last()
-        |> case do
-          nil -> []
-          event -> get_in(event, ["data", "entries"]) || []
-        end
-
-      {node_id, plan}
-    end)
-  end
-
   defp normalize_status("ok"), do: "succeeded"
   defp normalize_status("success"), do: "succeeded"
   defp normalize_status("partial_success"), do: "succeeded"
@@ -893,10 +922,15 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   # Text-ish entry types render as markdown (preserves newlines, lists, code fences).
-  # Structured types (tool calls, lifecycle, usage) keep the raw JSON presentation.
+  # Tool-call entries get a kind-aware view (bash command, file paths, edits, etc.).
+  # Other structured types (lifecycle, usage) keep the raw JSON presentation.
   defp render_entry_body(%{type: type, body: body})
        when type in [:prompt, :response, :thinking, :message, :stderr] and is_binary(body) do
     TractorWeb.Markdown.to_html(body)
+  end
+
+  defp render_entry_body(%{type: type, body: body}) when type in [:tool_call, :tool_call_update] do
+    TractorWeb.RunLive.ToolCallView.render(body)
   end
 
   defp render_entry_body(%{body: body}) do

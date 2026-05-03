@@ -67,6 +67,46 @@ click_result="$(ab_dom_click "[data-testid='node-narrator']")"
 
 ab_wait_event fn "document.querySelectorAll('#timeline .tl-entry').length >= 6"
 ab_assert_visible "#timeline.timeline"
+
+layout_ok="$(ab eval "(function() {
+  const panel = document.querySelector('.node-panel');
+  const fixed = document.querySelector('.node-panel-fixed');
+  const timeline = document.querySelector('#timeline');
+  if (!panel || !fixed || !timeline) return false;
+
+  const panelStyle = getComputedStyle(panel);
+  const timelineStyle = getComputedStyle(timeline);
+  const entryHeights = Array.from(timeline.querySelectorAll('.tl-entry'))
+    .slice(0, 6)
+    .map((entry) => entry.getBoundingClientRect().height);
+
+  return panelStyle.overflowY === 'hidden' &&
+    timelineStyle.overflowY === 'auto' &&
+    timelineStyle.display === 'grid' &&
+    timeline.scrollHeight > timeline.clientHeight &&
+    timeline.getBoundingClientRect().height >= 120 &&
+    entryHeights.length >= 6 &&
+    entryHeights.every((height) => height >= 24);
+})()")"
+[[ "$layout_ok" == "true" ]] || {
+  printf 'Expected fixed node header above a scrolling activity timeline\n' >&2
+  exit 1
+}
+
+# Wheel events landing on the fixed node header forward to the timeline scroller.
+wheel_after="$(ab eval "(function() {
+  const fixed = document.querySelector('.node-panel-fixed');
+  const timeline = document.querySelector('#timeline');
+  if (!fixed || !timeline) return -1;
+  timeline.scrollTop = 0;
+  fixed.dispatchEvent(new WheelEvent('wheel', { deltaY: 200, bubbles: true, cancelable: true }));
+  return timeline.scrollTop;
+})()")"
+[[ "$wheel_after" =~ ^[1-9] ]] || {
+  printf 'Expected wheel events on the fixed header to scroll the timeline (got scrollTop=%s)\n' "$wheel_after" >&2
+  exit 1
+}
+
 ab_assert_visible "#timeline .tl-entry.tl-prompt"
 ab_assert_visible "#timeline .tl-entry.tl-thinking"
 ab_assert_visible "#timeline .tl-entry.tl-tool_call"

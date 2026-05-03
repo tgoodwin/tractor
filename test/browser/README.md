@@ -52,7 +52,6 @@ Suites:
 - `08_plan_checklist.sh` — plan replacement semantics on `examples/plan_probe.dot` with fake ACP `plan_replace`.
 - `09_timeline.sh` — prompt/thinking/tool/runtime/wait/verdict timeline coverage on `test/browser/fixtures/timeline_markdown.dot`, `test/browser/fixtures/timeline_tool_runtime.dot`, `examples/wait_human_review.dot`, and `examples/haiku_feedback.dot`.
 - `10_wait_form.sh` — static/error/approve/reject/timeout/restart-resume wait-form flow on `examples/wait_human_review.dot`.
-- `11_help_overlay.sh` — `?` / `Escape` keyboard help behavior on `test/browser/fixtures/node_panel_header.dot`.
 - `12_resizers.sh` — left/right drag plus persistence on `examples/wait_human_review.dot`.
 - `13_dev_endpoints.sh` — `/api/health` coverage plus `/dev/*` retirement checks using `test/browser/fixtures/node_panel_header.dot`.
 - `14_error_states.sh` — missing-run LiveView state and plain 404 route on `/runs/<bogus>` and `/nope`.
