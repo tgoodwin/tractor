@@ -1,115 +1,57 @@
 # Tractor
 
-Tractor runs a Graphviz DOT pipeline through coding agents.
-
-```sh
-./bin/tractor reap examples/three_agents.dot
-```
-
-The default path parses a strict DOT subset, walks the pipeline, and drives
-Claude, Codex, and Gemini through ACP-compatible bridge commands. Run artifacts
-are written under the configured Tractor data directory.
-
-Use the local observer UI for live inspection and post-mortems:
+Write a multi-step LLM workflow as a Graphviz DOT graph; Tractor executes it
+across Claude, Codex, and Gemini, with a live observer for watching the run.
 
 ```sh
 ./bin/tractor reap --serve examples/parallel_audit.dot
 ```
 
-The observer binds to `127.0.0.1`, prints a `/runs/<run_id>` URL before the run
-starts, and keeps serving after completion until Ctrl-C.
+`reap` walks the graph, dispatches each node to its configured agent, and (with
+`--serve`) opens an observer at `http://127.0.0.1:4000/runs/<id>` that streams
+events as they happen. Drop `--serve` for a headless run; artifacts still land
+in the runs directory.
 
-To open the observer on its own — independent of any particular run:
+`./bin/tractor view` opens the observer on its own — handy in a second terminal
+alongside a headless reap, or for browsing finished runs.
 
-```sh
-./bin/tractor view
-```
-
-`view` lands on `/`, listing every run in the local runs directory, and picks
-up newly-started runs as they appear. A `tractor reap` running in another
-terminal (with or without `--serve`) shows up live; finished runs stay
-browsable. If an observer is already serving the same runs directory, `view`
-adopts it instead of starting a second one.
-
-## Install
+## Setup
 
 Tractor is an Elixir escript.
 
 ```sh
 mix deps.get
-mix cli   # builds bin/tractor with MIX_ENV=prod (excludes phoenix_live_reload noise)
+mix cli                  # builds bin/tractor
+brew install graphviz    # the observer renders graphs with `dot`
 ```
 
-`--serve` requires Graphviz at runtime:
+You bring your own agent CLIs. Defaults:
 
-```sh
-brew install graphviz
-# or
-sudo apt install graphviz
-```
+| Provider | Command |
+| --- | --- |
+| Claude | `npx acp-claude-code` |
+| Codex | `codex-acp` |
+| Gemini | `gemini --acp` |
 
-## ACP Bridges
+The Claude default is archived upstream; if you can, swap to the
+actively-maintained `@zed-industries/claude-code-acp` via the override below.
 
-Tractor does not install agent bridges. Install and authenticate each provider
-before running a real pipeline.
-
-### Gemini
-
-Default command:
-
-```sh
-gemini --acp
-```
-
-If the Gemini CLI changes its ACP flag, override the args:
-
-```sh
-export TRACTOR_ACP_GEMINI_ARGS='["--acp-mode"]'
-```
-
-### Claude
-
-Default command:
-
-```sh
-npx acp-claude-code
-```
-
-The `Xuanwo/acp-claude-code` project is archived. Prefer an actively maintained
-bridge such as `@zed-industries/claude-code-acp` when available:
+Each provider takes `_COMMAND`, `_ARGS`, and `_ENV_JSON` overrides:
 
 ```sh
 export TRACTOR_ACP_CLAUDE_COMMAND=npx
 export TRACTOR_ACP_CLAUDE_ARGS='["@zed-industries/claude-code-acp"]'
+export TRACTOR_ACP_CLAUDE_ENV_JSON='{"ANTHROPIC_API_KEY":"…"}'
 ```
 
-### Codex
-
-Default command:
-
-```sh
-codex-acp
-```
-
-## Runtime Overrides
-
-Each provider supports command, args, and environment overrides:
-
-```sh
-export TRACTOR_ACP_CODEX_COMMAND=codex-acp
-export TRACTOR_ACP_CODEX_ARGS='[]'
-export TRACTOR_ACP_CODEX_ENV_JSON='{"EXAMPLE":"value"}'
-```
-
-Environment values are redacted in run manifests.
+Same shape for `CODEX` and `GEMINI`. Env values are redacted in run manifests.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — three-plane architecture (execution / observation / driving), supervision tree, log-as-bus contract, reap lifecycle.
-- [`docs/handlers.md`](docs/handlers.md) — per-handler reference (start, exit, codergen, tool, wait.human, conditional, judge, parallel, parallel.fan_in).
-- [`docs/usage/reap.md`](docs/usage/reap.md) — `tractor reap` flags, exit codes, log-directory layout.
-- [`docs/usage/validate-prompt.md`](docs/usage/validate-prompt.md) — pipeline-author reference: validator rules, canonical 3-node feedback loop, design principles.
-- [`docs/usage/testing.md`](docs/usage/testing.md) — `mix test`, browser harness, load guard, CI opt-out.
-- [`docs/spec-coverage.md`](docs/spec-coverage.md) — strongDM attractor spec → tractor implementation map.
-- [`docs/sprints/`](docs/sprints/) — per-sprint plans (`SPRINT-XXXX.md`) and status (`ledger.yaml`).
+- [`docs/architecture.md`](docs/architecture.md) — three-plane architecture, supervision tree, log-as-bus contract.
+- [`docs/handlers.md`](docs/handlers.md) — per-handler reference: `start`, `exit`, `codergen`, `tool`, `wait.human`, `conditional`, `judge`, `parallel`, `parallel.fan_in`.
+- [`docs/usage/reap.md`](docs/usage/reap.md) — `tractor reap` flags, exit codes, log layout.
+- [`docs/usage/validate-prompt.md`](docs/usage/validate-prompt.md) — pipeline authoring rules and patterns.
+- [`docs/usage/testing.md`](docs/usage/testing.md) — `mix test` and browser harness.
+- [`docs/spec-coverage.md`](docs/spec-coverage.md) — strongDM attractor spec → Tractor map.
 - [`IDEA.md`](IDEA.md) — original design pitch.
