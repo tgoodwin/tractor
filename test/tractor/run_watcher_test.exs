@@ -148,6 +148,7 @@ defmodule Tractor.RunWatcherTest do
     File.mkdir_p!(run_dir)
 
     write_manifest_status(run_dir, run_id, "running")
+    write_live_pidfile(run_dir)
 
     run_dir
   end
@@ -161,6 +162,20 @@ defmodule Tractor.RunWatcherTest do
         "pipeline_path" => Path.expand("examples/wait_human_review.dot"),
         "dot_path" => Path.expand("examples/wait_human_review.dot"),
         "dot_path_input" => "examples/wait_human_review.dot"
+      })
+    )
+  end
+
+  # Reconcile.dead_owner/1 marks "running" manifests without a live pidfile
+  # as dead. Point the pidfile at the BEAM running the test so the run stays
+  # alive long enough for the tail to spawn and emit events.
+  defp write_live_pidfile(run_dir) do
+    File.write!(
+      Path.join(run_dir, "_runner.pid"),
+      Jason.encode!(%{
+        "os_pid" => System.pid() |> String.to_integer(),
+        "node" => Atom.to_string(node()),
+        "started_at" => DateTime.utc_now() |> DateTime.to_iso8601()
       })
     )
   end
