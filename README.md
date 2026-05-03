@@ -1,7 +1,6 @@
 # Tractor
 
-Write a multi-step LLM workflow as a Graphviz DOT graph; Tractor executes it
-across Claude, Codex, and Gemini, with a live observer for watching the run.
+Tractor is a DOT-based pipeline runner that uses directed graphs (defined in Graphviz DOT syntax) to orchestrate multi-stage AI workflows. Each node in the graph is an AI task (LLM call, human review, conditional branch, parallel fan-out, etc.) and edges define the flow between them.
 
 ```sh
 ./bin/tractor reap --serve examples/parallel_audit.dot
