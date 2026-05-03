@@ -27,6 +27,30 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
+  test "patching to a sibling run swaps state without remounting", %{
+    conn: conn,
+    run_id: run_id_a,
+    run_dir: run_dir,
+    tmp_dir: tmp_dir
+  } do
+    {:ok, pipeline} = DotParser.parse_file(dot_file(tmp_dir))
+    run_id_b = "live-run-#{System.unique_integer([:positive])}"
+    runs_dir = Path.dirname(run_dir)
+    {:ok, ^run_id_b} = Run.start(pipeline, runs_dir: runs_dir, run_id: run_id_b)
+    assert {:ok, _result} = Run.await(run_id_b, 1_000)
+
+    {:ok, view, _html} = live(conn, "/runs/#{run_id_a}")
+    initial_pid = view.pid
+
+    # Patch into the sibling run; the LiveView process stays alive and the URL
+    # flips without a full remount.
+    rendered = render_patch(view, "/runs/#{run_id_b}")
+    assert rendered =~ run_id_b
+    assert view.pid == initial_pid, "expected the LiveView pid to survive the patch"
+    assert Process.alive?(view.pid)
+  end
+
+  @tag :tmp_dir
   test "node_started flips DOM class to running", %{conn: conn, run_id: run_id} do
     {:ok, view, _html} = live(conn, "/runs/#{run_id}")
 

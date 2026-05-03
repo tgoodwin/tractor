@@ -10,6 +10,11 @@ defmodule Tractor.RunBus do
     Phoenix.PubSub.subscribe(Tractor.PubSub, run_topic(run_id))
   end
 
+  @spec unsubscribe(String.t()) :: :ok
+  def unsubscribe(run_id) do
+    Phoenix.PubSub.unsubscribe(Tractor.PubSub, run_topic(run_id))
+  end
+
   @spec subscribe(String.t(), String.t()) :: :ok | {:error, term()}
   def subscribe(run_id, node_id) do
     Phoenix.PubSub.subscribe(Tractor.PubSub, node_topic(run_id, node_id))
