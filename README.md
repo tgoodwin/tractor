@@ -30,7 +30,7 @@ You bring your own agent CLIs. Defaults all point at maintained ACP bridges:
 | Provider | Command |
 | --- | --- |
 | Claude | `npx @zed-industries/claude-code-acp` |
-| Codex | `codex-acp` ([cola-io/codex-acp](https://github.com/cola-io/codex-acp)) |
+| Codex | `npx @zed-industries/codex-acp` |
 | Gemini | `gemini --acp` |
 
 Override per provider with `_COMMAND`, `_ARGS`, and `_ENV_JSON` env vars:

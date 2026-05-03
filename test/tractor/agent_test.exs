@@ -46,7 +46,9 @@ defmodule Tractor.AgentTest do
                 {"CLAUDECODE", false}
               ]}
 
-    assert Codex.command([]) == {"codex-acp", ["-a", "never", "--sandbox", "workspace-write"], []}
+    assert Codex.command([]) ==
+             {"npx",
+              ["@zed-industries/codex-acp", "-a", "never", "--sandbox", "workspace-write"], []}
   end
 
   test "Claude sessions default to autonomous bypass mode" do
@@ -67,8 +69,9 @@ defmodule Tractor.AgentTest do
     System.put_env("TRACTOR_CODEX_INCLUDE_DIRS", "/abs/one,/abs/two")
 
     assert Codex.command([]) ==
-             {"codex-acp",
+             {"npx",
               [
+                "@zed-industries/codex-acp",
                 "-a",
                 "never",
                 "--sandbox",
@@ -88,7 +91,7 @@ defmodule Tractor.AgentTest do
 
     System.put_env("TRACTOR_CODEX_INCLUDE_DIRS", "/abs/one")
 
-    assert Codex.command([]) == {"codex-acp", ["--full-auto", "--add-dir", "/already/there"], []}
+    assert Codex.command([]) == {"npx", ["--full-auto", "--add-dir", "/already/there"], []}
   end
 
   test "Claude session_params suppresses on-disk MCP / settings by default" do

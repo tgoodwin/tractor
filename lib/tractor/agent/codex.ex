@@ -18,7 +18,7 @@ defmodule Tractor.Agent.Codex do
 
   @impl Tractor.Agent
   def command(_opts) do
-    {exe, args, env} = Config.command("codex", "codex-acp", [])
+    {exe, args, env} = Config.command("codex", "npx", ["@zed-industries/codex-acp"])
     args = args |> append_autonomy_args() |> append_include_dirs()
     {exe, args, env}
   end

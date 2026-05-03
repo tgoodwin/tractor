@@ -335,10 +335,11 @@ export TRACTOR_ACP_CLAUDE_ARGS='["acp-claude-code"]'
 Default:
 
 ```sh
-codex-acp
+npx @zed-industries/codex-acp
 ```
 
-Override it the same way:
+To use a different bridge (for example, the Rust binary at
+[cola-io/codex-acp](https://github.com/cola-io/codex-acp)):
 
 ```sh
 export TRACTOR_ACP_CODEX_COMMAND=codex-acp
