@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.2.0-alpha)"
+        required: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux_x86_64 }
+          - { os: ubuntu-latest, target: linux_aarch64 }
+          - { os: macos-14, target: macos_aarch64 }
+          - { os: macos-14, target: macos_x86_64 }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host tooling (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xz-utils p7zip-full
+
+      - name: Install host tooling (macOS)
+        if: runner.os == 'macOS'
+        run: brew install p7zip xz
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17.3"
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: release-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('mix.lock') }}
+
+      - run: mix deps.get
+
+      - name: Build Burrito binary
+        env:
+          MIX_ENV: prod
+          BURRITO_TARGET: ${{ matrix.target }}
+        run: mix release --overwrite
+
+      - name: Stage binary
+        run: |
+          mkdir -p artifact
+          cp burrito_out/tractor_${{ matrix.target }} artifact/tractor-${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tractor-${{ matrix.target }}
+          path: artifact/tractor-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        working-directory: dist
+        run: shasum -a 256 tractor-* > SHA256SUMS
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/tractor-* dist/SHA256SUMS --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Tractor $TAG. See SHA256SUMS for binary checksums. Each binary requires Node.js (for ACP bridges) and graphviz (\`dot\`) on PATH at runtime." \
+              --prerelease \
+              dist/tractor-* dist/SHA256SUMS
+          fi

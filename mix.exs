@@ -10,6 +10,7 @@ defmodule Tractor.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
+      releases: releases(),
       escript: [
         main_module: Tractor.CLI,
         path: "bin/tractor",
@@ -44,7 +45,24 @@ defmodule Tractor.MixProject do
       {:lazy_html, ">= 0.1.0", only: :test},
       {:mox, "~> 1.2", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:phoenix_live_reload, "~> 1.5", only: :dev}
+      {:phoenix_live_reload, "~> 1.5", only: :dev},
+      {:burrito, "~> 1.5"}
+    ]
+  end
+
+  defp releases do
+    [
+      tractor: [
+        steps: [:assemble, &Burrito.wrap/1],
+        burrito: [
+          targets: [
+            macos_x86_64: [os: :darwin, cpu: :x86_64],
+            macos_aarch64: [os: :darwin, cpu: :aarch64],
+            linux_x86_64: [os: :linux, cpu: :x86_64],
+            linux_aarch64: [os: :linux, cpu: :aarch64]
+          ]
+        ]
+      ]
     ]
   end
 
