@@ -3,7 +3,7 @@
 Tractor is a DOT-based pipeline runner that uses directed graphs (defined in Graphviz DOT syntax) to orchestrate multi-stage AI workflows. Each node in the graph is an AI task (LLM call, human review, conditional branch, parallel fan-out, etc.) and edges define the flow between them.
 
 ```sh
-./bin/tractor reap --serve examples/parallel_audit.dot
+tractor reap --serve examples/parallel_audit.dot
 ```
 
 `reap` walks the graph, dispatches each node to its configured agent, and (with
@@ -11,18 +11,40 @@ Tractor is a DOT-based pipeline runner that uses directed graphs (defined in Gra
 events as they happen. Drop `--serve` for a headless run; artifacts still land
 in the runs directory.
 
-`./bin/tractor view` opens the observer on its own — handy in a second terminal
+`tractor view` opens the observer on its own — handy in a second terminal
 alongside a headless reap, or for browsing finished runs.
 
-## Setup
+## Install
 
-Tractor is an Elixir escript.
+Pre-built binaries are published with each tagged release. Tractor is in
+**alpha** — expect breakage; pin a specific tag rather than tracking `main`.
+Pick the asset for your platform from the
+[latest release](https://github.com/tgoodwin/tractor/releases) and `curl` it:
 
 ```sh
-mix deps.get
-mix cli                  # builds bin/tractor
-brew install graphviz    # the observer renders graphs with `dot`
+TAG=v0.2.2-alpha
+ASSET=tractor-macos_aarch64    # or macos_x86_64 / linux_x86_64 / linux_aarch64
+
+curl -L -o tractor "https://github.com/tgoodwin/tractor/releases/download/$TAG/$ASSET"
+chmod +x tractor
+sudo mv tractor /usr/local/bin/   # anywhere on $PATH
 ```
+
+Verify against the release's `SHA256SUMS`:
+
+```sh
+curl -L "https://github.com/tgoodwin/tractor/releases/download/$TAG/SHA256SUMS" | shasum -a 256 -c --ignore-missing
+```
+
+Two runtime prerequisites must be on `$PATH`:
+
+- **Graphviz** (`dot`) — `brew install graphviz` (macOS) or
+  `apt install graphviz` (Debian/Ubuntu). Used by the observer to render
+  pipeline graphs.
+- **Node.js** (`node` + `npx`) — for the maintained ACP bridges below. Bring
+  your own bridges via env vars and Node becomes optional.
+
+## Agents
 
 You bring your own agent CLIs. Defaults all point at maintained ACP bridges:
 
@@ -40,6 +62,19 @@ export TRACTOR_ACP_CODEX_COMMAND=/path/to/codex-acp
 ```
 
 Same shape for `CODEX` and `GEMINI`. Env values are redacted in run manifests.
+
+## Build from source
+
+Tractor is an Elixir escript. Requires Elixir 1.17 + OTP 27.
+
+```sh
+mix deps.get
+mix cli                  # builds bin/tractor
+brew install graphviz    # the observer renders graphs with `dot`
+```
+
+`bin/tractor` is the same CLI as the released binary — add it to `$PATH` or
+invoke via `./bin/tractor` from the repo root.
 
 ## Authoring pipelines
 
