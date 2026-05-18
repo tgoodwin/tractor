@@ -230,6 +230,17 @@
         <div class="panel-heading">
           <p class="eyebrow">Node</p>
           <h2>{@selected_node_id}</h2>
+          <p
+            :if={selected_node_running_started_at(@selected_node)}
+            class="panel-elapsed"
+          >
+            <span class="eyebrow">Elapsed</span>
+            <span
+              id={"node-elapsed-#{@selected_node_id}"}
+              phx-hook="LiveRunDuration"
+              data-started-at={selected_node_running_started_at(@selected_node)}
+            >…</span>
+          </p>
           <div :if={node_pills(@pipeline, @selected_node_id) != []} class="panel-pills">
             <span :for={pill <- node_pills(@pipeline, @selected_node_id)} class="pill pill-model">
               {pill}
@@ -300,7 +311,14 @@
           <%= if entry.type in [:lifecycle, :iteration_header] do %>
             <div class="tl-static">
               <span class="tl-chip">{entry.title}</span>
-              <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
+              <span
+              :if={entry.ts}
+              id={"tl-time-#{entry.id}"}
+              class="tl-time"
+              phx-hook="LocalTime"
+              data-iso={DateTime.to_iso8601(entry.ts)}
+              data-format="time"
+            >{timeline_time(entry.ts)}</span>
               <span class="tl-summary">{entry.summary}</span>
             </div>
           <% else %>
@@ -312,7 +330,14 @@
               >
                 <span class="tl-caret" aria-hidden="true"></span>
                 <span class="tl-chip">{entry.title}</span>
-                <span :if={entry.ts} class="tl-time">{timeline_time(entry.ts)}</span>
+                <span
+              :if={entry.ts}
+              id={"tl-time-#{entry.id}"}
+              class="tl-time"
+              phx-hook="LocalTime"
+              data-iso={DateTime.to_iso8601(entry.ts)}
+              data-format="time"
+            >{timeline_time(entry.ts)}</span>
                 <span class="tl-summary">{entry.summary}</span>
               </summary>
               <div class={"tl-body tl-body-#{entry.type}"}>{render_entry_body(entry)}</div>
