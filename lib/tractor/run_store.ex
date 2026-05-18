@@ -49,7 +49,11 @@ defmodule Tractor.RunStore do
 
     with {:ok, raw} <- File.read(manifest_path),
          {:ok, manifest} <- Jason.decode(raw) do
-      manifest = normalize_manifest_paths(manifest)
+      manifest =
+        manifest
+        |> normalize_manifest_paths()
+        |> Map.put("status", "running")
+        |> Map.drop(["finished_at", "reason"])
 
       store = %__MODULE__{
         run_id: manifest["run_id"] || Path.basename(run_dir),
@@ -57,6 +61,10 @@ defmodule Tractor.RunStore do
         manifest: manifest
       }
 
+      # Reset terminal markers on disk so the resumed run shows as in-flight in
+      # the UI and so the reconciler can recover it if this runner dies hard.
+      write_manifest(store, manifest)
+      write_run_status(store, manifest)
       write_runner_pidfile(store)
       Tractor.RunEvents.register_run(store.run_id, store.run_dir)
       {:ok, store}
