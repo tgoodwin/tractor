@@ -19,7 +19,7 @@ defmodule TractorWeb.Markdown do
 
   def to_html(body) do
     body
-    |> Jason.encode!(pretty: true)
+    |> Tractor.JSON.encode!(pretty: true)
     |> raw_html()
   end
 

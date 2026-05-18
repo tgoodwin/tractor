@@ -69,7 +69,7 @@ defmodule Tractor.Runner.ControlFile do
     dir = Path.dirname(path)
     File.mkdir_p!(dir)
     tmp = path <> ".tmp"
-    File.write!(tmp, Jason.encode_to_iodata!(payload, pretty: true))
+    File.write!(tmp, Tractor.JSON.encode_to_iodata!(payload, pretty: true))
     File.rename!(tmp, path)
     :ok
   end

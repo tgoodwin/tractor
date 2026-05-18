@@ -48,7 +48,7 @@ defmodule Tractor.Checkpoint do
 
     Paths.atomic_write!(
       Paths.checkpoint_path(store.run_dir),
-      Jason.encode_to_iodata!(checkpoint, pretty: true)
+      Tractor.JSON.encode_to_iodata!(checkpoint, pretty: true)
     )
   end
 
@@ -114,7 +114,7 @@ defmodule Tractor.Checkpoint do
         |> Enum.sort_by(&{&1.from, &1.to, &1.label || "", &1.condition || ""})
     }
 
-    :crypto.hash(:sha256, Jason.encode!(graph))
+    :crypto.hash(:sha256, Tractor.JSON.encode!(graph))
     |> Base.encode16(case: :lower)
   end
 

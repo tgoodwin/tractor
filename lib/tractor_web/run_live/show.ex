@@ -3,6 +3,12 @@ defmodule TractorWeb.RunLive.Show do
 
   use Phoenix.LiveView
 
+  # Override Phoenix.LiveView.push_event/3 with the sanitizing wrapper so every
+  # call site in this module routes through the boundary. The later import
+  # shadows the one set up by `use Phoenix.LiveView`.
+  import Phoenix.LiveView, except: [push_event: 3]
+  import TractorWeb.SafePush, only: [push_event: 3]
+
   alias Tractor.{Run, RunBus}
   alias TractorWeb.{Format, GraphRenderer, RunIndex}
   alias TractorWeb.RunLive.{StatusFeed, WaitForm}
@@ -921,7 +927,7 @@ defmodule TractorWeb.RunLive.Show do
   defp entry_body(body) do
     body
     |> sanitize_json_value()
-    |> Jason.encode!(pretty: true)
+    |> Tractor.JSON.encode!(pretty: true)
   rescue
     _error -> inspect(body, pretty: true, limit: 100, printable_limit: 4_000)
   end

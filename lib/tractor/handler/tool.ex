@@ -194,7 +194,7 @@ defmodule Tractor.Handler.Tool do
 
   defp write_command_artifact(run_dir, node_id, attempt, artifact) do
     path = Path.join([run_dir, node_id, "attempt-#{attempt}", "command.json"])
-    Paths.atomic_write!(path, Jason.encode_to_iodata!(artifact, pretty: true))
+    Paths.atomic_write!(path, Tractor.JSON.encode_to_iodata!(artifact, pretty: true))
   end
 end
 

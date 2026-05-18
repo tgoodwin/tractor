@@ -24,7 +24,7 @@ defmodule Tractor.Handler.WaitHuman do
     attempt = context["__attempt__"] || 1
     path = Path.join([run_dir, node.id, "attempt-#{attempt}", "wait.json"])
 
-    Paths.atomic_write!(path, Jason.encode_to_iodata!(payload, pretty: true))
+    Paths.atomic_write!(path, Tractor.JSON.encode_to_iodata!(payload, pretty: true))
 
     {:wait, %{kind: :wait_human, payload: payload}}
   end

@@ -296,7 +296,7 @@ defmodule Tractor.StatusAgent do
 
         Tractor.Paths.atomic_write!(
           Path.join(artifact_dir, "status.json"),
-          Jason.encode!(%{"status" => "ok"})
+          Tractor.JSON.encode!(%{"status" => "ok"})
         )
 
         emit_status_update(run_id, status_update_id, payload, summary)
@@ -304,7 +304,7 @@ defmodule Tractor.StatusAgent do
       {:error, :timeout} ->
         Tractor.Paths.atomic_write!(
           Path.join(artifact_dir, "status.json"),
-          Jason.encode!(%{"status" => "error", "reason" => "timeout"})
+          Tractor.JSON.encode!(%{"status" => "error", "reason" => "timeout"})
         )
 
         RunEvents.emit(run_id, "_run", :status_update_failed, %{
@@ -318,7 +318,7 @@ defmodule Tractor.StatusAgent do
 
         Tractor.Paths.atomic_write!(
           Path.join(artifact_dir, "status.json"),
-          Jason.encode!(%{"status" => "error", "reason" => reason})
+          Tractor.JSON.encode!(%{"status" => "error", "reason" => reason})
         )
 
         RunEvents.emit(run_id, "_run", :status_update_failed, %{
@@ -348,7 +348,7 @@ defmodule Tractor.StatusAgent do
 
     Tractor.Paths.atomic_write!(
       Path.join(artifact_dir, "status.json"),
-      Jason.encode!(%{"status" => "error", "reason" => reason})
+      Tractor.JSON.encode!(%{"status" => "error", "reason" => reason})
     )
 
     RunEvents.emit(run_id, "_run", :status_update_failed, %{

@@ -48,7 +48,7 @@ defmodule Tractor.Context do
   @spec snapshot(map()) :: {:ok, map()} | {:error, term()}
   def snapshot(context) when is_map(context) do
     if json_safe?(context) do
-      {:ok, Jason.decode!(Jason.encode!(context))}
+      {:ok, Jason.decode!(Tractor.JSON.encode!(context))}
     else
       {:error, :non_json_safe_context}
     end

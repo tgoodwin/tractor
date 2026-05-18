@@ -258,7 +258,7 @@ defmodule TractorWeb.RunLive.ToolCallView do
   defp raw_json_block(value) do
     [
       ~s(<pre class="tractor-raw-json">),
-      value |> Jason.encode!(pretty: true) |> escape(),
+      value |> Tractor.JSON.encode!(pretty: true) |> escape(),
       ~s(</pre>)
     ]
   end

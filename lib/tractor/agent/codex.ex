@@ -50,7 +50,7 @@ defmodule Tractor.Agent.Codex do
         if has_config_key?(args, @writable_roots_key) do
           args
         else
-          args ++ ["-c", "#{@writable_roots_key}=#{Jason.encode!(dirs)}"]
+          args ++ ["-c", "#{@writable_roots_key}=#{Tractor.JSON.encode!(dirs)}"]
         end
     end
   end

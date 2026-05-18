@@ -45,7 +45,7 @@ defmodule Tractor.Handler.Judge do
         "reject" -> node.attrs["reject_critique"] || "rejected; revise and try again"
       end
 
-    response = Jason.encode!(%{"verdict" => verdict, "critique" => critique}, pretty: true)
+    response = Tractor.JSON.encode!(%{"verdict" => verdict, "critique" => critique}, pretty: true)
     emit_verdict(context, node.id, iteration, verdict, critique)
 
     {:ok, response, judge_updates(node, response, verdict, critique, :stub)}

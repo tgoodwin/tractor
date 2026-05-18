@@ -45,7 +45,7 @@ defmodule Tractor.EventLog do
       "data" => data || %{}
     }
 
-    :ok = :file.write(state.io, [Jason.encode_to_iodata!(event), "\n"])
+    :ok = :file.write(state.io, [Tractor.JSON.encode_to_iodata!(event), "\n"])
     {:reply, :ok, %{state | seq: seq, last_event: event}}
   end
 

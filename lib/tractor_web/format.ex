@@ -38,17 +38,7 @@ defmodule TractorWeb.Format do
   def humanize_bytes(bytes), do: compact_scaled(bytes, 1_073_741_824, "GB")
 
   @spec sanitize_text(binary() | nil, keyword()) :: String.t()
-  def sanitize_text(text, opts \\ [])
-  def sanitize_text(nil, _opts), do: ""
-
-  def sanitize_text(text, opts) when is_binary(text) do
-    if String.valid?(text) do
-      text
-    else
-      printable_limit = Keyword.get(opts, :printable_limit, 4_096)
-      inspect(text, binaries: :as_strings, printable_limit: printable_limit)
-    end
-  end
+  defdelegate sanitize_text(text, opts \\ []), to: Tractor.Text, as: :sanitize
 
   @spec truncate(binary() | nil, pos_integer()) :: String.t()
   def truncate(nil, _max_length), do: ""
