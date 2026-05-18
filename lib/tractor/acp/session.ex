@@ -1,6 +1,21 @@
 defmodule Tractor.ACP.Session do
   @moduledoc """
   Blocking ACP session backed by a single provider process.
+
+  Every protocol parser path emits `:acp_unhandled_*` (event sink) and
+  `[:tractor, :acp, :unhandled]` (`:telemetry.execute/3`) on unmatched input
+  and never raises. Two distinct channels by design:
+
+  - Event sink (`:acp_unhandled_*`) — wired to the per-run timeline / wire
+    log so an operator viewing the run can see exactly which frame was
+    skipped.
+  - `:telemetry` — wired to dashboards for aggregate observability across
+    runs.
+
+  Adding new ACP wire-format surprises should never crash this GenServer.
+  Replay-test coverage in `test/tractor/acp/wire_replay_test.exs` asserts
+  *zero* `:acp_unhandled_*` events on the happy path; that's what makes the
+  catch-alls safe — regressions surface as test failures, not silent drops.
   """
 
   use GenServer
@@ -180,6 +195,12 @@ defmodule Tractor.ACP.Session do
     {:reply, {:error, :busy}, state}
   end
 
+  # An unknown GenServer.call should reply :unknown_call rather than letting
+  # the caller hang or the session crash on a missing clause.
+  def handle_call(other, _from, state) do
+    {:reply, {:error, :unknown_call}, emit_unhandled(state, :call, %{"shape" => inspect(other)})}
+  end
+
   @impl true
   def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) do
     # ACP messages occasionally exceed the @line_length buffer (e.g. a tool
@@ -203,6 +224,13 @@ defmodule Tractor.ACP.Session do
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     {:stop, :normal, fail_any_pending(state, {:port_exit, status})}
+  end
+
+  # Future Erlang/OTP versions or alternate port modes can introduce shapes we
+  # don't match above (`{:data, :other}`, control messages, etc.). Survive by
+  # default and surface via telemetry so the gap is visible rather than fatal.
+  def handle_info({port, other}, %{port: port} = state) do
+    {:noreply, emit_unhandled(state, :port_data, %{"shape" => inspect(other)})}
   end
 
   def handle_info({:prompt_timeout, timeout_ref}, %{prompt_timeout_ref: timeout_ref} = state) do
@@ -240,6 +268,13 @@ defmodule Tractor.ACP.Session do
     )
 
     {:noreply, state}
+  end
+
+  # Anything that doesn't match the explicit clauses above (a stray DOWN that
+  # isn't ours, a timer ref no longer relevant, a future port mode that
+  # slipped past the {port, other} guard). Don't crash — emit and continue.
+  def handle_info(other, state) do
+    {:noreply, emit_unhandled(state, :info, %{"shape" => inspect(other)})}
   end
 
   defp handle_json_line(line, state) do
@@ -429,7 +464,7 @@ defmodule Tractor.ACP.Session do
   end
 
   defp send_message(port, message) do
-    Port.command(port, Jason.encode!(message) <> "\n")
+    Port.command(port, Tractor.JSON.encode!(message) <> "\n")
   end
 
   defp handle_message(%{"id" => id, "result" => result}, state) do
@@ -649,10 +684,18 @@ defmodule Tractor.ACP.Session do
   end
 
   defp dispatch_update(state, kind, update) do
+    sanitized_kind = kind |> to_string() |> Tractor.JSON.sanitize_payload()
+
     emit_event(state, :acp_unknown_update, %{
-      "updateKind" => kind || "unknown",
-      "raw" => update
+      "updateKind" => sanitized_kind || "unknown",
+      "raw" => Tractor.JSON.sanitize_payload(update)
     })
+
+    :telemetry.execute(
+      [:tractor, :acp, :unhandled],
+      %{count: 1},
+      %{kind: :session_update, payload: %{updateKind: sanitized_kind}}
+    )
 
     state
   end
@@ -684,6 +727,19 @@ defmodule Tractor.ACP.Session do
     state
   end
 
+  defp emit_unhandled(state, kind, payload) when is_atom(kind) do
+    sanitized = Tractor.JSON.sanitize_payload(payload)
+    emit_event(state, :"acp_unhandled_#{kind}", sanitized)
+
+    :telemetry.execute(
+      [:tractor, :acp, :unhandled],
+      %{count: 1},
+      %{kind: kind, payload: sanitized}
+    )
+
+    state
+  end
+
   defp default_wire_log(nil), do: nil
   defp default_wire_log(stderr_log), do: Path.join(Path.dirname(stderr_log), "acp-wire.jsonl")
 
@@ -706,7 +762,7 @@ defmodule Tractor.ACP.Session do
       "payload" => payload
     }
 
-    File.write(path, Jason.encode!(entry) <> "\n", [:append])
+    File.write(path, Tractor.JSON.encode!(entry) <> "\n", [:append])
     :ok
   rescue
     _error -> :ok
@@ -1004,6 +1060,15 @@ defmodule Tractor.ACP.Session do
 
       other when is_binary(other) ->
         fail_prompt(state, {:stop_reason, other})
+
+      _missing_or_non_binary ->
+        # An agent that returned a malformed prompt result (nil stop_reason, a
+        # numeric stop_reason, ...) used to crash this case with
+        # FunctionClauseError. Surface as a controlled error + telemetry.
+        state =
+          emit_unhandled(state, :prompt_result, %{"raw" => Tractor.JSON.sanitize_payload(result)})
+
+        fail_prompt(state, {:invalid_prompt_result, result})
     end
   end
 

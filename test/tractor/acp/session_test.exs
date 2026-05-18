@@ -271,6 +271,62 @@ defmodule Tractor.ACP.SessionTest do
     assert :ok = Session.stop(pid)
   end
 
+  test "survives unexpected messages and emits :acp_unhandled_info" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink
+      )
+
+    send(pid, {:foo, :bar})
+
+    assert_receive {:sink, :acp_unhandled_info, %{"shape" => shape}}, 1_000
+    assert shape =~ ":foo"
+    assert Process.alive?(pid)
+
+    assert :ok = Session.stop(pid)
+  end
+
+  test "survives unknown port-data shapes and emits :acp_unhandled_port_data" do
+    test_pid = self()
+
+    sink = fn event ->
+      send(test_pid, {:sink, event.kind, event.data})
+      :ok
+    end
+
+    {:ok, pid} =
+      Session.start_link(FakeAgent,
+        cwd: File.cwd!(),
+        event_sink: sink
+      )
+
+    %{port: port} = :sys.get_state(pid)
+    send(pid, {port, {:data, :some_weird_atom}})
+
+    assert_receive {:sink, :acp_unhandled_port_data, %{"shape" => shape}}, 1_000
+    assert shape =~ ":some_weird_atom"
+    assert Process.alive?(pid)
+
+    assert :ok = Session.stop(pid)
+  end
+
+  test "unknown GenServer.call replies :unknown_call without crashing" do
+    {:ok, pid} = Session.start_link(FakeAgent, cwd: File.cwd!())
+
+    assert {:error, :unknown_call} = GenServer.call(pid, :something_unmapped)
+    assert Process.alive?(pid)
+
+    assert :ok = Session.stop(pid)
+  end
+
   test "streams provider stdout lines into the event sink" do
     test_pid = self()
 
