@@ -17,6 +17,19 @@ defmodule Tractor.RunWatcher.ReconcileTest do
     assert manifest["status"] == "interrupted"
     assert manifest["reason"] == reason
     assert is_binary(manifest["finished_at"])
+
+    # The reconciler MUST emit run_reconciled + run_interrupted + run_finalized
+    # — surfaced as a bug in the live observer because the original code path
+    # skipped run_finalized. Asserted here so a regression fails loudly.
+    events = read_run_events(run_dir)
+    assert Enum.any?(events, &(&1["kind"] == "run_reconciled"))
+    assert Enum.any?(events, &(&1["kind"] == "run_interrupted"))
+
+    assert Enum.any?(
+             events,
+             &(&1["kind"] == "run_finalized" and
+                 get_in(&1, ["data", "source"]) == "reconciler")
+           )
   end
 
   @tag :tmp_dir
@@ -104,5 +117,15 @@ defmodule Tractor.RunWatcher.ReconcileTest do
     |> Path.join("manifest.json")
     |> File.read!()
     |> Jason.decode!()
+  end
+
+  defp read_run_events(run_dir) do
+    path = Path.join([run_dir, "_run", "events.jsonl"])
+
+    if File.exists?(path) do
+      path |> File.stream!() |> Enum.map(&Jason.decode!/1)
+    else
+      []
+    end
   end
 end

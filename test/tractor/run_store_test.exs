@@ -1,7 +1,7 @@
 defmodule Tractor.RunStoreTest do
   use ExUnit.Case, async: true
 
-  alias Tractor.{Pipeline, RunStore}
+  alias Tractor.{Pipeline, Run, RunStore}
 
   @tag :tmp_dir
   test "opens a run directory and writes node artifacts", %{tmp_dir: tmp_dir} do
@@ -31,7 +31,7 @@ defmodule Tractor.RunStoreTest do
     {:ok, store} = RunStore.open(pipeline, runs_dir: tmp_dir, run_id: "run-2")
 
     assert :ok =
-             RunStore.finalize(store, %{
+             Run.finalize(store, %{
                status: "ok",
                provider_commands: [
                  %{provider: "codex", command: "codex-acp", args: [], env: [{"TOKEN", "secret"}]}

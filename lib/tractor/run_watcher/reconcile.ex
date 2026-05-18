@@ -63,14 +63,12 @@ defmodule Tractor.RunWatcher.Reconcile do
     # A reconciled run is one whose orchestrator (tractor reap) died without
     # finalizing — Ctrl-C, parent SIGTERM, hard crash. Nodes didn't fail; the
     # supervisor went away. That's interrupted, not errored.
-    RunStore.finalize(store, %{status: "interrupted", reason: reason})
-    Tractor.RunEvents.register_run(store.run_id, store.run_dir)
-
-    :ok =
-      Tractor.RunEvents.emit(store.run_id, "_run", :run_reconciled, %{
-        "reason" => reason,
-        "owner_pid" => owner_pid
-      })
+    Tractor.Run.finalize(store, %{
+      status: "interrupted",
+      reason: reason,
+      source: :reconciler,
+      owner_pid: owner_pid
+    })
   end
 
   defp load_running_store(run_dir) do

@@ -180,8 +180,13 @@ defmodule Tractor.RunStore do
     )
   end
 
-  @spec finalize(t(), map()) :: :ok
-  def finalize(%__MODULE__{} = store, attrs) do
+  @doc """
+  Writes the terminal-state manifest and `status.json` to disk. Called
+  exclusively by `Tractor.Run.finalize/2`; production code must never call
+  this directly.
+  """
+  @spec write_terminal_manifest(t(), map()) :: :ok
+  def write_terminal_manifest(%__MODULE__{} = store, attrs) do
     manifest =
       store.manifest
       |> Map.merge(%{
@@ -195,6 +200,22 @@ defmodule Tractor.RunStore do
 
     write_manifest(store, manifest)
     write_run_status(store, manifest)
+  end
+
+  @doc """
+  Reads the latest manifest from disk and returns the persisted status, or
+  `nil` if the manifest can't be read.
+  """
+  @spec read_status(t()) :: String.t() | nil
+  def read_status(%__MODULE__{run_dir: run_dir}) do
+    manifest_path = Path.join(run_dir, "manifest.json")
+
+    with {:ok, raw} <- File.read(manifest_path),
+         {:ok, %{"status" => status}} <- Jason.decode(raw) do
+      status
+    else
+      _other -> nil
+    end
   end
 
   defp write_manifest(store, manifest) do
@@ -234,7 +255,7 @@ defmodule Tractor.RunStore do
   end
 
   defp encode_json!(data) do
-    Jason.encode_to_iodata!(data, pretty: true)
+    Tractor.JSON.encode_to_iodata!(data, pretty: true)
   end
 
   defp redact_provider_commands(commands) do

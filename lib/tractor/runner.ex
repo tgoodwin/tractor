@@ -804,28 +804,23 @@ defmodule Tractor.Runner do
         |> put_cost_status(state, node_id)
     })
 
-    RunStore.finalize(state.store, %{
+    Tractor.Run.finalize(state.store, %{
       status: "error",
+      reason: reason,
       provider_commands: state.provider_commands,
-      total_cost_usd: Decimal.to_string(state.total_cost_usd)
+      total_cost_usd: Decimal.to_string(state.total_cost_usd),
+      terminal_event: {:run_failed, %{"reason" => inspect(reason)}}
     })
 
-    RunEvents.emit(state.store.run_id, "_run", :run_failed, %{"reason" => inspect(reason)})
-    RunEvents.emit(state.store.run_id, "_run", :run_finalized, %{"status" => "error"})
-    Tractor.StatusAgent.stop_run(state.store.run_id)
     complete(state, {:error, reason})
   end
 
   defp complete_success(%{result: nil} = state) do
-    RunStore.finalize(state.store, %{
+    Tractor.Run.finalize(state.store, %{
       status: "ok",
       provider_commands: state.provider_commands,
       total_cost_usd: Decimal.to_string(state.total_cost_usd)
     })
-
-    RunEvents.emit(state.store.run_id, "_run", :run_completed, %{"status" => "ok"})
-    RunEvents.emit(state.store.run_id, "_run", :run_finalized, %{"status" => "ok"})
-    Tractor.StatusAgent.stop_run(state.store.run_id)
 
     complete(
       state,
@@ -836,33 +831,23 @@ defmodule Tractor.Runner do
   defp complete_success(state), do: state
 
   defp fail_goal_gate(state, node_id, reason) do
-    RunStore.finalize(state.store, %{
+    Tractor.Run.finalize(state.store, %{
       status: "goal_gate_failed",
+      reason: reason,
       provider_commands: state.provider_commands,
-      total_cost_usd: Decimal.to_string(state.total_cost_usd)
+      total_cost_usd: Decimal.to_string(state.total_cost_usd),
+      terminal_event: {:goal_gate_failed, %{"node_id" => node_id, "reason" => inspect(reason)}}
     })
 
-    RunEvents.emit(state.store.run_id, "_run", :goal_gate_failed, %{
-      "node_id" => node_id,
-      "reason" => inspect(reason)
-    })
-
-    RunEvents.emit(state.store.run_id, "_run", :run_finalized, %{"status" => "goal_gate_failed"})
-
-    Tractor.StatusAgent.stop_run(state.store.run_id)
     complete(state, {:error, {:goal_gate_failed, node_id}})
   end
 
   defp finalize_interrupted(state) do
-    RunStore.finalize(state.store, %{
+    Tractor.Run.finalize(state.store, %{
       status: "interrupted",
       provider_commands: state.provider_commands,
       total_cost_usd: Decimal.to_string(state.total_cost_usd)
     })
-
-    RunEvents.emit(state.store.run_id, "_run", :run_interrupted, %{"status" => "interrupted"})
-    RunEvents.emit(state.store.run_id, "_run", :run_finalized, %{"status" => "interrupted"})
-    Tractor.StatusAgent.stop_run(state.store.run_id)
   end
 
   defp complete(state, result) do
@@ -893,9 +878,64 @@ defmodule Tractor.Runner do
           "iteration" => Map.get(state.iterations, node_id)
         })
 
+        node = Map.fetch!(state.pipeline.nodes, node_id)
+        maybe_emit_gate_verdict(state, node, edge, routing_outcome)
+
         %{state | agenda: :queue.in(edge.to, state.agenda)}
     end
   end
+
+  # A conditional node has three independent signals:
+  #
+  #   - Execution status (`:node_succeeded` / `:node_failed`) — did the
+  #     handler exit cleanly?
+  #   - Routing outcome (`:edge_taken`) — which edge did the runner pick?
+  #   - Verdict (`:gate_verdict`, new) — did the gate accept or reject?
+  #
+  # The first two are not enough to recover the verdict: a node-handler that
+  # exits :ok and routes onward might still represent a *rejection* (e.g. a
+  # judge that loops back on reject). The UI used to recover the verdict by
+  # substring-matching the edge's condition string in `run_live/show.ex`,
+  # which was fragile and silently mis-classified. This event surfaces the
+  # verdict as a first-class signal, mirroring `:judge_verdict`.
+  defp maybe_emit_gate_verdict(
+         state,
+         %Node{type: "conditional", id: node_id},
+         edge,
+         routing_outcome
+       ) do
+    verdict = derive_gate_verdict(edge)
+
+    RunEvents.emit(state.store.run_id, node_id, :gate_verdict, %{
+      "node_id" => node_id,
+      "iteration" => Map.get(state.iterations, node_id),
+      "verdict" => verdict,
+      "routed_to" => edge.to,
+      "condition" => edge.condition,
+      "label" => edge.label,
+      "routing_status" => routing_status(routing_outcome)
+    })
+  end
+
+  defp maybe_emit_gate_verdict(_state, _node, _edge, _outcome), do: :ok
+
+  defp derive_gate_verdict(%{label: label}) when label in ["accept", "reject"], do: label
+
+  defp derive_gate_verdict(%{condition: condition}) when is_binary(condition) do
+    lowered = String.downcase(condition)
+
+    cond do
+      String.contains?(lowered, "reject") or String.contains?(lowered, "fail") -> "reject"
+      String.contains?(lowered, "accept") or String.contains?(lowered, "pass") -> "accept"
+      true -> "unknown"
+    end
+  end
+
+  defp derive_gate_verdict(_edge), do: "unknown"
+
+  defp routing_status(%{status: status}) when is_atom(status), do: Atom.to_string(status)
+  defp routing_status(%{"status" => status}) when is_binary(status), do: status
+  defp routing_status(_other), do: nil
 
   defp route_or_fail_exhausted_retry(state, %{branch_id: branch_id} = entry, original_reason)
        when not is_nil(branch_id) do
