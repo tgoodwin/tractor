@@ -22,12 +22,7 @@ defmodule TractorWeb.Endpoint do
     plug(Phoenix.CodeReloader)
   end
 
-  plug(Plug.Static,
-    at: "/",
-    from: "priv/static",
-    gzip: false,
-    only: ~w(assets favicon.ico)
-  )
+  plug(TractorWeb.StaticPlug)
 
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
