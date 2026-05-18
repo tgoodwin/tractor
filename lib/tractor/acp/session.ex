@@ -39,7 +39,8 @@ defmodule Tractor.ACP.Session do
             init_timer: nil,
             init_timeout_ref: nil,
             event_sink: nil,
-            turn: %Turn{}
+            turn: %Turn{},
+            line_buffer: ""
 
   @type reason ::
           :timeout
@@ -178,8 +179,17 @@ defmodule Tractor.ACP.Session do
   end
 
   @impl true
-  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
-    line = String.trim_leading(line)
+  def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) do
+    # ACP messages occasionally exceed the @line_length buffer (e.g. a tool
+    # result containing a large file dump). The port splits them into
+    # successive :noeol chunks followed by an :eol terminator — accumulate
+    # until we have a full line.
+    {:noreply, %{state | line_buffer: state.line_buffer <> chunk}}
+  end
+
+  def handle_info({port, {:data, {:eol, chunk}}}, %{port: port} = state) do
+    {full, state} = take_buffered_line(state, chunk)
+    line = String.trim_leading(full)
 
     if String.starts_with?(line, "{") do
       handle_json_line(line, state)
@@ -684,6 +694,11 @@ defmodule Tractor.ACP.Session do
   rescue
     _error -> :ok
   end
+
+  defp take_buffered_line(%{line_buffer: ""} = state, chunk), do: {chunk, state}
+
+  defp take_buffered_line(%{line_buffer: buf} = state, chunk),
+    do: {buf <> chunk, %{state | line_buffer: ""}}
 
   defp record_stdout_line(state, ""), do: state
 
