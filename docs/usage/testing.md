@@ -1,5 +1,14 @@
 # Testing
 
+## ACP wire-log replay
+
+`mix test test/tractor/acp/wire_replay_test.exs` replays redacted captured
+wire-log fixtures through `Tractor.ACP.Session` and asserts every frame is
+handled (or, for known-unknown frames, emits the expected
+`:acp_unhandled_*` event). Refresh fixtures by setting `wire_log:` on
+`Session.start_link/2` during a live run and hand-redacting the captured
+JSONL per the policy in `docs/notes/acp-wire-replay.md`.
+
 ## Browser Harness
 
 Run the browser suites with:

@@ -13,7 +13,7 @@ defmodule Tractor.Init.MacListener do
 
   @source Path.join(:code.priv_dir(:file_system), "mac_listener")
   @external_resource @source
-  @bytes (if File.regular?(@source), do: File.read!(@source), else: nil)
+  @bytes if File.regular?(@source), do: File.read!(@source), else: nil
 
   @env_var "FILESYSTEM_FSMAC_EXECUTABLE_FILE"
 

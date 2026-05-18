@@ -103,6 +103,15 @@ The disk artifacts under `$TRACTOR_DATA_DIR/<run_id>/` are the durable interface
 
 Anything that needs to outlive a process crash goes through this. Anything that's purely intra-process (e.g. handler internals) does not.
 
+## Reliability boundaries
+
+Four contracts make whole classes of regressions structurally impossible across the three planes (SPRINT-0015):
+
+- **`Tractor.Run.finalize/2`** is the single public path to terminal state. The runner's success / failure / interrupted / goal-gate paths and `RunWatcher.Reconcile.mark_reconciled!/2` all route through it; the canonical `_run/run_finalized` event is emitted exactly once per run by this function, idempotently. Direct calls to `RunStore.finalize/2` are removed — production code that needs to flip a run terminal must go through `Tractor.Run.finalize/2`.
+- **`Tractor.JSON.encode!/2`** is the only Tractor → Jason boundary. Recursively sanitizes binaries via `Tractor.Text.sanitize/2` before delegating, so an LLM bridge handing the encoder a byte-truncated multibyte string can't take out the runner. Enforced by `mix tractor.check_encoding`.
+- **`TractorWeb.SafePush.push_event/3`** is the only TractorWeb → `Phoenix.LiveView.push_event/3` boundary. Sanitizes the payload before wire-serialization. Imported by LiveView modules in place of the bare `push_event/3`; CI gates the bypass. Same `mix tractor.check_encoding` task enforces this.
+- **ACP wire-replay harness** at `test/support/acp_wire_replay.ex` drives `Tractor.ACP.Session` from redacted captured wire-log fixtures. Every parser path emits `:acp_unhandled_*` event-sink events + `[:tractor, :acp, :unhandled]` telemetry on unmatched input and never raises. Happy-path replay asserts zero `:acp_unhandled_*`; unknown-frame replay asserts the expected fallback. See `docs/notes/acp-wire-replay.md`.
+
 ## Reap lifecycle (single-pipeline, normal path)
 
 ```
