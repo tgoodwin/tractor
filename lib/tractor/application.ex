@@ -9,6 +9,7 @@ defmodule Tractor.Application do
 
   @impl true
   def start(_type, _args) do
+    Tractor.Init.MacListener.install!()
     Application.put_env(:tractor, :runs_dir, Tractor.Paths.runs_dir())
 
     children =
