@@ -47,7 +47,7 @@ defmodule Tractor.CLI do
   @spec run([String.t()]) ::
           {:serve, (-> no_return())} | {non_neg_integer(), String.t(), String.t()}
   def run(["reap", "--resume" | rest]) when rest in [[], ["--force"]] do
-    resume_once(normalize_opts(resume: :latest, force: rest == ["--force"]), 300_000)
+    resume_once(normalize_opts(resume: :latest, force: rest == ["--force"]), :infinity)
   end
 
   def run(["reap" | args]) do
@@ -620,7 +620,11 @@ defmodule Tractor.CLI do
 
   defp new_run_id, do: Tractor.Paths.new_run_id()
 
-  defp timeout_ms(nil), do: {:ok, 300_000}
+  # No --timeout passed: wait until the run terminates. LLM pipelines routinely
+  # exceed any fixed bound, and the CLI's watchdog is what holds the BEAM open
+  # — when it expires, the escript exits and takes the runner with it. Users
+  # who want a hard bound for automation should pass --timeout explicitly.
+  defp timeout_ms(nil), do: {:ok, :infinity}
 
   defp timeout_ms(value) do
     case Regex.run(~r/^(\d+)(ms|s|m|h)?$/, value) do
@@ -636,7 +640,7 @@ defmodule Tractor.CLI do
   defp timeout_ms!(value) do
     case timeout_ms(value) do
       {:ok, timeout} -> timeout
-      _other -> 300_000
+      _other -> :infinity
     end
   end
 
