@@ -1,7 +1,7 @@
 import { Socket } from "/assets/phoenix.mjs";
 import { LiveSocket } from "/assets/phoenix_live_view.esm.js";
 
-const nodeStates = ["pending", "running", "succeeded", "failed", "rejected", "accepted", "waiting"];
+const nodeStates = ["pending", "running", "succeeded", "failed", "rejected", "accepted", "waiting", "interrupted"];
 
 const GraphBoard = {
   mounted() {

@@ -1032,9 +1032,19 @@ summary {
 .tractor-node.running polygon,
 .tractor-node.running path,
 .tractor-node.running polyline {
-  fill: var(--state-running-fill);
-  stroke: var(--accent-live);
+  fill: rgba(43, 95, 232, 0.08);
+  stroke: var(--focus);
   animation: pulse-node 1.2s ease-in-out infinite;
+}
+
+/* Interrupted: orchestrator died mid-flight (matches the orange status pill). */
+.tractor-node.interrupted ellipse,
+.tractor-node.interrupted polygon,
+.tractor-node.interrupted path,
+.tractor-node.interrupted polyline {
+  fill: rgba(217, 119, 6, 0.1);
+  stroke: var(--accent-live);
+  stroke-dasharray: 5 3;
 }
 
 .tractor-node.succeeded ellipse,

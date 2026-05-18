@@ -242,7 +242,9 @@ defmodule TractorWeb.RunLive.Show do
   def handle_info({:run_event, node_id, event}, socket) do
     socket =
       if node_id == "_run" do
-        refresh_run_meta(socket)
+        socket
+        |> refresh_run_meta()
+        |> maybe_mark_in_flight_interrupted(event)
       else
         socket
       end
@@ -568,6 +570,29 @@ defmodule TractorWeb.RunLive.Show do
        }),
        do: Map.put(states, node_id, "accepted")
 
+  # Conditional gates: derive the gate's verdict from the edge it took. The
+  # condition string is the DOT-level expression — most pipelines use the
+  # convention "... reject" / "... accept" or "fail" / "pass" in the matched
+  # text, so substring-match those keywords.
+  defp update_node_state(states, node_id, %{
+         "kind" => "edge_taken",
+         "data" => %{"condition" => condition}
+       })
+       when is_binary(condition) and condition != "" do
+    lowered = String.downcase(condition)
+
+    cond do
+      String.contains?(lowered, "reject") or String.contains?(lowered, "fail") ->
+        Map.put(states, node_id, "rejected")
+
+      String.contains?(lowered, "accept") or String.contains?(lowered, "pass") ->
+        Map.put(states, node_id, "accepted")
+
+      true ->
+        states
+    end
+  end
+
   defp update_node_state(states, _node_id, _event), do: states
 
   defp push_graph_node_states(socket, node_states) do
@@ -602,6 +627,41 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   defp maybe_push_edge_taken(socket, _event), do: socket
+
+  # When a run terminates as interrupted, flip any node we still think is
+  # running/waiting to the interrupted state so the graph matches reality.
+  defp maybe_mark_in_flight_interrupted(socket, %{
+         "kind" => "run_finalized",
+         "data" => %{"status" => "interrupted"}
+       }) do
+    states = socket.assigns.node_states
+
+    updated =
+      Map.new(states, fn
+        {id, state} when state in ["running", "waiting"] -> {id, "interrupted"}
+        other -> other
+      end)
+
+    if updated == states do
+      socket
+    else
+      socket
+      |> assign(:node_states, updated)
+      |> push_changed_node_states(states, updated)
+    end
+  end
+
+  defp maybe_mark_in_flight_interrupted(socket, _event), do: socket
+
+  defp push_changed_node_states(socket, before, after_) do
+    Enum.reduce(after_, socket, fn {id, state}, socket ->
+      if Map.get(before, id) == state do
+        socket
+      else
+        push_graph_node_state(socket, id, state)
+      end
+    end)
+  end
 
   defp push_graph_badges(socket, node_id, run_dir, state) do
     push_event(socket, "graph:badges", badge_payload(run_dir, node_id, state))
