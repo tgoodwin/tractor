@@ -48,6 +48,19 @@ defmodule Tractor.ACP.SessionTest do
     assert :ok = Session.stop(pid)
   end
 
+  test "sanitizes invalid UTF-8 prompts before encoding ACP JSON" do
+    invalid = binary_part("prefix—tail", 0, 7)
+    refute String.valid?(invalid)
+
+    {:ok, pid} = Session.start_link(FakeAgent, cwd: File.cwd!())
+
+    assert {:ok, %Turn{response_text: response}} = Session.prompt(pid, invalid, 5_000)
+    assert String.valid?(response)
+    assert response =~ "fake response:"
+    assert response =~ "\\xE2"
+    assert :ok = Session.stop(pid)
+  end
+
   test "stop tolerates sessions that already exited normally" do
     pid = spawn(fn -> :ok end)
     ref = Process.monitor(pid)

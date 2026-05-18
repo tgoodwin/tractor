@@ -1369,10 +1369,10 @@ defmodule Tractor.Runner do
   end
 
   defp output_digest(output) when is_binary(output) and byte_size(output) > 2_048 do
-    binary_part(output, 0, 2_048) <> "\n[truncated]"
+    Tractor.Text.truncate_after(output, 2_048, "\n[truncated]")
   end
 
-  defp output_digest(output) when is_binary(output), do: output
+  defp output_digest(output) when is_binary(output), do: Tractor.Text.sanitize(output)
   defp output_digest(output), do: inspect(output)
 
   defp cancel_timeout(%{timer_ref: timer_ref}) when is_reference(timer_ref) do

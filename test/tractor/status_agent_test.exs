@@ -72,6 +72,66 @@ defmodule Tractor.StatusAgentTest do
   end
 
   @tag :tmp_dir
+  test "sanitizes invalid UTF-8 output digests before prompting", %{tmp_dir: tmp_dir} do
+    run_id = "status-invalid-utf8"
+    run_dir = Path.join(tmp_dir, run_id)
+    File.mkdir_p!(run_dir)
+    Tractor.RunEvents.register_run(run_id, run_dir)
+
+    invalid_digest = binary_part("prefix—tail", 0, 7)
+    refute String.valid?(invalid_digest)
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Claude, _opts ->
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, prompt, 30_000 ->
+      assert String.valid?(prompt)
+      assert prompt =~ "Output digest:"
+      assert prompt =~ "\\xE2"
+      assert Jason.encode!(%{"prompt" => prompt})
+
+      {:ok, %Tractor.ACP.Turn{response_text: "safe summary"}}
+    end)
+
+    expect(Tractor.AgentClientMock, :stop, fn _pid -> :ok end)
+
+    assert :ok = StatusAgent.start_run(run_id, run_dir, "claude")
+    StatusAgent.observe(run_id, payload("one", output_digest: invalid_digest))
+
+    assert [%{"data" => %{"summary" => "safe summary"}}] =
+             eventually_events(run_dir, "status_update")
+
+    StatusAgent.stop_run(run_id)
+  end
+
+  @tag :tmp_dir
+  test "prompt exceptions are reflected as status_update_failed", %{tmp_dir: tmp_dir} do
+    run_id = "status-prompt-exception"
+    run_dir = Path.join(tmp_dir, run_id)
+    File.mkdir_p!(run_dir)
+    Tractor.RunEvents.register_run(run_id, run_dir)
+
+    expect(Tractor.AgentClientMock, :start_session, fn Tractor.Agent.Claude, _opts ->
+      {:ok, self()}
+    end)
+
+    expect(Tractor.AgentClientMock, :prompt, fn _pid, _prompt, 30_000 ->
+      raise "status prompt boom"
+    end)
+
+    assert :ok = StatusAgent.start_run(run_id, run_dir, "claude")
+    StatusAgent.observe(run_id, payload("one"))
+
+    assert [%{"data" => %{"reason" => reason}}] =
+             eventually_events(run_dir, "status_update_failed")
+
+    assert reason =~ "status prompt boom"
+
+    StatusAgent.stop_run(run_id)
+  end
+
+  @tag :tmp_dir
   test "stop_run drains an in-flight observation before shutdown", %{tmp_dir: tmp_dir} do
     run_id = "status-drain"
     run_dir = Path.join(tmp_dir, run_id)
@@ -109,7 +169,7 @@ defmodule Tractor.StatusAgentTest do
              eventually_events(run_dir, "status_agent_stopped")
   end
 
-  defp payload(node_id) do
+  defp payload(node_id, overrides \\ []) do
     %{
       node_id: node_id,
       iteration: 1,
@@ -119,6 +179,7 @@ defmodule Tractor.StatusAgentTest do
       per_node_iteration_counts: %{},
       total_iterations: 1
     }
+    |> Map.merge(Map.new(overrides))
   end
 
   defp eventually_events(run_dir, kind) do

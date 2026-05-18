@@ -123,11 +123,17 @@ defmodule Tractor.Assistant do
     end
   end
 
-  defp truncate(text, max) when byte_size(text) <= max, do: text
-
   defp truncate(text, max) do
-    head = binary_part(text, 0, div(max, 2))
-    tail = binary_part(text, byte_size(text) - div(max, 2), div(max, 2))
-    head <> "\n\n[... event log truncated to fit prompt ...]\n\n" <> tail
+    text = Tractor.Text.sanitize(text, printable_limit: max)
+
+    if byte_size(text) <= max do
+      text
+    else
+      Tractor.Text.truncate_middle(
+        text,
+        max,
+        "\n\n[... event log truncated to fit prompt ...]\n\n"
+      )
+    end
   end
 end

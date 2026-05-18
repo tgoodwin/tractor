@@ -167,10 +167,12 @@ defmodule Tractor.ACP.Session do
 
   @impl true
   def handle_call({:prompt, text, timeout}, from, %{status: :idle} = state) do
+    text = Tractor.Text.sanitize(text, printable_limit: 64_000)
     {:noreply, send_prompt(state, from, text, timeout)}
   end
 
   def handle_call({:prompt, text, timeout}, from, %{status: :starting} = state) do
+    text = Tractor.Text.sanitize(text, printable_limit: 64_000)
     {:noreply, %{state | queued_prompt: {from, text, timeout}}}
   end
 

@@ -239,6 +239,28 @@ defmodule Tractor.StatusAgent do
   end
 
   defp run_observation(run_id, run_dir, provider, seq, status_update_id, payload) do
+    do_run_observation(run_id, run_dir, provider, seq, status_update_id, payload)
+  rescue
+    exception ->
+      record_observation_exception(
+        run_id,
+        run_dir,
+        seq,
+        payload,
+        Exception.format(:error, exception, __STACKTRACE__)
+      )
+  catch
+    kind, reason ->
+      record_observation_exception(
+        run_id,
+        run_dir,
+        seq,
+        payload,
+        Exception.format(kind, reason, __STACKTRACE__)
+      )
+  end
+
+  defp do_run_observation(run_id, run_dir, provider, seq, status_update_id, payload) do
     agent_client = Application.get_env(:tractor, :agent_client, Tractor.ACP.Session)
     adapter = Map.fetch!(@providers, provider)
     artifact_dir = Path.join([run_dir, "_status_agent", Integer.to_string(seq)])
@@ -292,15 +314,17 @@ defmodule Tractor.StatusAgent do
         })
 
       {:error, reason} ->
+        reason = reason |> inspect() |> Tractor.Text.sanitize()
+
         Tractor.Paths.atomic_write!(
           Path.join(artifact_dir, "status.json"),
-          Jason.encode!(%{"status" => "error", "reason" => inspect(reason)})
+          Jason.encode!(%{"status" => "error", "reason" => reason})
         )
 
         RunEvents.emit(run_id, "_run", :status_update_failed, %{
           "node_id" => payload.node_id,
           "iteration" => payload.iteration,
-          "reason" => inspect(reason)
+          "reason" => reason
         })
     end
   end
@@ -314,6 +338,24 @@ defmodule Tractor.StatusAgent do
     |> String.replace("{{per_node_iteration_counts}}", inspect(payload.per_node_iteration_counts))
     |> String.replace("{{total_iterations}}", to_string(payload.total_iterations))
     |> String.replace("{{output_digest}}", payload.output_digest || "")
+    |> Tractor.Text.sanitize(printable_limit: 64_000)
+  end
+
+  defp record_observation_exception(run_id, run_dir, seq, payload, reason) do
+    reason = Tractor.Text.sanitize(reason, printable_limit: 8_192)
+    artifact_dir = Path.join([run_dir, "_status_agent", Integer.to_string(seq)])
+    File.mkdir_p!(artifact_dir)
+
+    Tractor.Paths.atomic_write!(
+      Path.join(artifact_dir, "status.json"),
+      Jason.encode!(%{"status" => "error", "reason" => reason})
+    )
+
+    RunEvents.emit(run_id, "_run", :status_update_failed, %{
+      "node_id" => payload.node_id,
+      "iteration" => payload.iteration,
+      "reason" => reason
+    })
   end
 
   defp emit_status_update(run_id, status_update_id, payload, summary) do
