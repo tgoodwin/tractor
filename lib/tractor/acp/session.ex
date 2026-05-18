@@ -631,6 +631,21 @@ defmodule Tractor.ACP.Session do
     %{state | turn: %{turn | plan: plan["entries"]}}
   end
 
+  # Codex emits a high-frequency context-window telemetry update: {size, used}.
+  # Recognize it so it doesn't render as "unknown update usage_update" in the
+  # timeline. Emit as a distinct kind; the timeline has no event_entry for it,
+  # so it's silently dropped from the activity log but still preserved in
+  # events.jsonl for downstream tooling.
+  defp dispatch_update(state, "usage_update", update) do
+    payload = %{
+      "size" => update["size"],
+      "used" => update["used"]
+    }
+
+    emit_event(state, :acp_context_window, payload)
+    state
+  end
+
   defp dispatch_update(state, kind, update) do
     emit_event(state, :acp_unknown_update, %{
       "updateKind" => kind || "unknown",
