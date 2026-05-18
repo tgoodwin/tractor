@@ -507,8 +507,16 @@ defmodule TractorWeb.RunLive.Show do
   defp static_prompt(_pipeline, _node_id), do: nil
 
   defp load_node_states(pipeline, run_dir) do
-    Map.new(pipeline.nodes, fn {node_id, _node} ->
-      {node_id, read_status(run_dir, node_id)}
+    pipeline.nodes
+    |> Map.new(fn {node_id, _node} -> {node_id, read_status(run_dir, node_id)} end)
+    |> replay_node_state_events(run_dir)
+  end
+
+  defp replay_node_state_events(states, run_dir) do
+    Enum.reduce(Map.keys(states), states, fn node_id, states ->
+      run_dir
+      |> read_node_events(node_id)
+      |> Enum.reduce(states, fn event, states -> update_node_state(states, node_id, event) end)
     end)
   end
 

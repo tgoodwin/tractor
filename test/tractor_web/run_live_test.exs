@@ -194,6 +194,25 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
+  test "late mount replays conditional reject edge state from disk", %{
+    conn: conn,
+    run_id: run_id
+  } do
+    assert {:ok, _result} = Run.await(run_id, 1_000)
+
+    :ok =
+      RunEvents.emit(run_id, "start", :edge_taken, %{
+        "from" => "start",
+        "to" => "exit",
+        "condition" => "context.review.last_output contains \"VERDICT: reject\""
+      })
+
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+
+    assert_push_event(view, "graph:node_state", %{node_id: "start", state: "rejected"})
+  end
+
+  @tag :tmp_dir
   test "status feed replays and coalesces status updates", %{conn: conn, run_id: run_id} do
     :ok =
       RunEvents.emit(run_id, "_run", :status_update, %{
