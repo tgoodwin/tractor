@@ -606,34 +606,6 @@ defmodule TractorWeb.RunLive.Show do
        }),
        do: states
 
-  # Conditional gates: derive the gate's verdict from the edge it took. The
-  # condition string is the DOT-level expression — most pipelines use the
-  # convention "... reject" / "... accept" or "fail" / "pass" in the matched
-  # text, so substring-match those keywords.
-  #
-  # SPRINT-0015 D.3 deletes this clause once the runner ships :gate_verdict;
-  # it stays here for one commit so the LiveView consumes both the new event
-  # AND the legacy edge_taken-derived color, preventing in-flight pipelines
-  # from regressing during deploy.
-  defp update_node_state(states, node_id, %{
-         "kind" => "edge_taken",
-         "data" => %{"condition" => condition}
-       })
-       when is_binary(condition) and condition != "" do
-    lowered = String.downcase(condition)
-
-    cond do
-      String.contains?(lowered, "reject") or String.contains?(lowered, "fail") ->
-        Map.put(states, node_id, "rejected")
-
-      String.contains?(lowered, "accept") or String.contains?(lowered, "pass") ->
-        Map.put(states, node_id, "accepted")
-
-      true ->
-        states
-    end
-  end
-
   defp update_node_state(states, _node_id, _event), do: states
 
   defp push_graph_node_states(socket, node_states) do

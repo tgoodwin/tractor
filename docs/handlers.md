@@ -120,6 +120,8 @@ A no-op routing node. Returns `{:ok, %{}, %{status: %{"status" => "ok"}}}`. The 
 
 The validator's `condition_coverage` check exempts conditional and judge nodes from strict accept/reject coverage, so you can route on arbitrary `context.X` expressions, but stalling at a diamond with no matching edge will fail the run at runtime.
 
+**Events:** a conditional node emits three independent signals — `node_succeeded` (execution status), `edge_taken` (routing outcome), and `gate_verdict` (the accept/reject decision, mirroring `judge_verdict`). The UI derives diamond color from `gate_verdict`, not from `edge_taken`. Prefer labelling decisive edges `label="accept"` or `label="reject"` so the verdict is explicit; the runner falls back to substring-matching the condition (`"reject"|"fail"` → reject, `"accept"|"pass"` → accept, otherwise `unknown`) only when an explicit label is absent. `unknown` leaves the diamond's state untouched rather than guessing.
+
 ---
 
 ## `judge` — `Tractor.Handler.Judge`

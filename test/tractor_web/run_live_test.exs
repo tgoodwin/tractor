@@ -194,22 +194,95 @@ defmodule TractorWeb.RunLiveTest do
   end
 
   @tag :tmp_dir
-  test "late mount replays conditional reject edge state from disk", %{
+  test "late mount replays conditional reject from gate_verdict on disk", %{
     conn: conn,
     run_id: run_id
   } do
+    # After SPRINT-0015 phase D, verdict color derives from :gate_verdict
+    # (a first-class signal from the runner), not from substring-matching the
+    # `:edge_taken` condition. This test asserts the replay-from-disk path
+    # picks up the new event correctly on late mount.
     assert {:ok, _result} = Run.await(run_id, 1_000)
 
     :ok =
-      RunEvents.emit(run_id, "start", :edge_taken, %{
-        "from" => "start",
-        "to" => "exit",
-        "condition" => "context.review.last_output contains \"VERDICT: reject\""
+      RunEvents.emit(run_id, "start", :gate_verdict, %{
+        "node_id" => "start",
+        "iteration" => 1,
+        "verdict" => "reject",
+        "routed_to" => "exit",
+        "condition" => "context.review.last_output contains \"VERDICT: reject\"",
+        "label" => "reject",
+        "routing_status" => "ok"
       })
 
     {:ok, view, _html} = live(conn, "/runs/#{run_id}")
 
     assert_push_event(view, "graph:node_state", %{node_id: "start", state: "rejected"})
+  end
+
+  @tag :tmp_dir
+  test "gate_verdict reject flips the diamond to rejected", %{conn: conn, run_id: run_id} do
+    assert {:ok, _result} = Run.await(run_id, 1_000)
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+
+    :ok =
+      RunEvents.emit(run_id, "start", :gate_verdict, %{
+        "node_id" => "start",
+        "iteration" => 1,
+        "verdict" => "reject",
+        "routed_to" => "exit",
+        "condition" => nil,
+        "label" => "reject",
+        "routing_status" => "ok"
+      })
+
+    assert_push_event(view, "graph:node_state", %{node_id: "start", state: "rejected"})
+  end
+
+  @tag :tmp_dir
+  test "gate_verdict accept flips the diamond to accepted", %{conn: conn, run_id: run_id} do
+    assert {:ok, _result} = Run.await(run_id, 1_000)
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+
+    :ok =
+      RunEvents.emit(run_id, "start", :gate_verdict, %{
+        "node_id" => "start",
+        "iteration" => 1,
+        "verdict" => "accept",
+        "routed_to" => "exit",
+        "condition" => nil,
+        "label" => "accept",
+        "routing_status" => "ok"
+      })
+
+    assert_push_event(view, "graph:node_state", %{node_id: "start", state: "accepted"})
+  end
+
+  @tag :tmp_dir
+  test "gate_verdict unknown leaves the node state untouched", %{conn: conn, run_id: run_id} do
+    assert {:ok, _result} = Run.await(run_id, 1_000)
+    {:ok, view, _html} = live(conn, "/runs/#{run_id}")
+
+    :ok =
+      RunEvents.emit(run_id, "start", :gate_verdict, %{
+        "node_id" => "start",
+        "iteration" => 1,
+        "verdict" => "unknown",
+        "routed_to" => "exit",
+        "condition" => "context.score > 0.5",
+        "label" => nil,
+        "routing_status" => "ok"
+      })
+
+    # Node state must NOT flip to verdict-derived state on "unknown".
+    render(view)
+
+    receive do
+      {:phoenix_pushed, _, _, %{state: "rejected"}} -> flunk("unexpected rejected push")
+      {:phoenix_pushed, _, _, %{state: "accepted"}} -> flunk("unexpected accepted push")
+    after
+      30 -> :ok
+    end
   end
 
   @tag :tmp_dir
