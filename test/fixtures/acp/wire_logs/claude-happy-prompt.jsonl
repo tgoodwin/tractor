@@ -1,0 +1,8 @@
+{"ts":"2026-05-18T12:00:00.000Z","direction":"in","payload":{"id":1,"result":{"protocolVersion":1,"agentCapabilities":{"promptCapabilities":{"text":true}}}}}
+{"ts":"2026-05-18T12:00:00.050Z","direction":"in","payload":{"id":2,"result":{"sessionId":"replay-session"}}}
+{"ts":"2026-05-18T12:00:00.100Z","direction":"in","payload":{"method":"session/update","params":{"sessionId":"replay-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}}}}
+{"ts":"2026-05-18T12:00:00.150Z","direction":"in","payload":{"method":"session/update","params":{"sessionId":"replay-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" there"}}}}}
+{"ts":"2026-05-18T12:00:00.200Z","direction":"in","payload":{"method":"session/update","params":{"sessionId":"replay-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" world"}}}}}
+{"ts":"2026-05-18T12:00:00.250Z","direction":"in","payload":{"method":"session/update","params":{"sessionId":"replay-session","update":{"sessionUpdate":"tool_call","toolCallId":"tc1","title":"shell","status":"in_progress","kind":"execute"}}}}
+{"ts":"2026-05-18T12:00:00.300Z","direction":"in","payload":{"method":"session/update","params":{"sessionId":"replay-session","update":{"sessionUpdate":"tool_call_update","toolCallId":"tc1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"42"}}]}}}}
+{"ts":"2026-05-18T12:00:00.350Z","direction":"in","payload":{"id":3,"result":{"stopReason":"end_turn"}}}

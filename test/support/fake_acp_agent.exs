@@ -19,6 +19,16 @@ defmodule Tractor.FakeACPAgent do
 
   defp maybe_spawn_child(_mode), do: :ok
 
+  defp loop(%{mode: "silent"} = state) do
+    # Block forever, discarding incoming messages. Used by the wire-replay
+    # harness to drive the session state machine purely from injected frames.
+    case IO.read(:stdio, :line) do
+      :eof -> :ok
+      {:error, _reason} -> :ok
+      _line -> loop(state)
+    end
+  end
+
   defp loop(state) do
     case IO.read(:stdio, :line) do
       :eof ->
