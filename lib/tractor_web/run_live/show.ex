@@ -1040,6 +1040,12 @@ defmodule TractorWeb.RunLive.Show do
 
   defp maybe_clear_wait_error(socket, _event), do: socket
 
+  defp selected_node_running_started_at(%{state: "running", status: %{"started_at" => started_at}})
+       when is_binary(started_at),
+       do: started_at
+
+  defp selected_node_running_started_at(_other), do: nil
+
   defp selected_node(assigns, node_id) do
     case assigns.pipeline.nodes[node_id] do
       %Tractor.Node{} = node ->
