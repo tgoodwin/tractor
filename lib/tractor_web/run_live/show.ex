@@ -66,13 +66,17 @@ defmodule TractorWeb.RunLive.Show do
         if connected?(socket) and prior_run_id != run_id, do: RunBus.subscribe(run_id)
 
         {svg, graph_key} = ensure_graph(socket.assigns, pipeline)
-        node_states = load_node_states(pipeline, run_dir)
         selected = first_node_id(pipeline)
         runs = list_runs(run_dir)
         status_agent = Map.get(pipeline.graph_attrs, "status_agent", "off")
         status_updates = load_status_updates(run_dir)
         run_meta = load_run_meta(run_dir)
         pending_waits = load_pending_waits(run_dir)
+
+        node_states =
+          pipeline
+          |> load_node_states(run_dir)
+          |> reconcile_node_states_with_run(run_meta.status)
 
         socket =
           socket
@@ -630,17 +634,15 @@ defmodule TractorWeb.RunLive.Show do
 
   # When a run terminates as interrupted, flip any node we still think is
   # running/waiting to the interrupted state so the graph matches reality.
+  # Used live via the run_finalized event AND on mount, since the per-node
+  # status.json files still say "running" for an in-flight node when the
+  # orchestrator died before it could finalize.
   defp maybe_mark_in_flight_interrupted(socket, %{
          "kind" => "run_finalized",
          "data" => %{"status" => "interrupted"}
        }) do
     states = socket.assigns.node_states
-
-    updated =
-      Map.new(states, fn
-        {id, state} when state in ["running", "waiting"] -> {id, "interrupted"}
-        other -> other
-      end)
+    updated = reconcile_node_states_with_run(states, "interrupted")
 
     if updated == states do
       socket
@@ -652,6 +654,16 @@ defmodule TractorWeb.RunLive.Show do
   end
 
   defp maybe_mark_in_flight_interrupted(socket, _event), do: socket
+
+  defp reconcile_node_states_with_run(node_states, status)
+       when status in [:interrupted, "interrupted"] do
+    Map.new(node_states, fn
+      {id, state} when state in ["running", "waiting"] -> {id, "interrupted"}
+      other -> other
+    end)
+  end
+
+  defp reconcile_node_states_with_run(node_states, _status), do: node_states
 
   defp push_changed_node_states(socket, before, after_) do
     Enum.reduce(after_, socket, fn {id, state}, socket ->
