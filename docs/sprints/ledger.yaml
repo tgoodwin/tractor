@@ -68,3 +68,14 @@ sprints:
     executor: gpt-5.4
     created: "2026-04-28T23:07:09+00:00"
     updated: "2026-04-28T23:59:56+00:00"
+  - id: SPRINT-0014
+    title: "ACP transient quota: detect usage limits, pause-and-resume runs"
+    status: planned
+    created: "2026-05-03T02:27:52+00:00"
+    updated: "2026-05-03T02:27:52+00:00"
+  - id: SPRINT-0015
+    title: "Reliability & resilience: consolidate four structural weak spots"
+    status: in-progress
+    executor: opus
+    created: "2026-05-18T15:16:21+00:00"
+    updated: "2026-05-18T18:08:28+00:00"
