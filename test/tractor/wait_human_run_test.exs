@@ -148,6 +148,11 @@ defmodule Tractor.WaitHumanRunTest do
     :ok = GenServer.stop(pid, :shutdown, 1_000)
     wait_for_runner_exit(run_id)
 
+    # ResumeBoot is for hard-crash recovery: BEAM died before terminate could
+    # write a terminal status, so manifest is still "running". Simulate that by
+    # rewriting the manifest (terminate just marked it "interrupted").
+    rewrite_manifest_status!(tmp_dir, run_id, "running")
+
     assert ResumeBoot.resume_inflight_runs(tmp_dir) == 1
     assert wait_for_waiting(run_id, "gate").attempt == 1
 
@@ -485,6 +490,14 @@ defmodule Tractor.WaitHumanRunTest do
       _ ->
         Process.sleep(20)
         wait_for_runner_exit(run_id, attempts - 1)
+    end
+  end
+
+  defp rewrite_manifest_status!(tmp_dir, run_id, status) do
+    for file <- ~w(manifest.json status.json) do
+      path = Path.join([tmp_dir, run_id, file])
+      manifest = path |> File.read!() |> Jason.decode!()
+      File.write!(path, Jason.encode!(Map.put(manifest, "status", status)))
     end
   end
 

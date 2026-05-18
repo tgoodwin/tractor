@@ -29,7 +29,7 @@ defmodule Tractor.RunWatcherIntegrationTest do
     write_pidfile(run_dir, @dead_pid)
     send(watcher_pid, :rescan_runs)
 
-    wait_until(fn -> read_manifest(run_dir)["status"] == "error" end)
+    wait_until(fn -> read_manifest(run_dir)["status"] == "interrupted" end)
     assert read_manifest(run_dir)["reason"] =~ "reconciled:"
     assert_receive {:DOWN, ^tail_ref, :process, ^tail_pid, _reason}, 1_000
     refute Process.alive?(tail_pid)

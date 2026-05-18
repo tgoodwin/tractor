@@ -14,7 +14,7 @@ defmodule Tractor.RunWatcher.ReconcileTest do
     assert reason =~ "reconciled:"
 
     manifest = read_manifest(run_dir)
-    assert manifest["status"] == "error"
+    assert manifest["status"] == "interrupted"
     assert manifest["reason"] == reason
     assert is_binary(manifest["finished_at"])
   end
@@ -52,7 +52,7 @@ defmodule Tractor.RunWatcher.ReconcileTest do
              Reconcile.reconcile_dead_runs(tmp_dir)
 
     manifest = read_manifest(run_dir)
-    assert manifest["status"] == "error"
+    assert manifest["status"] == "interrupted"
     assert manifest["reason"] == "reconciled: pidfile missing"
     assert is_binary(manifest["finished_at"])
   end

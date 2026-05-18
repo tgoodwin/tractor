@@ -871,9 +871,14 @@ defmodule Tractor.Runner do
     %{state | result: result, waiters: []}
   end
 
-  defp interrupted_shutdown?({:shutdown, :interrupt}), do: true
-  defp interrupted_shutdown?({:shutdown, {:interrupt, _reason}}), do: true
-  defp interrupted_shutdown?(_reason), do: false
+  # Any non-normal terminate reason reaching us while result is still nil means
+  # the run was killed mid-flight — SIGTERM/SIGINT/parent-death surface as plain
+  # :shutdown via the supervisor; explicit interrupts surface as
+  # {:shutdown, :interrupt}; an orchestrator crash surfaces as the exception.
+  # All of these are "interrupted" from the run's POV, not "errored" (which is
+  # reserved for node-level failures emitted via the error path).
+  defp interrupted_shutdown?(:normal), do: false
+  defp interrupted_shutdown?(_reason), do: true
 
   defp enqueue_next(state, node_id, routing_outcome) do
     case next_edge(state.pipeline, node_id, routing_outcome, state.context) do
