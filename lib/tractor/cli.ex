@@ -19,7 +19,7 @@ defmodule Tractor.CLI do
 
   @probe_connect_timeout_ms 500
   @probe_read_timeout_ms 2_000
-  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume RUN_ID_OR_DIR [--runs-dir PATH] [--timeout DURATION]\n       tractor view [--runs-dir PATH] [--port N] [--no-open]\n       tractor validate PATH\n       tractor init [claude|codex|gemini] [--force]\n"
+  @usage "Usage: tractor reap PATH [--cwd PATH] [--runs-dir PATH] [--timeout DURATION] [--serve] [--port N] [--no-open]\n       tractor reap --resume [RUN_ID_OR_DIR] [--runs-dir PATH] [--timeout DURATION] [--force]\n       tractor view [--runs-dir PATH] [--port N] [--no-open]\n       tractor validate PATH\n       tractor init [claude|codex|gemini] [--force]\n"
 
   @spec main([String.t()]) :: no_return()
   def main(args) do
@@ -46,8 +46,8 @@ defmodule Tractor.CLI do
 
   @spec run([String.t()]) ::
           {:serve, (-> no_return())} | {non_neg_integer(), String.t(), String.t()}
-  def run(["reap", "--resume"]) do
-    resume_once(normalize_opts(resume: :latest), 300_000)
+  def run(["reap", "--resume" | rest]) when rest in [[], ["--force"]] do
+    resume_once(normalize_opts(resume: :latest, force: rest == ["--force"]), 300_000)
   end
 
   def run(["reap" | args]) do
@@ -60,7 +60,8 @@ defmodule Tractor.CLI do
           serve: :boolean,
           port: :integer,
           no_open: :boolean,
-          resume: :string
+          resume: :string,
+          force: :boolean
         ],
         aliases: []
       )
@@ -242,8 +243,15 @@ defmodule Tractor.CLI do
 
   defp resume_once(opts, timeout) do
     run_dir = resolve_resume_dir(opts[:resume], opts)
+    force? = Keyword.get(opts, :force, false)
 
-    with {:ok, run_id} <- Run.resume(run_dir, run_opts(opts)),
+    if force? do
+      IO.write(:stderr, "resume: --force enabled, skipping checkpoint verification\n")
+    end
+
+    resume_opts = Keyword.put(run_opts(opts), :force, force?)
+
+    with {:ok, run_id} <- Run.resume(run_dir, resume_opts),
          :ok <- progress("resume: #{run_id}"),
          {:ok, result} <- Run.await(run_id, timeout) do
       {0, result.run_dir <> "\n", ""}
@@ -252,10 +260,12 @@ defmodule Tractor.CLI do
         {20, "", "resume failed: unsupported checkpoint schema\n"}
 
       {:error, :pipeline_changed} ->
-        {20, "", "resume failed: pipeline graph changed since checkpoint\n"}
+        {20, "",
+         "resume failed: pipeline graph changed since checkpoint (pass --force to override)\n"}
 
       {:error, :node_ids_changed} ->
-        {20, "", "resume failed: node IDs changed since checkpoint\n"}
+        {20, "",
+         "resume failed: node IDs changed since checkpoint (pass --force to override; runtime errors are likely if removed IDs are referenced)\n"}
 
       {:error, reason} ->
         {20, "", "resume failed: #{inspect(reason)}\n"}

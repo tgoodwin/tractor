@@ -17,16 +17,18 @@ defmodule Tractor.Run do
 
   @spec resume(Path.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def resume(run_dir, opts \\ []) do
+    {force?, runner_opts} = Keyword.pop(opts, :force, false)
+
     with {:ok, store} <- RunStore.resume(run_dir),
          {:ok, checkpoint} <- Checkpoint.read(run_dir),
          pipeline_path when is_binary(pipeline_path) <- checkpoint["pipeline_path"],
          {:ok, pipeline} <- DotParser.parse_file(pipeline_path),
          :ok <- Validator.validate(pipeline),
-         :ok <- Checkpoint.verify!(pipeline, checkpoint),
+         :ok <- maybe_verify(pipeline, checkpoint, force?),
          {:ok, _pid} <-
            DynamicSupervisor.start_child(
              Tractor.RunSup,
-             {Runner, {pipeline, Keyword.put(opts, :resume_state, checkpoint), store}}
+             {Runner, {pipeline, Keyword.put(runner_opts, :resume_state, checkpoint), store}}
            ) do
       {:ok, store.run_id}
     else
@@ -34,6 +36,9 @@ defmodule Tractor.Run do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp maybe_verify(_pipeline, _checkpoint, true), do: :ok
+  defp maybe_verify(pipeline, checkpoint, false), do: Checkpoint.verify!(pipeline, checkpoint)
 
   @spec await(String.t(), timeout()) :: {:ok, map()} | {:error, term()}
   def await(run_id, timeout \\ 300_000) do
