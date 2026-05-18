@@ -47,8 +47,14 @@ defmodule Tractor.AgentTest do
               ]}
 
     assert Codex.command([]) ==
-             {"npx", ["@zed-industries/codex-acp", "-a", "never", "--sandbox", "workspace-write"],
-              []}
+             {"npx",
+              [
+                "@zed-industries/codex-acp",
+                "-c",
+                ~s(approval_policy="never"),
+                "-c",
+                ~s(sandbox_mode="workspace-write")
+              ], []}
   end
 
   test "Claude sessions default to autonomous bypass mode" do
@@ -72,26 +78,32 @@ defmodule Tractor.AgentTest do
              {"npx",
               [
                 "@zed-industries/codex-acp",
-                "-a",
-                "never",
-                "--sandbox",
-                "workspace-write",
-                "--add-dir",
-                "/abs/one",
-                "--add-dir",
-                "/abs/two"
+                "-c",
+                ~s(approval_policy="never"),
+                "-c",
+                ~s(sandbox_mode="workspace-write"),
+                "-c",
+                ~s(sandbox_workspace_write.writable_roots=["/abs/one","/abs/two"])
               ], []}
   end
 
-  test "Codex autonomy args are not double-appended when explicitly configured" do
+  test "Codex config overrides are not double-appended when explicitly configured" do
     System.put_env(
       "TRACTOR_ACP_CODEX_ARGS",
-      ~s(["--full-auto","--add-dir","/already/there"])
+      ~s(["-c","approval_policy=\\"on-request\\"","--config=sandbox_mode=\\"read-only\\"","-c","sandbox_workspace_write.writable_roots=[\\"/already/there\\"]"])
     )
 
     System.put_env("TRACTOR_CODEX_INCLUDE_DIRS", "/abs/one")
 
-    assert Codex.command([]) == {"npx", ["--full-auto", "--add-dir", "/already/there"], []}
+    assert Codex.command([]) ==
+             {"npx",
+              [
+                "-c",
+                ~s(approval_policy="on-request"),
+                ~s(--config=sandbox_mode="read-only"),
+                "-c",
+                ~s(sandbox_workspace_write.writable_roots=["/already/there"])
+              ], []}
   end
 
   test "Claude session_params suppresses on-disk MCP / settings by default" do

@@ -3,9 +3,9 @@ defmodule Tractor.Agent.Codex do
   Codex ACP bridge adapter.
 
   Tractor starts Codex in non-interactive workspace-write mode by default so
-  pipeline runs do not stall on provider permission prompts. Override by
-  setting `args` under `[agents.codex]` in `.tractor/config.toml` or via
-  `TRACTOR_ACP_CODEX_ARGS`.
+  pipeline runs do not stall on provider permission prompts. The ACP bridge
+  accepts Codex settings via `-c key=value` config overrides rather than the
+  interactive Codex CLI flags.
 
   Codex sandboxes file access to the session cwd. To widen that allowlist
   (for example, so a node can edit a sibling Git worktree and its metadata),
@@ -16,36 +16,28 @@ defmodule Tractor.Agent.Codex do
   @behaviour Tractor.Agent
   alias Tractor.Agent.Config
 
+  @approval_policy_config ~s(approval_policy="never")
+  @sandbox_mode_config ~s(sandbox_mode="workspace-write")
+  @writable_roots_key "sandbox_workspace_write.writable_roots"
+
   @impl Tractor.Agent
   def command(_opts) do
     {exe, args, env} = Config.command("codex", "npx", ["@zed-industries/codex-acp"])
-    args = args |> append_autonomy_args() |> append_include_dirs()
+    args = args |> append_autonomy_config() |> append_include_dirs()
     {exe, args, env}
   end
 
-  defp append_autonomy_args(args) do
+  defp append_autonomy_config(args) do
     args
-    |> append_approval_args()
-    |> append_sandbox_args()
+    |> append_config_if_missing("approval_policy", @approval_policy_config)
+    |> append_config_if_missing("sandbox_mode", @sandbox_mode_config)
   end
 
-  defp append_approval_args(args) do
-    if has_any_arg?(args, ["-a", "--ask-for-approval", "--full-auto"]) or
-         has_arg_prefix?(args, "--ask-for-approval=") or
-         bypasses_approvals?(args) do
+  defp append_config_if_missing(args, key, config_arg) do
+    if has_config_key?(args, key) do
       args
     else
-      args ++ ["-a", "never"]
-    end
-  end
-
-  defp append_sandbox_args(args) do
-    if has_any_arg?(args, ["-s", "--sandbox", "--full-auto"]) or
-         has_arg_prefix?(args, "--sandbox=") or
-         bypasses_approvals?(args) do
-      args
-    else
-      args ++ ["--sandbox", "workspace-write"]
+      args ++ ["-c", config_arg]
     end
   end
 
@@ -55,10 +47,10 @@ defmodule Tractor.Agent.Codex do
         args
 
       dirs ->
-        if has_any_arg?(args, ["--add-dir"]) or has_arg_prefix?(args, "--add-dir=") do
+        if has_config_key?(args, @writable_roots_key) do
           args
         else
-          args ++ Enum.flat_map(dirs, &["--add-dir", &1])
+          args ++ ["-c", "#{@writable_roots_key}=#{Jason.encode!(dirs)}"]
         end
     end
   end
@@ -80,10 +72,23 @@ defmodule Tractor.Agent.Codex do
   defp parse_list(nil), do: []
   defp parse_list(s) when is_binary(s), do: String.split(s, ",", trim: true)
 
-  defp has_any_arg?(args, flags), do: Enum.any?(args, &(&1 in flags))
-  defp has_arg_prefix?(args, prefix), do: Enum.any?(args, &String.starts_with?(&1, prefix))
-
-  defp bypasses_approvals?(args) do
-    "--dangerously-bypass-approvals-and-sandbox" in args
+  defp has_config_key?(args, key) do
+    args
+    |> config_args()
+    |> Enum.any?(&(config_key(&1) == key))
   end
+
+  defp config_args(["-c", value | rest]), do: [value | config_args(rest)]
+  defp config_args(["--config", value | rest]), do: [value | config_args(rest)]
+
+  defp config_args([arg | rest]) do
+    case String.split(arg, "=", parts: 2) do
+      ["--config", value] -> [value | config_args(rest)]
+      _ -> config_args(rest)
+    end
+  end
+
+  defp config_args([]), do: []
+
+  defp config_key(arg), do: arg |> String.split("=", parts: 2) |> hd() |> String.trim()
 end
